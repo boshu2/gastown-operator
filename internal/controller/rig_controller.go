@@ -46,7 +46,7 @@ const (
 type RigReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	GTClient *gt.Client
+	GTClient gt.ClientInterface
 }
 
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=rigs,verbs=get;list;watch;create;update;patch;delete

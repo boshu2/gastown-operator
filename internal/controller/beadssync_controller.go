@@ -42,7 +42,7 @@ const (
 type BeadsSyncReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	GTClient *gt.Client
+	GTClient gt.ClientInterface
 }
 
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=polecats,verbs=get;list;watch;update;patch

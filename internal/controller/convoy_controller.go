@@ -46,7 +46,7 @@ const (
 type ConvoyReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	GTClient *gt.Client
+	GTClient gt.ClientInterface
 }
 
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=convoys,verbs=get;list;watch;create;update;patch;delete

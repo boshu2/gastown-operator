@@ -45,7 +45,7 @@ const (
 type PolecatReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	GTClient *gt.Client
+	GTClient gt.ClientInterface
 }
 
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=polecats,verbs=get;list;watch;create;update;patch;delete
@@ -176,6 +176,16 @@ func (r *PolecatReconciler) ensureIdle(ctx context.Context, polecat *gastownv1al
 			log.Info("Resetting polecat to idle")
 			if err := r.GTClient.PolecatReset(ctx, polecat.Spec.Rig, polecat.Name); err != nil {
 				log.Error(err, "Failed to reset polecat")
+				r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionFalse, "ResetFailed",
+					err.Error())
+
+				if updateErr := r.Status().Update(ctx, polecat); updateErr != nil {
+					timer.RecordResult(metrics.ResultError)
+					return ctrl.Result{}, gterrors.Wrap(updateErr, "failed to update polecat status")
+				}
+
+				timer.RecordResult(metrics.ResultRequeue)
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 			}
 		}
 
