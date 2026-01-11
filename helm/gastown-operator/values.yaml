@@ -1,0 +1,73 @@
+# Gas Town Operator Helm Values
+
+replicaCount: 1
+
+image:
+  repository: gastown-operator
+  pullPolicy: IfNotPresent
+  tag: ""  # Defaults to Chart.appVersion
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Gas Town configuration
+gtConfig:
+  # Path to Gas Town root directory (mounted from host)
+  townRoot: /gt
+  # Path to gt binary inside the container
+  gtBinary: /usr/local/bin/gt
+
+# Volume configuration for accessing host filesystem
+volumes:
+  enabled: true
+  hostPath: /Users/fullerbt/gt
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+rbac:
+  create: true
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {}
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: false
+  runAsUser: 0  # Need root to access host paths
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Metrics configuration
+metrics:
+  enabled: true
+  port: 8443
+  secure: true
+
+# Health probes
+probes:
+  healthPort: 8081
+
+# Leader election (for HA)
+leaderElection:
+  enabled: true

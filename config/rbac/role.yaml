@@ -1,0 +1,38 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - gastown.gastown.io
+  resources:
+  - convoys
+  - polecats
+  - rigs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gastown.gastown.io
+  resources:
+  - convoys/finalizers
+  - polecats/finalizers
+  - rigs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - gastown.gastown.io
+  resources:
+  - convoys/status
+  - polecats/status
+  - rigs/status
+  verbs:
+  - get
+  - patch
+  - update

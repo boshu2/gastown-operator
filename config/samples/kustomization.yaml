@@ -1,0 +1,6 @@
+## Append samples of your project ##
+resources:
+- gastown_v1alpha1_rig.yaml
+- gastown_v1alpha1_polecat.yaml
+- gastown_v1alpha1_convoy.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

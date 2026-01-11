@@ -1,0 +1,108 @@
+{{- if .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "gastown-operator.fullname" . }}-manager-role
+  labels:
+    {{- include "gastown-operator.labels" . | nindent 4 }}
+rules:
+# CRD access
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - rigs
+  verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - rigs/finalizers
+  verbs:
+    - update
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - rigs/status
+  verbs:
+    - get
+    - patch
+    - update
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - polecats
+  verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - polecats/finalizers
+  verbs:
+    - update
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - polecats/status
+  verbs:
+    - get
+    - patch
+    - update
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - convoys
+  verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - convoys/finalizers
+  verbs:
+    - update
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - convoys/status
+  verbs:
+    - get
+    - patch
+    - update
+# Leader election
+- apiGroups:
+    - coordination.k8s.io
+  resources:
+    - leases
+  verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+- apiGroups:
+    - ""
+  resources:
+    - events
+  verbs:
+    - create
+    - patch
+{{- end }}
