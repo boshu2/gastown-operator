@@ -29,7 +29,7 @@ stages:
 default:
   interruptible: true
   tags:
-    - olympus
+    - jren
 
 cache:
   key: go-cache
@@ -81,7 +81,6 @@ build:operator:
     # Copy Dockerfile to /kaniko to avoid chown permission issues
     - cp "${CI_PROJECT_DIR}/Dockerfile" /kaniko/Dockerfile
     # Build and push image to DPR registry
-    # --ignore-path flags avoid chown permission errors in OpenShift
     - |
       /kaniko/executor \
         --context "${CI_PROJECT_DIR}" \
@@ -91,10 +90,6 @@ build:operator:
         --destination "${IMAGE_REGISTRY}/${IMAGE_NAME}:latest" \
         --build-arg "GO_IMAGE=${BUILD_GO_IMAGE}" \
         --build-arg "DISTROLESS_IMAGE=${BUILD_DISTROLESS_IMAGE}" \
-        --ignore-path=/etc/shadow \
-        --ignore-path=/etc/gshadow \
-        --ignore-path=/etc/passwd \
-        --ignore-path=/etc/group \
         --cache=true \
         --cache-repo="${IMAGE_REGISTRY}/${IMAGE_NAME}/cache" \
         --skip-tls-verify-registry="${DPR_REGISTRY}" \
