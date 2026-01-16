@@ -26,11 +26,11 @@ variables:
   # DPR Registry for built images (no auth required for in-cluster access)
   DPR_REGISTRY: "dprusocplvjmp01.deepsky.lab:5000"
 
-  # CI images from DPR (mirrored internally)
-  # DPR added to OpenShift allowedRegistries
-  GO_LINT_IMAGE: "${DPR_REGISTRY}/ci-images/golangci-lint:v2.7.2"
-  GO_IMAGE: "${DPR_REGISTRY}/ci-images/golang:1.24"
-  KANIKO_IMAGE: "${DPR_REGISTRY}/ci-images/kaniko:v1.23.2-debug"
+  # CI images from public registries
+  # Note: DPR images blocked by signature policy (atomic vs docker transport mismatch)
+  # Using official images from gcr.io/quay.io which are in allowedRegistries
+  GO_IMAGE: "quay.io/projectquay/golang:1.24"
+  KANIKO_IMAGE: "gcr.io/kaniko-project/executor:v1.23.2-debug"
 
 # ------------------------------------------------------------------------------
 # Default settings
@@ -57,12 +57,16 @@ default:
 # ------------------------------------------------------------------------------
 go:lint:
   stage: lint
-  image: $GO_LINT_IMAGE
+  image: $GO_IMAGE
   <<: *go-cache
   variables:
     GOPATH: "$CI_PROJECT_DIR/.cache/go"
     GOCACHE: "$CI_PROJECT_DIR/.cache/go-build"
     GOMODCACHE: "$CI_PROJECT_DIR/.cache/go-mod"
+  before_script:
+    # Install golangci-lint (ghcr.io images require auth, so install binary)
+    - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.62.2
+    - export PATH="$(go env GOPATH)/bin:$PATH"
   script:
     - golangci-lint run --timeout 5m
   rules:
