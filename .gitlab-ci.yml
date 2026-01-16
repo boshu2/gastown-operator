@@ -29,7 +29,7 @@ stages:
 default:
   interruptible: true
   tags:
-    - jren
+    - olympus
 
 cache:
   key: go-cache
@@ -64,6 +64,8 @@ go:test:
 
 build:operator:
   stage: build
+  tags:
+    - jren  # jren runner has proper security context for Kaniko
   image:
     name: $KANIKO_IMAGE
     entrypoint: [""]
