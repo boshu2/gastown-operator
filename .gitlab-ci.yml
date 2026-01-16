@@ -28,8 +28,9 @@ variables:
 
   # CI images from cluster-allowed registries
   # Note: DPR is not in OpenShift allowedRegistries, so use public registries
-  GO_LINT_IMAGE: "ghcr.io/golangci/golangci-lint:v1.62.2"
-  GO_IMAGE: "quay.io/projectquay/golang:1.22"
+  # Using registry.gitlab.com which is in allowedRegistries and publicly accessible
+  GO_LINT_IMAGE: "registry.gitlab.com/gitlab-org/gitlab-build-images/golangci-lint-alpine:v1.61.0"
+  GO_IMAGE: "registry.gitlab.com/gitlab-org/gitlab-build-images/go-toolset:golang-1.22"
   KANIKO_IMAGE: "gcr.io/kaniko-project/executor:v1.23.2-debug"
 
 # ------------------------------------------------------------------------------

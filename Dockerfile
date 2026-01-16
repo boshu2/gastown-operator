@@ -11,7 +11,7 @@
 # ------------------------------------------------------------------------------
 # Stage 1: Build gt CLI from daedalus (gastown) source
 # ------------------------------------------------------------------------------
-FROM quay.io/projectquay/golang:1.22 AS gt-builder
+FROM registry.gitlab.com/gitlab-org/gitlab-build-images/go-toolset:golang-1.22 AS gt-builder
 
 WORKDIR /gastown
 # Clone daedalus (gastown) repo and build gt CLI
@@ -22,7 +22,7 @@ RUN git clone https://git.deepskylab.io/olympus/daedalus.git . && \
 # ------------------------------------------------------------------------------
 # Stage 2: Build the operator manager binary
 # ------------------------------------------------------------------------------
-FROM quay.io/projectquay/golang:1.22 AS builder
+FROM registry.gitlab.com/gitlab-org/gitlab-build-images/go-toolset:golang-1.22 AS builder
 
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
