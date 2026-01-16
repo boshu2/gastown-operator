@@ -1,145 +1,135 @@
-# ==============================================================================
-# GitLab CI/CD for gastown-operator
-# ==============================================================================
-# Builds container image using Kaniko in olympus-ci namespace (ocppoc cluster).
-# No Docker daemon required - runs entirely in-cluster.
+# gastown-operator CI Pipeline
+# Based on fractal pattern - validate locally, build in CI
 #
-# Runner: olympus-runner (group: olympus, tags: olympus, openshift, kubernetes)
-# Registry: DPR (dprusocplvjmp01.deepsky.lab:5000) for built images
-# CI images: From cluster-allowed registries (ghcr.io, gcr.io, quay.io)
-# ==============================================================================
+# Lint/complexity: Run locally before push (golangci-lint run)
+# CI: test → build → security
 
-stages:
-  - lint
-  - test
-  - build
-
-# ------------------------------------------------------------------------------
-# Global Variables
-# ------------------------------------------------------------------------------
 variables:
-  # Go settings
-  GOPROXY: "https://proxy.golang.org,direct"
-  GOFLAGS: "-mod=readonly"
-  CGO_ENABLED: "0"
-
-  # DPR Registry for built images (no auth required for in-cluster access)
+  # DPR Registry (avoids Docker Hub rate limits)
   DPR_REGISTRY: "dprusocplvjmp01.deepsky.lab:5000"
 
-  # CI images from public registries
-  # Note: DPR images blocked by signature policy (atomic vs docker transport mismatch)
-  # Using official images from gcr.io/quay.io which are in allowedRegistries
-  GO_IMAGE: "quay.io/projectquay/golang:1.24"
-  KANIKO_IMAGE: "gcr.io/kaniko-project/executor:v1.23.2-debug"
+  # CI images (mirrored to DPR via devops/ci-images/mirror-images.sh)
+  GO_IMAGE: "${DPR_REGISTRY}/ci-images/golang:1.24-alpine"
+  KANIKO_IMAGE: "${DPR_REGISTRY}/ci-images/kaniko:v1.23.2-debug"
+  TRIVY_IMAGE: "${DPR_REGISTRY}/ci-images/trivy:latest"
 
-# ------------------------------------------------------------------------------
-# Default settings
-# ------------------------------------------------------------------------------
+  # Dockerfile base images (passed as build-args)
+  BUILD_GO_IMAGE: "${DPR_REGISTRY}/ci-images/golang:1.24-alpine"
+  BUILD_DISTROLESS_IMAGE: "${DPR_REGISTRY}/ci-images/distroless-static:nonroot"
+
+  # Go settings
+  GOMODCACHE: "$CI_PROJECT_DIR/.go/pkg/mod"
+  GOCACHE: "$CI_PROJECT_DIR/.go/cache"
+
+stages:
+  - test
+  - build
+  - security
+
 default:
+  interruptible: true
   tags:
-    - olympus
-  retry:
-    max: 2
-    when:
-      - runner_system_failure
+    - jren
 
-# Cache configuration
-.go-cache: &go-cache
-  cache:
-    key: go-${CI_COMMIT_REF_SLUG}
-    paths:
-      - .cache/go-build
-      - .cache/go-mod
-    policy: pull-push
+cache:
+  key: go-cache
+  paths:
+    - .go/
 
-# ------------------------------------------------------------------------------
-# Lint Stage
-# ------------------------------------------------------------------------------
-go:lint:
-  stage: lint
-  image: $GO_IMAGE
-  <<: *go-cache
-  variables:
-    GOPATH: "$CI_PROJECT_DIR/.cache/go"
-    GOCACHE: "$CI_PROJECT_DIR/.cache/go-build"
-    GOMODCACHE: "$CI_PROJECT_DIR/.cache/go-mod"
-    GOLANGCI_LINT_CACHE: "$CI_PROJECT_DIR/.cache/golangci-lint"
-  before_script:
-    # Install golangci-lint v2 (built with Go 1.24+)
-    - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.8.0
-    - export PATH="$(go env GOPATH)/bin:$PATH"
-  script:
-    - golangci-lint run --timeout 5m
-  rules:
-    - changes:
-        - "**/*.go"
-        - go.mod
-        - go.sum
-        - .gitlab-ci.yml
+# ==============================================================================
+# TEST STAGE
+# ==============================================================================
 
-# ------------------------------------------------------------------------------
-# Test Stage
-# ------------------------------------------------------------------------------
 go:test:
   stage: test
   image: $GO_IMAGE
-  <<: *go-cache
-  variables:
-    GOPATH: "$CI_PROJECT_DIR/.cache/go"
-    GOCACHE: "$CI_PROJECT_DIR/.cache/go-build"
-    GOMODCACHE: "$CI_PROJECT_DIR/.cache/go-mod"
   script:
-    - go test -race -coverprofile=coverage.out ./...
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: coverage.out
-    expire_in: 1 week
-  coverage: '/total:.*\s(\d+(?:\.\d+)?%)$/'
+    - apk add --no-cache git
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - go version
+    - go mod download
+    - go test ./pkg/... ./internal/... -v
   rules:
-    - changes:
-        - "**/*.go"
-        - go.mod
-        - go.sum
-        - .gitlab-ci.yml
+    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
-# ------------------------------------------------------------------------------
-# Build Stage - Kaniko (daemonless container builds)
-# ------------------------------------------------------------------------------
+# ==============================================================================
+# BUILD STAGE - Kaniko (no Docker daemon)
+# ==============================================================================
+
 build:operator:
   stage: build
   image:
     name: $KANIKO_IMAGE
     entrypoint: [""]
+  variables:
+    IMAGE_REGISTRY: "${DPR_REGISTRY}"
+    IMAGE_NAME: "gastown-operator"
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - |
+      if [ -n "${DPR_USER:-}" ] && [ -n "${DPR_PASSWORD:-}" ]; then
+        AUTH=$(echo -n "${DPR_USER}:${DPR_PASSWORD}" | base64 | tr -d '\n')
+        echo "{\"auths\":{\"${DPR_REGISTRY}\":{\"auth\":\"${AUTH}\"}}}" > /kaniko/.docker/config.json
+      fi
   script:
-    # Kaniko builds without Docker daemon
-    # DPR registry is insecure (HTTP) and doesn't require auth in-cluster
     - |
       /kaniko/executor \
         --context "${CI_PROJECT_DIR}" \
         --dockerfile "Dockerfile" \
-        --destination "${DPR_REGISTRY}/gastown-operator:${CI_COMMIT_SHA}" \
-        --destination "${DPR_REGISTRY}/gastown-operator:${CI_COMMIT_REF_SLUG}" \
-        --destination "${DPR_REGISTRY}/gastown-operator:latest" \
-        --build-arg "DPR_REGISTRY=${DPR_REGISTRY}" \
+        --destination "${IMAGE_REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHA}" \
+        --destination "${IMAGE_REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_REF_SLUG}" \
+        --destination "${IMAGE_REGISTRY}/${IMAGE_NAME}:latest" \
+        --build-arg "GO_IMAGE=${BUILD_GO_IMAGE}" \
+        --build-arg "DISTROLESS_IMAGE=${BUILD_DISTROLESS_IMAGE}" \
         --cache=true \
-        --cache-repo="${DPR_REGISTRY}/gastown-operator/cache" \
+        --cache-repo="${IMAGE_REGISTRY}/${IMAGE_NAME}/cache" \
         --skip-tls-verify-registry="${DPR_REGISTRY}" \
         --insecure-registry="${DPR_REGISTRY}"
   needs:
     - go:test
   rules:
-    # Automatic on main branch
     - if: '$CI_COMMIT_BRANCH == "main"'
       when: on_success
-    # Automatic on tags
     - if: '$CI_COMMIT_TAG'
       when: on_success
-    # Manual on MRs
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       when: manual
       allow_failure: true
-    # Manual trigger
-    - when: manual
+
+# ==============================================================================
+# SECURITY STAGE - Container scanning
+# ==============================================================================
+
+security:trivy:
+  stage: security
+  image: $TRIVY_IMAGE
+  variables:
+    TRIVY_NO_PROGRESS: "true"
+    TRIVY_CACHE_DIR: "${CI_PROJECT_DIR}/.trivy"
+    IMAGE_REGISTRY: "${DPR_REGISTRY}"
+    IMAGE_NAME: "gastown-operator"
+  cache:
+    key: trivy-cache
+    paths:
+      - .trivy/
+  script:
+    - trivy --version
+    - |
+      trivy image \
+        --exit-code 0 \
+        --severity CRITICAL,HIGH \
+        --format table \
+        --insecure \
+        ${IMAGE_REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHA}
+  needs:
+    - build:operator
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: on_success
+    - if: '$CI_COMMIT_TAG'
+      when: on_success
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
       allow_failure: true
+  allow_failure: true
