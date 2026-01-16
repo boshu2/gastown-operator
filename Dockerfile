@@ -5,15 +5,13 @@
 # 1. gt CLI binary (built from daedalus source)
 # 2. operator manager binary
 #
-# Uses DPR-mirrored images to avoid Docker Hub rate limits.
+# Uses images from cluster-allowed registries (gcr.io, quay.io).
 # ==============================================================================
-
-ARG DPR_REGISTRY=dprusocplvjmp01.deepsky.lab:5000
 
 # ------------------------------------------------------------------------------
 # Stage 1: Build gt CLI from daedalus (gastown) source
 # ------------------------------------------------------------------------------
-FROM ${DPR_REGISTRY}/ci-images/golang:1.24 AS gt-builder
+FROM quay.io/projectquay/golang:1.22 AS gt-builder
 
 WORKDIR /gastown
 # Clone daedalus (gastown) repo and build gt CLI
@@ -24,7 +22,7 @@ RUN git clone https://git.deepskylab.io/olympus/daedalus.git . && \
 # ------------------------------------------------------------------------------
 # Stage 2: Build the operator manager binary
 # ------------------------------------------------------------------------------
-FROM ${DPR_REGISTRY}/ci-images/golang:1.24 AS builder
+FROM quay.io/projectquay/golang:1.22 AS builder
 
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
@@ -42,7 +40,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -o manager c
 # ------------------------------------------------------------------------------
 # Stage 3: Final minimal image
 # ------------------------------------------------------------------------------
-FROM ${DPR_REGISTRY}/ci-images/distroless-static:nonroot
+FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /
 

@@ -7,8 +7,9 @@
 replicaCount: 1
 
 image:
-  # DPR registry - image built by GitLab CI (Kaniko)
-  repository: dprusocplvjmp01.deepsky.lab:5000/gastown-operator
+  # GitLab Container Registry - image built by GitLab CI (Kaniko)
+  # Registry is in cluster allowedRegistries list
+  repository: registry.deepskylab.io:5050/olympus/gastown-operator
   pullPolicy: IfNotPresent
   tag: "latest"  # Override with specific SHA in production
 
