@@ -26,12 +26,11 @@ variables:
   # DPR Registry for built images (no auth required for in-cluster access)
   DPR_REGISTRY: "dprusocplvjmp01.deepsky.lab:5000"
 
-  # CI images from cluster-allowed registries
-  # Note: DPR is not in OpenShift allowedRegistries, so use public registries
-  # Using registry.gitlab.com which is in allowedRegistries and publicly accessible
-  GO_LINT_IMAGE: "registry.gitlab.com/gitlab-org/gitlab-build-images/golangci-lint-alpine:v1.61.0"
-  GO_IMAGE: "registry.gitlab.com/gitlab-org/gitlab-build-images/go-toolset:golang-1.22"
-  KANIKO_IMAGE: "gcr.io/kaniko-project/executor:v1.23.2-debug"
+  # CI images from DPR (mirrored internally)
+  # DPR added to OpenShift allowedRegistries
+  GO_LINT_IMAGE: "${DPR_REGISTRY}/ci-images/golangci-lint:v2.7.2"
+  GO_IMAGE: "${DPR_REGISTRY}/ci-images/golang:1.24"
+  KANIKO_IMAGE: "${DPR_REGISTRY}/ci-images/kaniko:v1.23.2-debug"
 
 # ------------------------------------------------------------------------------
 # Default settings
@@ -108,26 +107,21 @@ build:operator:
   image:
     name: $KANIKO_IMAGE
     entrypoint: [""]
-  variables:
-    # Push to GitLab Container Registry (in cluster allowedRegistries)
-    IMAGE_REGISTRY: "${CI_REGISTRY_IMAGE}"
-  before_script:
-    # Create Docker config for GitLab registry auth
-    - mkdir -p /kaniko/.docker
-    - |
-      AUTH_GL=$(echo -n "${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')
-      echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"${AUTH_GL}\"}}}" > /kaniko/.docker/config.json
   script:
     # Kaniko builds without Docker daemon
+    # DPR registry is insecure (HTTP) and doesn't require auth in-cluster
     - |
       /kaniko/executor \
         --context "${CI_PROJECT_DIR}" \
         --dockerfile "Dockerfile" \
-        --destination "${IMAGE_REGISTRY}:${CI_COMMIT_SHA}" \
-        --destination "${IMAGE_REGISTRY}:${CI_COMMIT_REF_SLUG}" \
-        --destination "${IMAGE_REGISTRY}:latest" \
+        --destination "${DPR_REGISTRY}/gastown-operator:${CI_COMMIT_SHA}" \
+        --destination "${DPR_REGISTRY}/gastown-operator:${CI_COMMIT_REF_SLUG}" \
+        --destination "${DPR_REGISTRY}/gastown-operator:latest" \
+        --build-arg "DPR_REGISTRY=${DPR_REGISTRY}" \
         --cache=true \
-        --cache-repo="${IMAGE_REGISTRY}/cache"
+        --cache-repo="${DPR_REGISTRY}/gastown-operator/cache" \
+        --skip-tls-verify-registry="${DPR_REGISTRY}" \
+        --insecure-registry="${DPR_REGISTRY}"
   needs:
     - go:test
   rules:

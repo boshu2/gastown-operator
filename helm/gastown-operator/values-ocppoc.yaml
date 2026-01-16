@@ -8,8 +8,8 @@
 # ==============================================================================
 
 image:
-  # GitLab Container Registry - in cluster allowedRegistries
-  repository: registry.deepskylab.io:5050/olympus/gastown-operator
+  # DPR registry - in cluster allowedRegistries
+  repository: dprusocplvjmp01.deepsky.lab:5000/gastown-operator
   tag: "latest"
 
 # Host path where Gas Town is available on the OpenShift node
