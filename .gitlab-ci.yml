@@ -29,7 +29,7 @@ stages:
 default:
   interruptible: true
   tags:
-    - jren
+    - olympus
 
 cache:
   key: go-cache
