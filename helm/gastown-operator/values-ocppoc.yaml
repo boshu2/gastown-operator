@@ -1,0 +1,44 @@
+# ==============================================================================
+# gastown-operator values for ocppoc (OpenShift POC cluster)
+# ==============================================================================
+# Usage:
+#   helm install gastown-operator ./helm/gastown-operator \
+#     -n gastown-system \
+#     -f helm/gastown-operator/values-ocppoc.yaml
+# ==============================================================================
+
+image:
+  repository: dprusocplvjmp01.deepsky.lab:5000/gastown-operator
+  tag: "latest"
+
+# Host path where Gas Town is available on the OpenShift node
+# NOTE: This requires the gt town to exist on the node filesystem
+# For POC: Using /tmp/gt (create directory on node first)
+volumes:
+  enabled: true
+  hostPath: /tmp/gt
+
+# OpenShift requires privileged SCC for hostPath access
+# Apply SCC before deploying:
+#   oc adm policy add-scc-to-user privileged -z gastown-operator -n gastown-system
+securityContext:
+  privileged: true
+  runAsNonRoot: false
+  runAsUser: 0
+  capabilities:
+    drop:
+      - ALL
+
+# Pin to specific node where gt filesystem exists (for dev/POC)
+# Replace with actual node name:
+#   oc get nodes -o name | head -1
+# nodeSelector:
+#   kubernetes.io/hostname: <node-name>
+
+resources:
+  limits:
+    cpu: 1
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi

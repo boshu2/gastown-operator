@@ -1,11 +1,16 @@
 # Gas Town Operator Helm Values
+# ==============================================================================
+# Default values for gastown-operator.
+# Override with --set or -f values-override.yaml for specific environments.
+# ==============================================================================
 
 replicaCount: 1
 
 image:
-  repository: gastown-operator
+  # DPR registry - image built by GitLab CI (Kaniko)
+  repository: dprusocplvjmp01.deepsky.lab:5000/gastown-operator
   pullPolicy: IfNotPresent
-  tag: ""  # Defaults to Chart.appVersion
+  tag: "latest"  # Override with specific SHA in production
 
 imagePullSecrets: []
 nameOverride: ""
@@ -15,13 +20,17 @@ fullnameOverride: ""
 gtConfig:
   # Path to Gas Town root directory (mounted from host)
   townRoot: /gt
-  # Path to gt binary inside the container
+  # Path to gt binary inside the container (baked into image)
   gtBinary: /usr/local/bin/gt
 
 # Volume configuration for accessing host filesystem
+# NOTE: hostPath limits deployment to single-node clusters where the path exists
 volumes:
   enabled: true
-  hostPath: /Users/fullerbt/gt
+  # Override for specific environment:
+  # - Dev (Mac): /Users/fullerbt/gt
+  # - OpenShift node: /home/core/gt or path where gt town is available
+  hostPath: /home/core/gt
 
 serviceAccount:
   create: true
