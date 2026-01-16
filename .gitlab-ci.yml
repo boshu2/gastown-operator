@@ -49,7 +49,8 @@ go:test:
     - go version
     - go mod download
     # Install envtest binaries (etcd, kube-apiserver) for controller tests
-    - go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+    # Pin to release-0.22 branch (matches our controller-runtime v0.22.x)
+    - go install sigs.k8s.io/controller-runtime/tools/setup-envtest@release-0.22
     - export PATH="$(go env GOPATH)/bin:$PATH"
     - export KUBEBUILDER_ASSETS="$(setup-envtest use -p path 1.31.x)"
     - go test ./pkg/... ./internal/... -v
