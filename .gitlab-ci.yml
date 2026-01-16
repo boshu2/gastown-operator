@@ -1,0 +1,138 @@
+# ==============================================================================
+# GitLab CI/CD for gastown-operator
+# ==============================================================================
+# Builds container image using Kaniko in olympus-ci namespace (ocppoc cluster).
+# No Docker daemon required - runs entirely in-cluster.
+#
+# Runner: olympus-runner (group: olympus, tags: olympus, openshift, kubernetes)
+# Registry: DPR (dprusocplvjmp01.deepsky.lab:5000) - no auth required in-cluster
+# ==============================================================================
+
+stages:
+  - lint
+  - test
+  - build
+
+# ------------------------------------------------------------------------------
+# Global Variables
+# ------------------------------------------------------------------------------
+variables:
+  # Go settings
+  GOPROXY: "https://proxy.golang.org,direct"
+  GOFLAGS: "-mod=readonly"
+  CGO_ENABLED: "0"
+
+  # DPR Registry (no auth required for in-cluster access)
+  DPR_REGISTRY: "dprusocplvjmp01.deepsky.lab:5000"
+
+  # CI images from DPR (mirrored from Docker Hub)
+  GO_LINT_IMAGE: "${DPR_REGISTRY}/ci-images/golangci-lint:v2.7.2"
+  GO_IMAGE: "${DPR_REGISTRY}/ci-images/golang:1.24"
+  KANIKO_IMAGE: "${DPR_REGISTRY}/ci-images/kaniko:v1.23.2-debug"
+
+# ------------------------------------------------------------------------------
+# Default settings
+# ------------------------------------------------------------------------------
+default:
+  tags:
+    - olympus
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+
+# Cache configuration
+.go-cache: &go-cache
+  cache:
+    key: go-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cache/go-build
+      - .cache/go-mod
+    policy: pull-push
+
+# ------------------------------------------------------------------------------
+# Lint Stage
+# ------------------------------------------------------------------------------
+go:lint:
+  stage: lint
+  image: $GO_LINT_IMAGE
+  <<: *go-cache
+  variables:
+    GOPATH: "$CI_PROJECT_DIR/.cache/go"
+    GOCACHE: "$CI_PROJECT_DIR/.cache/go-build"
+    GOMODCACHE: "$CI_PROJECT_DIR/.cache/go-mod"
+  script:
+    - golangci-lint run --timeout 5m
+  rules:
+    - changes:
+        - "**/*.go"
+        - go.mod
+        - go.sum
+        - .gitlab-ci.yml
+
+# ------------------------------------------------------------------------------
+# Test Stage
+# ------------------------------------------------------------------------------
+go:test:
+  stage: test
+  image: $GO_IMAGE
+  <<: *go-cache
+  variables:
+    GOPATH: "$CI_PROJECT_DIR/.cache/go"
+    GOCACHE: "$CI_PROJECT_DIR/.cache/go-build"
+    GOMODCACHE: "$CI_PROJECT_DIR/.cache/go-mod"
+  script:
+    - go test -race -coverprofile=coverage.out ./...
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.out
+    expire_in: 1 week
+  coverage: '/total:.*\s(\d+(?:\.\d+)?%)$/'
+  rules:
+    - changes:
+        - "**/*.go"
+        - go.mod
+        - go.sum
+        - .gitlab-ci.yml
+
+# ------------------------------------------------------------------------------
+# Build Stage - Kaniko (daemonless container builds)
+# ------------------------------------------------------------------------------
+build:operator:
+  stage: build
+  image:
+    name: $KANIKO_IMAGE
+    entrypoint: [""]
+  script:
+    # Kaniko builds without Docker daemon
+    # DPR registry is insecure (HTTP) and doesn't require auth in-cluster
+    - |
+      /kaniko/executor \
+        --context "${CI_PROJECT_DIR}" \
+        --dockerfile "Dockerfile" \
+        --destination "${DPR_REGISTRY}/gastown-operator:${CI_COMMIT_SHA}" \
+        --destination "${DPR_REGISTRY}/gastown-operator:${CI_COMMIT_REF_SLUG}" \
+        --destination "${DPR_REGISTRY}/gastown-operator:latest" \
+        --build-arg "DPR_REGISTRY=${DPR_REGISTRY}" \
+        --cache=true \
+        --cache-repo="${DPR_REGISTRY}/gastown-operator/cache" \
+        --skip-tls-verify-registry="${DPR_REGISTRY}" \
+        --insecure-registry="${DPR_REGISTRY}"
+  needs:
+    - go:test
+  rules:
+    # Automatic on main branch
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: on_success
+    # Automatic on tags
+    - if: '$CI_COMMIT_TAG'
+      when: on_success
+    # Manual on MRs
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    # Manual trigger
+    - when: manual
+      allow_failure: true
