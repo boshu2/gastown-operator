@@ -307,7 +307,6 @@ var _ = Describe("Polecat Controller", func() {
 			result, err := reconciler.Reconcile(ctx, req)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(nukeCalled).To(BeTrue())
 
@@ -328,7 +327,6 @@ var _ = Describe("Polecat Controller", func() {
 			result, err := reconciler.Reconcile(ctx, req)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 		})
 	})

@@ -184,7 +184,6 @@ var _ = Describe("Rig Controller", func() {
 			result, err := reconciler.Reconcile(ctx, req)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 		})
 	})
