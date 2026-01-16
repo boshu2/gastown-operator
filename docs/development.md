@@ -38,6 +38,18 @@ gastown-operator/
 └── docs/                 # Documentation
 ```
 
+## First-Time Setup
+
+### Install Pre-Push Hooks
+
+The project uses pre-push hooks to validate code before pushing to remote:
+
+```bash
+make setup-hooks
+```
+
+This installs hooks that run `make validate` (lint + vet) before every push. This prevents CI failures by catching issues locally.
+
 ## Local Development
 
 ### 1. Install CRDs
@@ -237,6 +249,8 @@ kubectl annotate rig fractal reconcile=$(date +%s) --overwrite
 
 | Target | Description |
 |--------|-------------|
+| `make setup-hooks` | Install git pre-push hooks |
+| `make validate` | Run local validation (vet + lint) |
 | `make build` | Build operator binary |
 | `make build-local` | Build local mode binary |
 | `make run` | Run operator (production mode) |
@@ -246,6 +260,7 @@ kubectl annotate rig fractal reconcile=$(date +%s) --overwrite
 | `make manifests` | Generate CRD manifests |
 | `make generate` | Generate DeepCopy methods |
 | `make test` | Run unit tests |
+| `make lint` | Run golangci-lint |
 | `make docker-build` | Build container image |
 | `make docker-push` | Push container image |
 

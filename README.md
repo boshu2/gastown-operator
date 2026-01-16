@@ -95,6 +95,12 @@ The operator queries `gt` CLI for state and executes commands through it. CRDs p
 ## Development
 
 ```bash
+# Set up pre-push hooks (validates before push)
+make setup-hooks
+
+# Run local validation (lint + vet)
+make validate
+
 # Run locally
 make run-local GT_TOWN_ROOT=~/gt GT_PATH=/usr/local/bin/gt
 
@@ -104,6 +110,8 @@ make test
 # Build container
 make docker-build IMG=myregistry/gastown-operator:latest
 ```
+
+The pre-push hook runs `make validate` automatically. Lint/complexity checks run locally, not in CI.
 
 See [Development Guide](docs/development.md) for details.
 
