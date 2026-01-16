@@ -1,0 +1,9 @@
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Witness
+metadata:
+  name: witness-sample
+spec:
+  rigRef: sample-rig
+  healthCheckInterval: "30s"
+  stuckThreshold: "15m"
+  escalationTarget: "mayor"

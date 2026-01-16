@@ -3,4 +3,7 @@ resources:
 - gastown_v1alpha1_rig.yaml
 - gastown_v1alpha1_polecat.yaml
 - gastown_v1alpha1_convoy.yaml
+- gastown_v1alpha1_witness.yaml
+- gastown_v1alpha1_refinery.yaml
+- gastown_v1alpha1_beadstore.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

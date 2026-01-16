@@ -61,6 +61,17 @@ spec:
               notifyOnComplete:
                 description: NotifyOnComplete is the mail address for completion notification
                 type: string
+              parallelism:
+                default: 0
+                description: |-
+                  Parallelism controls how many Polecats can run concurrently.
+                  Default is 0 (unlimited - run all tasks in parallel).
+                format: int32
+                minimum: 0
+                type: integer
+              rigRef:
+                description: RigRef references the Rig where Polecats will be created.
+                type: string
               trackedBeads:
                 description: TrackedBeads is the list of bead IDs to track
                 items:

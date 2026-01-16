@@ -1,0 +1,8 @@
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Refinery
+metadata:
+  name: refinery-sample
+spec:
+  rigRef: sample-rig
+  targetBranch: main
+  parallelism: 1

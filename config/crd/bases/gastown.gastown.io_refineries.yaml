@@ -4,25 +4,28 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: convoys.gastown.gastown.io
+  name: refineries.gastown.gastown.io
 spec:
   group: gastown.gastown.io
   names:
-    kind: Convoy
-    listKind: ConvoyList
-    plural: convoys
-    singular: convoy
+    kind: Refinery
+    listKind: RefineryList
+    plural: refineries
+    singular: refinery
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.rigRef
+      name: Rig
+      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .status.progress
-      name: Progress
-      type: string
-    - jsonPath: .status.beadsConvoyID
-      name: BeadsID
+    - jsonPath: .status.queueLength
+      name: Queue
+      type: integer
+    - jsonPath: .status.currentMerge
+      name: Current
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -31,8 +34,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Convoy is the Schema for the convoys API.
-          A Convoy tracks a batch of beads being worked on.
+          Refinery is the Schema for the refineries API.
+          Also known as Crucible in the Olympian API naming convention.
+          A Refinery processes merge queues, sequentially rebasing and merging polecat branches.
         properties:
           apiVersion:
             description: |-
@@ -52,55 +56,46 @@ spec:
           metadata:
             type: object
           spec:
-            description: ConvoySpec defines the desired state of Convoy
+            description: spec defines the desired state of Refinery
             properties:
-              description:
-                description: Description is a human-readable description of this convoy
-                minLength: 1
-                type: string
-              notifyOnComplete:
-                description: NotifyOnComplete is the mail address for completion notification
-                type: string
+              gitSecretRef:
+                description: gitSecretRef references the Secret containing git credentials.
+                properties:
+                  name:
+                    description: name is the name of the secret.
+                    type: string
+                required:
+                - name
+                type: object
               parallelism:
-                default: 0
+                default: 1
                 description: |-
-                  Parallelism controls how many Polecats can run concurrently.
-                  Default is 0 (unlimited - run all tasks in parallel).
+                  parallelism controls how many merges can be processed concurrently.
+                  Default is 1 (sequential processing).
                 format: int32
-                minimum: 0
+                minimum: 1
                 type: integer
               rigRef:
-                description: RigRef references the Rig where Polecats will be created.
+                description: rigRef references the Rig (Forge) to process merges for.
                 type: string
-              trackedBeads:
-                description: TrackedBeads is the list of bead IDs to track
-                items:
-                  type: string
-                minItems: 1
-                type: array
+              targetBranch:
+                default: main
+                description: targetBranch is the branch to merge into (e.g., "main").
+                type: string
+              testCommand:
+                description: |-
+                  testCommand is the command to run after rebase to validate the branch.
+                  If empty, no tests are run.
+                type: string
             required:
-            - description
-            - trackedBeads
+            - rigRef
             type: object
           status:
-            description: ConvoyStatus defines the observed state of Convoy
+            description: status defines the observed state of Refinery
             properties:
-              beadsConvoyID:
-                description: BeadsConvoyID is the convoy ID in the beads system (e.g.,
-                  hq-cv-xxx)
-                type: string
-              completedAt:
-                description: CompletedAt is when the convoy completed
-                format: date-time
-                type: string
-              completedBeads:
-                description: CompletedBeads is the list of beads that have been completed
-                items:
-                  type: string
-                type: array
               conditions:
-                description: Conditions represent the current state of the Convoy
-                  resource
+                description: conditions represent the current state of the Refinery
+                  resource.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -159,29 +154,54 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              pendingBeads:
-                description: PendingBeads is the list of beads still in progress
-                items:
-                  type: string
-                type: array
-              phase:
-                default: Pending
-                description: Phase is the current lifecycle phase
-                enum:
-                - Pending
-                - InProgress
-                - Complete
-                - Failed
+              currentMerge:
+                description: currentMerge is the branch currently being processed.
                 type: string
-              progress:
-                description: Progress is a human-readable progress indicator (e.g.,
-                  "2/3")
-                type: string
-              startedAt:
-                description: StartedAt is when the convoy started
+              lastMergeTime:
+                description: lastMergeTime is the timestamp of the last successful
+                  merge.
                 format: date-time
                 type: string
+              mergesSummary:
+                description: mergesSummary provides aggregate merge statistics.
+                properties:
+                  failed:
+                    description: failed is the number of failed merges (conflicts,
+                      test failures).
+                    format: int32
+                    type: integer
+                  pending:
+                    description: pending is the number of branches waiting in queue.
+                    format: int32
+                    type: integer
+                  succeeded:
+                    description: succeeded is the number of successful merges.
+                    format: int32
+                    type: integer
+                  total:
+                    description: total is the total number of merges attempted.
+                    format: int32
+                    type: integer
+                required:
+                - failed
+                - pending
+                - succeeded
+                - total
+                type: object
+              phase:
+                description: phase indicates the current phase of the Refinery.
+                enum:
+                - Idle
+                - Processing
+                - Error
+                type: string
+              queueLength:
+                description: queueLength is the number of branches waiting to be merged.
+                format: int32
+                type: integer
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

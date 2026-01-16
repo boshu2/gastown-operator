@@ -4,26 +4,29 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: convoys.gastown.gastown.io
+  name: witnesses.gastown.gastown.io
 spec:
   group: gastown.gastown.io
   names:
-    kind: Convoy
-    listKind: ConvoyList
-    plural: convoys
-    singular: convoy
+    kind: Witness
+    listKind: WitnessList
+    plural: witnesses
+    singular: witness
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.rigRef
+      name: Rig
+      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .status.progress
-      name: Progress
-      type: string
-    - jsonPath: .status.beadsConvoyID
-      name: BeadsID
-      type: string
+    - jsonPath: .status.polecatsSummary.running
+      name: Running
+      type: integer
+    - jsonPath: .status.polecatsSummary.stuck
+      name: Stuck
+      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -31,8 +34,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Convoy is the Schema for the convoys API.
-          A Convoy tracks a batch of beads being worked on.
+          Witness is the Schema for the witnesses API.
+          Also known as Sentinel in the Olympian API naming convention.
+          A Witness monitors Polecat health in a Rig and escalates anomalies.
         properties:
           apiVersion:
             description: |-
@@ -52,55 +56,35 @@ spec:
           metadata:
             type: object
           spec:
-            description: ConvoySpec defines the desired state of Convoy
+            description: spec defines the desired state of Witness
             properties:
-              description:
-                description: Description is a human-readable description of this convoy
-                minLength: 1
+              escalationTarget:
+                default: mayor
+                description: escalationTarget specifies where to send alerts (e.g.,
+                  "mayor", "slack", "email").
                 type: string
-              notifyOnComplete:
-                description: NotifyOnComplete is the mail address for completion notification
+              healthCheckInterval:
+                default: 30s
+                description: healthCheckInterval specifies how often to check polecat
+                  health.
                 type: string
-              parallelism:
-                default: 0
-                description: |-
-                  Parallelism controls how many Polecats can run concurrently.
-                  Default is 0 (unlimited - run all tasks in parallel).
-                format: int32
-                minimum: 0
-                type: integer
               rigRef:
-                description: RigRef references the Rig where Polecats will be created.
+                description: rigRef references the Rig (Forge) to monitor.
                 type: string
-              trackedBeads:
-                description: TrackedBeads is the list of bead IDs to track
-                items:
-                  type: string
-                minItems: 1
-                type: array
+              stuckThreshold:
+                default: 15m
+                description: stuckThreshold specifies how long a polecat can be idle
+                  before being considered stuck.
+                type: string
             required:
-            - description
-            - trackedBeads
+            - rigRef
             type: object
           status:
-            description: ConvoyStatus defines the observed state of Convoy
+            description: status defines the observed state of Witness
             properties:
-              beadsConvoyID:
-                description: BeadsConvoyID is the convoy ID in the beads system (e.g.,
-                  hq-cv-xxx)
-                type: string
-              completedAt:
-                description: CompletedAt is when the convoy completed
-                format: date-time
-                type: string
-              completedBeads:
-                description: CompletedBeads is the list of beads that have been completed
-                items:
-                  type: string
-                type: array
               conditions:
-                description: Conditions represent the current state of the Convoy
-                  resource
+                description: conditions represent the current state of the Witness
+                  resource.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -159,29 +143,53 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              pendingBeads:
-                description: PendingBeads is the list of beads still in progress
-                items:
-                  type: string
-                type: array
-              phase:
-                default: Pending
-                description: Phase is the current lifecycle phase
-                enum:
-                - Pending
-                - InProgress
-                - Complete
-                - Failed
-                type: string
-              progress:
-                description: Progress is a human-readable progress indicator (e.g.,
-                  "2/3")
-                type: string
-              startedAt:
-                description: StartedAt is when the convoy started
+              lastCheckTime:
+                description: lastCheckTime is the timestamp of the last health check.
                 format: date-time
                 type: string
+              phase:
+                description: phase indicates the current phase of the Witness.
+                enum:
+                - Pending
+                - Active
+                - Degraded
+                type: string
+              polecatsSummary:
+                description: polecatsSummary provides a summary of polecat states
+                  in the monitored rig.
+                properties:
+                  failed:
+                    description: failed is the number of failed polecats.
+                    format: int32
+                    type: integer
+                  running:
+                    description: running is the number of actively running polecats.
+                    format: int32
+                    type: integer
+                  stuck:
+                    description: stuck is the number of polecats that appear stuck
+                      (no progress).
+                    format: int32
+                    type: integer
+                  succeeded:
+                    description: succeeded is the number of successfully completed
+                      polecats.
+                    format: int32
+                    type: integer
+                  total:
+                    description: total is the total number of polecats in the rig.
+                    format: int32
+                    type: integer
+                required:
+                - failed
+                - running
+                - stuck
+                - succeeded
+                - total
+                type: object
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

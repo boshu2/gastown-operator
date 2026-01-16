@@ -4,26 +4,29 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: convoys.gastown.gastown.io
+  name: beadstores.gastown.gastown.io
 spec:
   group: gastown.gastown.io
   names:
-    kind: Convoy
-    listKind: ConvoyList
-    plural: convoys
-    singular: convoy
+    kind: BeadStore
+    listKind: BeadStoreList
+    plural: beadstores
+    singular: beadstore
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.rigRef
+      name: Rig
+      type: string
+    - jsonPath: .spec.prefix
+      name: Prefix
+      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .status.progress
-      name: Progress
-      type: string
-    - jsonPath: .status.beadsConvoyID
-      name: BeadsID
-      type: string
+    - jsonPath: .status.issueCount
+      name: Issues
+      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -31,8 +34,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Convoy is the Schema for the convoys API.
-          A Convoy tracks a batch of beads being worked on.
+          BeadStore is the Schema for the beadstores API.
+          A BeadStore manages the configuration for a beads issue tracking database.
         properties:
           apiVersion:
             description: |-
@@ -52,55 +55,42 @@ spec:
           metadata:
             type: object
           spec:
-            description: ConvoySpec defines the desired state of Convoy
+            description: spec defines the desired state of BeadStore
             properties:
-              description:
-                description: Description is a human-readable description of this convoy
-                minLength: 1
+              gitSecretRef:
+                description: gitSecretRef references the Secret containing git credentials
+                  for syncing.
+                properties:
+                  name:
+                    description: name is the name of the secret.
+                    type: string
+                required:
+                - name
+                type: object
+              prefix:
+                description: prefix is the issue ID prefix for this beadstore (e.g.,
+                  "gt-", "he-").
+                pattern: ^[a-z]+-$
                 type: string
-              notifyOnComplete:
-                description: NotifyOnComplete is the mail address for completion notification
-                type: string
-              parallelism:
-                default: 0
-                description: |-
-                  Parallelism controls how many Polecats can run concurrently.
-                  Default is 0 (unlimited - run all tasks in parallel).
-                format: int32
-                minimum: 0
-                type: integer
               rigRef:
-                description: RigRef references the Rig where Polecats will be created.
+                description: rigRef references the Rig this BeadStore is associated
+                  with.
                 type: string
-              trackedBeads:
-                description: TrackedBeads is the list of bead IDs to track
-                items:
-                  type: string
-                minItems: 1
-                type: array
+              syncInterval:
+                default: 5m
+                description: syncInterval specifies how often to sync the beadstore
+                  with git.
+                type: string
             required:
-            - description
-            - trackedBeads
+            - prefix
+            - rigRef
             type: object
           status:
-            description: ConvoyStatus defines the observed state of Convoy
+            description: status defines the observed state of BeadStore
             properties:
-              beadsConvoyID:
-                description: BeadsConvoyID is the convoy ID in the beads system (e.g.,
-                  hq-cv-xxx)
-                type: string
-              completedAt:
-                description: CompletedAt is when the convoy completed
-                format: date-time
-                type: string
-              completedBeads:
-                description: CompletedBeads is the list of beads that have been completed
-                items:
-                  type: string
-                type: array
               conditions:
-                description: Conditions represent the current state of the Convoy
-                  resource
+                description: conditions represent the current state of the BeadStore
+                  resource.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -159,29 +149,25 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              pendingBeads:
-                description: PendingBeads is the list of beads still in progress
-                items:
-                  type: string
-                type: array
-              phase:
-                default: Pending
-                description: Phase is the current lifecycle phase
-                enum:
-                - Pending
-                - InProgress
-                - Complete
-                - Failed
-                type: string
-              progress:
-                description: Progress is a human-readable progress indicator (e.g.,
-                  "2/3")
-                type: string
-              startedAt:
-                description: StartedAt is when the convoy started
+              issueCount:
+                description: issueCount is the number of issues in this beadstore.
+                format: int32
+                type: integer
+              lastSyncTime:
+                description: lastSyncTime is the timestamp of the last successful
+                  sync.
                 format: date-time
                 type: string
+              phase:
+                description: phase indicates the current phase of the BeadStore.
+                enum:
+                - Pending
+                - Synced
+                - Error
+                type: string
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

@@ -1,0 +1,8 @@
+apiVersion: gastown.gastown.io/v1alpha1
+kind: BeadStore
+metadata:
+  name: beadstore-sample
+spec:
+  rigRef: sample-rig
+  prefix: "gt-"
+  syncInterval: "5m"

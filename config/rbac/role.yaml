@@ -5,11 +5,29 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - gastown.gastown.io
   resources:
+  - beadstores
   - convoys
   - polecats
+  - refineries
   - rigs
+  - witnesses
   verbs:
   - create
   - delete
@@ -21,17 +39,23 @@ rules:
 - apiGroups:
   - gastown.gastown.io
   resources:
+  - beadstores/finalizers
   - convoys/finalizers
   - polecats/finalizers
+  - refineries/finalizers
   - rigs/finalizers
+  - witnesses/finalizers
   verbs:
   - update
 - apiGroups:
   - gastown.gastown.io
   resources:
+  - beadstores/status
   - convoys/status
   - polecats/status
+  - refineries/status
   - rigs/status
+  - witnesses/status
   verbs:
   - get
   - patch

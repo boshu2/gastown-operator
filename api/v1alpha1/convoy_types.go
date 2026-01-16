@@ -35,6 +35,17 @@ type ConvoySpec struct {
 	// NotifyOnComplete is the mail address for completion notification
 	// +optional
 	NotifyOnComplete string `json:"notifyOnComplete,omitempty"`
+
+	// Parallelism controls how many Polecats can run concurrently.
+	// Default is 0 (unlimited - run all tasks in parallel).
+	// +kubebuilder:default=0
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Parallelism int32 `json:"parallelism,omitempty"`
+
+	// RigRef references the Rig where Polecats will be created.
+	// +optional
+	RigRef string `json:"rigRef,omitempty"`
 }
 
 // ConvoyPhase represents the lifecycle phase of a Convoy

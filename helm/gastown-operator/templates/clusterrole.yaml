@@ -85,6 +85,96 @@ rules:
     - get
     - patch
     - update
+# Witnesses
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - witnesses
+  verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - witnesses/finalizers
+  verbs:
+    - update
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - witnesses/status
+  verbs:
+    - get
+    - patch
+    - update
+# Refineries
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - refineries
+  verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - refineries/finalizers
+  verbs:
+    - update
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - refineries/status
+  verbs:
+    - get
+    - patch
+    - update
+# BeadStores
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - beadstores
+  verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - beadstores/finalizers
+  verbs:
+    - update
+- apiGroups:
+    - gastown.gastown.io
+  resources:
+    - beadstores/status
+  verbs:
+    - get
+    - patch
+    - update
+# Secrets (for git credentials)
+- apiGroups:
+    - ""
+  resources:
+    - secrets
+  verbs:
+    - get
+    - list
+    - watch
 # Leader election
 - apiGroups:
     - coordination.k8s.io

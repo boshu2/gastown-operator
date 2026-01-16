@@ -1,9 +1,9 @@
 apiVersion: v2
 name: gastown-operator
-description: A Kubernetes operator for managing Gas Town resources (rigs, polecats, convoys)
+description: A Kubernetes operator for managing Gas Town resources (rigs, polecats, convoys, witnesses, refineries, beadstores)
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.2.0
+appVersion: "0.2.0"
 keywords:
   - gastown
   - operator
