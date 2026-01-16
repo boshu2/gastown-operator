@@ -20,6 +20,7 @@ import "context"
 
 // ClientInterface defines the interface for gt CLI operations.
 // This interface allows for mocking in tests.
+// nolint:dupl // Interface definition duplicated in MockClient for testing
 type ClientInterface interface {
 	// Rig operations
 	RigList(ctx context.Context) ([]RigInfo, error)

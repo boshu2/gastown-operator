@@ -19,6 +19,7 @@ package gt
 import "context"
 
 // MockClient is a mock implementation of ClientInterface for testing.
+// nolint:dupl // Mock struct intentionally mirrors interface structure
 type MockClient struct {
 	// Rig operation mocks
 	RigListFunc   func(ctx context.Context) ([]RigInfo, error)

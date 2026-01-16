@@ -91,6 +91,7 @@ func (e *GasTownError) WithContext(key, value string) *GasTownError {
 }
 
 // captureStack captures the current call stack.
+// nolint:unparam // skip is always 1 currently, but kept for future flexibility
 func captureStack(skip int) []uintptr {
 	const depth = 32
 	var pcs [depth]uintptr

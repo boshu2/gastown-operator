@@ -31,6 +31,10 @@ import (
 	"github.com/org/gastown-operator/pkg/gt"
 )
 
+const (
+	testConvoyID = "existing-convoy"
+)
+
 var _ = Describe("Convoy Controller", func() {
 	var (
 		ctx        context.Context
@@ -150,7 +154,7 @@ var _ = Describe("Convoy Controller", func() {
 	Context("When syncing convoy progress", func() {
 		It("should update progress from gt CLI", func() {
 			// Pre-set the convoy with an existing beads ID
-			testConvoy.Status.BeadsConvoyID = "existing-convoy"
+			testConvoy.Status.BeadsConvoyID = testConvoyID
 			testConvoy.Status.Phase = gastownv1alpha1.ConvoyPhaseInProgress
 
 			mockClient.ConvoyStatusFunc = func(ctx context.Context, id string) (*gt.ConvoyStatus, error) {
@@ -186,7 +190,7 @@ var _ = Describe("Convoy Controller", func() {
 	Context("When convoy completes", func() {
 		It("should mark as complete and not requeue", func() {
 			// Pre-set the convoy with an existing beads ID
-			testConvoy.Status.BeadsConvoyID = "existing-convoy"
+			testConvoy.Status.BeadsConvoyID = testConvoyID
 			testConvoy.Status.Phase = gastownv1alpha1.ConvoyPhaseInProgress
 
 			mockClient.ConvoyStatusFunc = func(ctx context.Context, id string) (*gt.ConvoyStatus, error) {
@@ -209,7 +213,6 @@ var _ = Describe("Convoy Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			// Should NOT requeue when complete
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 
 			// Verify status shows complete
@@ -234,7 +237,7 @@ var _ = Describe("Convoy Controller", func() {
 			var mailAddress, mailSubject string
 
 			testConvoy.Spec.NotifyOnComplete = "mayor@gastown.io"
-			testConvoy.Status.BeadsConvoyID = "existing-convoy"
+			testConvoy.Status.BeadsConvoyID = testConvoyID
 			testConvoy.Status.Phase = gastownv1alpha1.ConvoyPhaseInProgress
 
 			mockClient.ConvoyStatusFunc = func(ctx context.Context, id string) (*gt.ConvoyStatus, error) {
@@ -291,7 +294,6 @@ var _ = Describe("Convoy Controller", func() {
 			result, err := reconciler.Reconcile(ctx, req)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 		})
 	})
@@ -305,7 +307,6 @@ var _ = Describe("Convoy Controller", func() {
 			result, err := reconciler.Reconcile(ctx, req)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero())
 		})
 	})

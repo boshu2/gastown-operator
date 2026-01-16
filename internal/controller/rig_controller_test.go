@@ -71,7 +71,7 @@ var _ = Describe("Rig Controller", func() {
 	AfterEach(func() {
 		// Clean up temp directory
 		if tempDir != "" {
-			os.RemoveAll(tempDir)
+			_ = os.RemoveAll(tempDir)
 		}
 
 		// Clean up test rig
