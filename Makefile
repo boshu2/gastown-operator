@@ -102,6 +102,15 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	"$(GOLANGCI_LINT)" config verify
 
+.PHONY: validate
+validate: vet lint ## Run all local validations (vet + lint). Run before push.
+
+.PHONY: setup-hooks
+setup-hooks: ## Install git hooks for pre-push validation
+	@chmod +x .githooks/*
+	git config core.hooksPath .githooks
+	@echo "Git hooks installed. Pre-push will run 'make validate' automatically."
+
 ##@ Build
 
 .PHONY: build

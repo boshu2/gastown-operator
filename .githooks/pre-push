@@ -1,0 +1,26 @@
+#!/bin/bash
+# Pre-push hook: Run lint and vet before pushing
+# Install: git config core.hooksPath .githooks
+#
+# This prevents CI spiral - validate locally before remote build
+
+set -e
+
+echo "=== Pre-push validation ==="
+
+# Run go vet
+echo "[1/2] Running go vet..."
+go vet ./...
+
+# Run golangci-lint
+echo "[2/2] Running golangci-lint..."
+if command -v golangci-lint &> /dev/null; then
+    golangci-lint run --timeout 2m
+elif [ -f bin/golangci-lint ]; then
+    ./bin/golangci-lint run --timeout 2m
+else
+    echo "Warning: golangci-lint not found. Run 'make golangci-lint' to install."
+    echo "Skipping lint check..."
+fi
+
+echo "=== Validation passed ==="
