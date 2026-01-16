@@ -78,11 +78,13 @@ build:operator:
         echo "{\"auths\":{\"${DPR_REGISTRY}\":{\"auth\":\"${AUTH}\"}}}" > /kaniko/.docker/config.json
       fi
   script:
+    # Copy Dockerfile to /kaniko to avoid chown permission issues
+    - cp "${CI_PROJECT_DIR}/Dockerfile" /kaniko/Dockerfile
     # Build and push image to DPR registry
     - |
       /kaniko/executor \
-        --context "dir://${CI_PROJECT_DIR}" \
-        --dockerfile "${CI_PROJECT_DIR}/Dockerfile" \
+        --context "${CI_PROJECT_DIR}" \
+        --dockerfile /kaniko/Dockerfile \
         --destination "${IMAGE_REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHA}" \
         --destination "${IMAGE_REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_REF_SLUG}" \
         --destination "${IMAGE_REGISTRY}/${IMAGE_NAME}:latest" \
