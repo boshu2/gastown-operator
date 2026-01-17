@@ -52,8 +52,9 @@ var _ = Describe("Polecat Controller", func() {
 
 		testPolecat = &gastownv1alpha1.Polecat{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-polecat",
-				Namespace: "default",
+				Name:       "test-polecat",
+				Namespace:  "default",
+				Finalizers: []string{"gastown.io/polecat-cleanup"},
 			},
 			Spec: gastownv1alpha1.PolecatSpec{
 				Rig:          "test-rig",
@@ -64,8 +65,13 @@ var _ = Describe("Polecat Controller", func() {
 	})
 
 	AfterEach(func() {
-		// Clean up test polecat
+		// Clean up test polecat - remove finalizer first to allow deletion
 		if testPolecat != nil {
+			var current gastownv1alpha1.Polecat
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: testPolecat.Name, Namespace: testPolecat.Namespace}, &current); err == nil {
+				current.Finalizers = nil
+				_ = k8sClient.Update(ctx, &current)
+			}
 			_ = k8sClient.Delete(ctx, testPolecat)
 		}
 	})
@@ -339,8 +345,9 @@ var _ = Describe("Polecat Controller", func() {
 		BeforeEach(func() {
 			k8sPolecat = &gastownv1alpha1.Polecat{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "k8s-polecat",
-					Namespace: "default",
+					Name:       "k8s-polecat",
+					Namespace:  "default",
+					Finalizers: []string{"gastown.io/polecat-cleanup"},
 				},
 				Spec: gastownv1alpha1.PolecatSpec{
 					Rig:           "test-rig",
@@ -363,6 +370,12 @@ var _ = Describe("Polecat Controller", func() {
 
 		AfterEach(func() {
 			if k8sPolecat != nil {
+				// Remove finalizer to allow deletion
+				var current gastownv1alpha1.Polecat
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: k8sPolecat.Name, Namespace: k8sPolecat.Namespace}, &current); err == nil {
+					current.Finalizers = nil
+					_ = k8sClient.Update(ctx, &current)
+				}
 				_ = k8sClient.Delete(ctx, k8sPolecat)
 			}
 		})
@@ -578,6 +591,169 @@ var _ = Describe("Polecat Controller", func() {
 			var updated gastownv1alpha1.Polecat
 			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
 			Expect(updated.Status.Phase).To(Equal(gastownv1alpha1.PolecatPhaseTerminated))
+		})
+	})
+
+	Context("When handling finalizers", func() {
+		It("should add finalizer on first reconcile", func() {
+			// Create polecat without finalizer
+			polecat := &gastownv1alpha1.Polecat{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "finalizer-test",
+					Namespace: "default",
+				},
+				Spec: gastownv1alpha1.PolecatSpec{
+					Rig:          "test-rig",
+					DesiredState: gastownv1alpha1.PolecatDesiredIdle,
+				},
+			}
+
+			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
+				return false, nil
+			}
+
+			Expect(k8sClient.Create(ctx, polecat)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{
+				Name:      polecat.Name,
+				Namespace: polecat.Namespace,
+			}}
+
+			// First reconcile should add finalizer and request requeue
+			result, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(time.Millisecond))
+
+			// Verify finalizer was added
+			var updated gastownv1alpha1.Polecat
+			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
+			Expect(updated.Finalizers).To(ContainElement("gastown.io/polecat-cleanup"))
+
+			// Cleanup
+			updated.Finalizers = nil
+			Expect(k8sClient.Update(ctx, &updated)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &updated)).To(Succeed())
+		})
+
+		It("should cleanup local polecat on deletion", func() {
+			var nukeCalled bool
+			var nukeForce bool
+
+			polecat := &gastownv1alpha1.Polecat{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "local-delete-test",
+					Namespace:  "default",
+					Finalizers: []string{"gastown.io/polecat-cleanup"},
+				},
+				Spec: gastownv1alpha1.PolecatSpec{
+					Rig:           "test-rig",
+					DesiredState:  gastownv1alpha1.PolecatDesiredIdle,
+					ExecutionMode: gastownv1alpha1.ExecutionModeLocal,
+				},
+			}
+
+			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
+				return true, nil
+			}
+			mockClient.PolecatNukeFunc = func(ctx context.Context, rig, name string, force bool) error {
+				nukeCalled = true
+				nukeForce = force
+				return nil
+			}
+
+			Expect(k8sClient.Create(ctx, polecat)).To(Succeed())
+
+			// Mark for deletion
+			Expect(k8sClient.Delete(ctx, polecat)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{
+				Name:      polecat.Name,
+				Namespace: polecat.Namespace,
+			}}
+
+			// Reconcile should trigger cleanup
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(nukeCalled).To(BeTrue())
+			Expect(nukeForce).To(BeTrue()) // Force on deletion
+
+			// Verify polecat is deleted (finalizer removed)
+			Eventually(func() bool {
+				var p gastownv1alpha1.Polecat
+				err := k8sClient.Get(ctx, req.NamespacedName, &p)
+				return apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+		})
+
+		It("should cleanup kubernetes polecat Pod on deletion", func() {
+			k8sPolecat := &gastownv1alpha1.Polecat{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "k8s-delete-test",
+					Namespace:  "default",
+					Finalizers: []string{"gastown.io/polecat-cleanup"},
+				},
+				Spec: gastownv1alpha1.PolecatSpec{
+					Rig:           "test-rig",
+					DesiredState:  gastownv1alpha1.PolecatDesiredIdle,
+					ExecutionMode: gastownv1alpha1.ExecutionModeKubernetes,
+					Kubernetes: &gastownv1alpha1.KubernetesSpec{
+						GitRepository: "git@github.com:example/repo.git",
+						GitBranch:     "main",
+						GitSecretRef: gastownv1alpha1.SecretReference{
+							Name: "git-creds",
+						},
+						ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{
+							Name: "claude-creds",
+						},
+					},
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, k8sPolecat)).To(Succeed())
+
+			// Create a Pod that would be cleaned up
+			podName := "polecat-" + k8sPolecat.Name
+			testPod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      podName,
+					Namespace: k8sPolecat.Namespace,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "test", Image: "busybox"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, testPod)).To(Succeed())
+
+			// Mark for deletion
+			Expect(k8sClient.Delete(ctx, k8sPolecat)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{
+				Name:      k8sPolecat.Name,
+				Namespace: k8sPolecat.Namespace,
+			}}
+
+			// Reconcile should trigger cleanup
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify Pod was deleted
+			Eventually(func() bool {
+				var p corev1.Pod
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      podName,
+					Namespace: k8sPolecat.Namespace,
+				}, &p)
+				return apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+
+			// Verify polecat is deleted (finalizer removed)
+			Eventually(func() bool {
+				var p gastownv1alpha1.Polecat
+				err := k8sClient.Get(ctx, req.NamespacedName, &p)
+				return apierrors.IsNotFound(err)
+			}).Should(BeTrue())
 		})
 	})
 })

@@ -44,6 +44,9 @@ const (
 	// Condition types for Polecat
 	ConditionPolecatReady   = "Ready"
 	ConditionPolecatWorking = "Working"
+
+	// polecatFinalizer ensures cleanup of external resources
+	polecatFinalizer = "gastown.io/polecat-cleanup"
 )
 
 // PolecatReconciler reconciles a Polecat object
@@ -75,6 +78,23 @@ func (r *PolecatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		"name", polecat.Name,
 		"rig", polecat.Spec.Rig,
 		"desiredState", polecat.Spec.DesiredState)
+
+	// Handle deletion with finalizer
+	if !polecat.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, &polecat, timer)
+	}
+
+	// Add finalizer if not present
+	if !controllerutil.ContainsFinalizer(&polecat, polecatFinalizer) {
+		log.Info("Adding finalizer to Polecat")
+		controllerutil.AddFinalizer(&polecat, polecatFinalizer)
+		if err := r.Update(ctx, &polecat); err != nil {
+			timer.RecordResult(metrics.ResultError)
+			return ctrl.Result{}, gterrors.Wrap(err, "failed to add finalizer")
+		}
+		// Requeue immediately to continue reconciliation
+		return ctrl.Result{RequeueAfter: time.Millisecond}, nil
+	}
 
 	// Handle based on desired state
 	switch polecat.Spec.DesiredState {
@@ -529,6 +549,89 @@ func (r *PolecatReconciler) setCondition(polecat *gastownv1alpha1.Polecat, condT
 		}
 	}
 	polecat.Status.Conditions = append(polecat.Status.Conditions, condition)
+}
+
+// handleDeletion handles cleanup when a Polecat is being deleted.
+func (r *PolecatReconciler) handleDeletion(ctx context.Context, polecat *gastownv1alpha1.Polecat, timer *metrics.ReconcileTimer) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+
+	if !controllerutil.ContainsFinalizer(polecat, polecatFinalizer) {
+		// Finalizer already removed, nothing to do
+		return ctrl.Result{}, nil
+	}
+
+	log.Info("Handling Polecat deletion, cleaning up resources")
+
+	// Route cleanup based on execution mode
+	var cleanupErr error
+	if polecat.Spec.ExecutionMode == gastownv1alpha1.ExecutionModeKubernetes {
+		cleanupErr = r.cleanupKubernetes(ctx, polecat)
+	} else {
+		cleanupErr = r.cleanupLocal(ctx, polecat)
+	}
+
+	if cleanupErr != nil {
+		log.Error(cleanupErr, "Failed to cleanup Polecat resources")
+		timer.RecordResult(metrics.ResultRequeue)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	// Remove finalizer after successful cleanup
+	log.Info("Cleanup complete, removing finalizer")
+	controllerutil.RemoveFinalizer(polecat, polecatFinalizer)
+	if err := r.Update(ctx, polecat); err != nil {
+		timer.RecordResult(metrics.ResultError)
+		return ctrl.Result{}, gterrors.Wrap(err, "failed to remove finalizer")
+	}
+
+	timer.RecordResult(metrics.ResultSuccess)
+	return ctrl.Result{}, nil
+}
+
+// cleanupKubernetes deletes the Pod for a kubernetes-mode Polecat.
+func (r *PolecatReconciler) cleanupKubernetes(ctx context.Context, polecat *gastownv1alpha1.Polecat) error {
+	log := logf.FromContext(ctx)
+	podName := fmt.Sprintf("polecat-%s", polecat.Name)
+
+	var existingPod corev1.Pod
+	err := r.Get(ctx, client.ObjectKey{Name: podName, Namespace: polecat.Namespace}, &existingPod)
+	if apierrors.IsNotFound(err) {
+		log.Info("Pod already deleted", "podName", podName)
+		return nil
+	}
+	if err != nil {
+		return gterrors.Wrap(err, "failed to get pod")
+	}
+
+	log.Info("Deleting Pod for Polecat cleanup", "podName", podName)
+	if err := r.Delete(ctx, &existingPod); err != nil && !apierrors.IsNotFound(err) {
+		return gterrors.Wrap(err, "failed to delete pod")
+	}
+
+	return nil
+}
+
+// cleanupLocal nukes the polecat via gt CLI.
+func (r *PolecatReconciler) cleanupLocal(ctx context.Context, polecat *gastownv1alpha1.Polecat) error {
+	log := logf.FromContext(ctx)
+
+	exists, err := r.GTClient.PolecatExists(ctx, polecat.Spec.Rig, polecat.Name)
+	if err != nil {
+		return gterrors.Wrap(err, "failed to check polecat existence")
+	}
+
+	if !exists {
+		log.Info("Polecat already cleaned up")
+		return nil
+	}
+
+	log.Info("Nuking polecat via gt CLI", "rig", polecat.Spec.Rig, "name", polecat.Name)
+	// Force nuke on deletion - we're deleting the resource anyway
+	if err := r.GTClient.PolecatNuke(ctx, polecat.Spec.Rig, polecat.Name, true); err != nil {
+		return gterrors.Wrap(err, "failed to nuke polecat")
+	}
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
