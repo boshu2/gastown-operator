@@ -1,0 +1,92 @@
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: opencode-worker-1
+  namespace: gastown
+spec:
+  rig: athena
+  desiredState: Working
+  beadID: at-1234
+
+  # OpenCode agent (default)
+  agent: opencode
+
+  agentConfig:
+    # LiteLLM provider (proxies to multiple backends)
+    provider: litellm
+    model: devstral-123b
+
+    modelProvider:
+      endpoint: https://ai-gateway.apps.example.com/v1
+      apiKeySecretRef:
+        name: litellm-credentials
+        key: LITELLM_API_KEY
+
+    # Optional: custom image
+    # image: ghcr.io/opencode-ai/opencode:v1.0.0
+
+    # Optional: OpenCode config from ConfigMap
+    configMapRef:
+      name: opencode-config
+
+    # Additional environment variables
+    env:
+      - name: OPENCODE_LOG_LEVEL
+        value: "debug"
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+
+  # Auto-cleanup after 4 hours
+  ttlSecondsAfterFinished: 14400
+
+  # Terminate if idle for 30 minutes
+  maxIdleSeconds: 1800
+---
+# Secret for LLM API key
+apiVersion: v1
+kind: Secret
+metadata:
+  name: litellm-credentials
+  namespace: gastown
+type: Opaque
+stringData:
+  LITELLM_API_KEY: "sk-your-api-key-here"
+---
+# ConfigMap for OpenCode configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opencode-config
+  namespace: gastown
+data:
+  opencode.json: |
+    {
+      "$schema": "https://opencode.ai/config.json",
+      "provider": {
+        "litellm": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "LiteLLM Gateway",
+          "options": {
+            "baseURL": "${LITELLM_API_BASE}",
+            "apiKey": "${LITELLM_API_KEY}"
+          },
+          "models": {
+            "default": {
+              "id": "devstral-123b",
+              "name": "Devstral 123B",
+              "limit": {
+                "context": 128000,
+                "output": 16000
+              }
+            }
+          }
+        }
+      }
+    }
