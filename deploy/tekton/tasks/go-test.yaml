@@ -1,0 +1,107 @@
+# gastown-operator Go Unit Test Task
+# Runs controller unit tests with envtest (etcd + kube-apiserver)
+#
+# Unlike ClusterTasks, this is a namespace-local Task because:
+# - envtest binaries must be downloaded at runtime
+# - controller-runtime version must match (release-0.22)
+#
+# Usage:
+#   oc apply -f deploy/tekton/tasks/go-test.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: go-test-gastown
+  namespace: olympus-ci
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: gastown-operator
+spec:
+  description: Run Go unit tests for gastown-operator with envtest binaries
+  workspaces:
+    - name: source
+  params:
+    - name: packages
+      type: string
+      default: "./pkg/... ./internal/..."
+      description: Go packages to test
+    - name: go-version
+      type: string
+      default: "1.24"
+      description: Go version to use
+    - name: envtest-k8s-version
+      type: string
+      default: "1.31.x"
+      description: Kubernetes version for envtest binaries
+  results:
+    - name: test-status
+      description: Test execution status (passed/failed)
+  steps:
+    - name: setup-and-test
+      image: quay.io/projectquay/golang:$(params.go-version)
+      workingDir: $(workspaces.source.path)
+      computeResources:
+        requests:
+          memory: 1Gi
+          cpu: 500m
+        limits:
+          memory: 2Gi
+          cpu: "2"
+      env:
+        - name: GOCACHE
+          value: "/workspace/source/.cache/go-build"
+        - name: GOMODCACHE
+          value: "/workspace/source/.cache/go-mod"
+      script: |
+        #!/bin/bash
+        set -e
+
+        echo "========================================"
+        echo "  gastown-operator Go Unit Tests"
+        echo "========================================"
+        echo ""
+        echo "Go version: $(go version)"
+        echo "Packages: $(params.packages)"
+        echo "Envtest K8s: $(params.envtest-k8s-version)"
+        echo ""
+
+        # Install envtest setup tool
+        # Pin to release-0.22 branch (matches controller-runtime v0.22.x in go.mod)
+        echo "Installing setup-envtest..."
+        go install sigs.k8s.io/controller-runtime/tools/setup-envtest@release-0.22
+        export PATH="$(go env GOPATH)/bin:$PATH"
+
+        # Download and configure envtest binaries
+        echo "Setting up envtest binaries..."
+        export KUBEBUILDER_ASSETS="$(setup-envtest use $(params.envtest-k8s-version) -p path)"
+        echo "KUBEBUILDER_ASSETS=$KUBEBUILDER_ASSETS"
+        echo ""
+
+        # Download dependencies
+        echo "Downloading Go modules..."
+        go mod download
+
+        # Run tests
+        echo ""
+        echo "Running tests..."
+        echo "----------------------------------------"
+
+        if go test $(params.packages) -v -coverprofile=coverage.out 2>&1 | tee /tmp/test-output.txt; then
+          echo "passed" > $(results.test-status.path)
+          echo ""
+          echo "========================================"
+          echo "  Tests PASSED"
+          echo "========================================"
+        else
+          echo "failed" > $(results.test-status.path)
+          echo ""
+          echo "========================================"
+          echo "  Tests FAILED"
+          echo "========================================"
+          exit 1
+        fi
+
+        # Show coverage summary
+        echo ""
+        echo "Coverage summary:"
+        go tool cover -func=coverage.out | tail -1
