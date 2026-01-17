@@ -1,15 +1,23 @@
 apiVersion: v2
 name: gastown-operator
-description: A Kubernetes operator for managing Gas Town resources (rigs, polecats, convoys, witnesses, refineries, beadstores)
+description: |
+  Kubernetes operator for Gas Town multi-agent orchestration.
+  Two editions available:
+  - Community: Vanilla Kubernetes (values-community.yaml)
+  - Enterprise: OpenShift + FIPS (values-fips.yaml)
 type: application
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.1.0
+appVersion: "0.1.0"
 keywords:
   - gastown
   - operator
   - agents
   - orchestration
+  - openshift
+  - fips
+home: https://github.com/boshu2/gastown-operator
 maintainers:
-  - name: Gas Town Team
+  - name: Boden Fuller
+    url: https://github.com/boshu2
 sources:
-  - https://github.com/org/gastown-operator
+  - https://github.com/boshu2/gastown-operator

@@ -51,6 +51,9 @@ spec:
               value: {{ .Values.gtConfig.townRoot }}
             - name: GT_PATH
               value: {{ .Values.gtConfig.gtBinary }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             {{- if .Values.metrics.enabled }}
             - containerPort: {{ .Values.metrics.port }}
