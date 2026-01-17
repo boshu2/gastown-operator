@@ -1,76 +1,58 @@
-# Contributing to Kubernetes Operator for Gas Town
+# Contributing to gastown-operator
 
-Thanks for your interest in contributing! This operator extends Gas Town to Kubernetes, and we welcome contributions.
+We welcome contributions! This document provides guidelines.
 
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork
-3. Install prerequisites:
-   - Go 1.22+
-   - kubectl
-   - kind or minikube (for local testing)
-4. Build and test: `make build && make test`
-
-## Development Workflow
-
-1. Create a feature branch from `main`
-2. Make your changes
-3. Ensure tests pass: `make test`
-4. Run validation: `make validate`
+2. Create a feature branch from `main`
+3. Make your changes
+4. Run tests: `make test`
 5. Submit a pull request
 
-## Code Style
+## Development
 
-- Follow standard Go conventions (`gofmt`, `go vet`)
-- Run `make lint` before committing
-- Add tests for new controllers
-- Keep functions focused and small
+### Prerequisites
 
-## What to Contribute
+- Go 1.24+
+- Docker or Podman
+- kubectl with cluster access
+- make
 
-Good first contributions:
-- Bug fixes with clear reproduction steps
-- Documentation improvements
-- Test coverage for untested code paths
-- New CRD fields with tests
+### Build and Test
 
-For larger changes (new CRDs, architectural changes), please open an issue first.
+```bash
+make build        # Build binary
+make test         # Run tests
+make lint         # Run linters
+make manifests    # Generate CRDs
+```
+
+### Local Development
+
+```bash
+kind create cluster --name gastown-dev
+make install      # Install CRDs
+make run          # Run operator locally
+```
+
+## Pull Request Guidelines
+
+- Keep PRs focused on a single change
+- Add tests for new functionality
+- Update documentation as needed
+- Ensure CI passes
 
 ## Commit Messages
 
-Format: `type(scope): description`
+Use conventional commits:
 
-Types: `feat`, `fix`, `docs`, `test`, `chore`, `refactor`
-
-Examples:
-- `feat(polecat): add resource limits configuration`
-- `fix(convoy): correct status aggregation`
-- `docs: update quickstart guide`
-
-## Testing
-
-```bash
-# Unit tests
-make test
-
-# E2E tests (requires kind cluster)
-make test-e2e
-
-# Validation (lint + vet)
-make validate
+```
+feat(scope): add new feature
+fix(scope): fix bug
+docs: update documentation
 ```
 
-## Building
+## License
 
-```bash
-# Community edition
-make docker-build
-
-# Enterprise/FIPS edition
-make docker-build-fips
-```
-
-## Questions?
-
-Open an issue for questions about contributing.
+Contributions are licensed under Apache 2.0.

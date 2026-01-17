@@ -2,31 +2,31 @@
 # Creates a new pipeline execution for building and scanning the operator
 #
 # Prerequisites:
-#   1. Apply the go-test Task:
-#      oc apply -f deploy/tekton/tasks/go-test.yaml -n olympus-ci
+#   1. Apply the Tasks:
+#      kubectl apply -f deploy/tekton/tasks/ -n <YOUR_NAMESPACE>
 #
 #   2. Apply the Pipeline:
-#      oc apply -f deploy/tekton/pipeline.yaml -n olympus-ci
+#      kubectl apply -f deploy/tekton/pipeline.yaml -n <YOUR_NAMESPACE>
 #
-#   3. Create registry credentials (if not already created):
-#      oc create secret docker-registry gastown-registry-credentials \
-#        --docker-server=dprusocplvjmp01.deepsky.lab:5000 \
-#        --docker-username=xxx --docker-password=xxx -n olympus-ci
+#   3. Create registry credentials:
+#      kubectl create secret docker-registry registry-credentials \
+#        --docker-server=<YOUR_REGISTRY> \
+#        --docker-username=xxx --docker-password=xxx -n <YOUR_NAMESPACE>
 #
 # Usage:
-#   oc create -f deploy/tekton/pipelinerun.yaml
+#   kubectl create -f deploy/tekton/pipelinerun.yaml
 #
 # Watch progress:
-#   tkn pipelinerun logs -f --last -n olympus-ci
-#   oc get pipelinerun -n olympus-ci -w
+#   tkn pipelinerun logs -f --last -n <YOUR_NAMESPACE>
+#   kubectl get pipelinerun -n <YOUR_NAMESPACE> -w
 #
 # Trigger with specific branch/tag:
-#   oc create -f - <<EOF
+#   kubectl create -f - <<EOF
 #   apiVersion: tekton.dev/v1
 #   kind: PipelineRun
 #   metadata:
 #     generateName: gastown-operator-ci-run-
-#     namespace: olympus-ci
+#     namespace: <YOUR_NAMESPACE>
 #   spec:
 #     pipelineRef:
 #       name: gastown-operator-ci
@@ -42,29 +42,30 @@ apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   generateName: gastown-operator-ci-run-
-  namespace: olympus-ci
+  # CUSTOMIZE: Set to your CI namespace
+  namespace: gastown-ci
   labels:
     app.kubernetes.io/component: pipelinerun
     app.kubernetes.io/name: gastown-operator
-    pipeline.jren.io/type: gastown-operator
   annotations:
-    # FedRAMP compliance metadata
+    # FedRAMP compliance metadata (optional)
     fedramp.gov/controls: "RA-5,SI-2,CM-14"
-    security.jren.io/scans: "trivy,hadolint"
 spec:
   pipelineRef:
     name: gastown-operator-ci
   params:
     # Git parameters
     - name: git-url
-      value: "https://git.deepskylab.io/olympus/gastown-operator.git"
+      # CUSTOMIZE: Your git repository URL
+      value: "https://github.com/boshu2/gastown-operator.git"
     - name: git-revision
       value: "main"
     # Build parameters
     - name: image-tag
       value: "dev"
     - name: registry
-      value: "dprusocplvjmp01.deepsky.lab:5000"
+      # CUSTOMIZE: Your container registry
+      value: "ghcr.io/boshu2"
     # Security scanning parameters
     - name: trivy-fail-on
       value: "CRITICAL,HIGH"
@@ -84,11 +85,12 @@ spec:
           resources:
             requests:
               storage: 2Gi
-          storageClassName: flash
+          # CUSTOMIZE: Your StorageClass (or omit for default)
+          # storageClassName: standard
     # Registry credentials for image push/pull
-    # Uses shared registry-credentials in olympus-ci namespace
     - name: dockerconfig
       secret:
+        # CUSTOMIZE: Name of your registry credentials secret
         secretName: registry-credentials
     # Reports workspace (reuses source for simplicity)
     - name: reports
@@ -99,4 +101,3 @@ spec:
           resources:
             requests:
               storage: 1Gi
-          storageClassName: flash

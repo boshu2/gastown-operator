@@ -1,32 +1,32 @@
 # Build gt CLI Task
-# Clones daedalus and builds the gt binary for use in the operator image
+# Clones gastown and builds the gt binary for use in the operator image
 #
-# This Task builds gt CLI from source since the daedalus repo is private.
-# The built binary is placed in the source workspace for the Kaniko build.
+# This Task builds gt CLI from source. The built binary is placed in the
+# source workspace for the Kaniko build to COPY into the final image.
 #
 # Usage:
-#   oc apply -f deploy/tekton/tasks/build-gt-cli.yaml -n olympus-ci
+#   kubectl apply -f deploy/tekton/tasks/build-gt-cli.yaml -n <YOUR_NAMESPACE>
 ---
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: build-gt-cli
-  namespace: olympus-ci
+  # CUSTOMIZE: Set to your CI namespace
+  namespace: gastown-ci
   labels:
     app.kubernetes.io/component: task
     app.kubernetes.io/name: gastown-operator
 spec:
-  description: Build gt CLI from daedalus source for operator image
+  description: Build gt CLI from gastown source for operator image
   workspaces:
     - name: source
   params:
-    - name: daedalus-url
+    - name: gastown-url
       type: string
-      # Use public GitHub fork which has our patches and doesn't require auth
-      # The olympus/daedalus requires GitLab auth which complicates CI
-      default: "https://github.com/boshu2/gastown.git"
-      description: URL of the daedalus/gastown repository (public fork)
-    - name: daedalus-revision
+      # Official gastown repository
+      default: "https://github.com/steveyegge/gastown.git"
+      description: URL of the gastown repository
+    - name: gastown-revision
       type: string
       default: "main"
       description: Git branch/tag to build from
@@ -39,7 +39,7 @@ spec:
       description: Path to the built gt binary
   steps:
     - name: build-gt
-      image: quay.io/projectquay/golang:$(params.go-version)
+      image: golang:$(params.go-version)
       workingDir: $(workspaces.source.path)
       env:
         - name: GOCACHE
@@ -51,29 +51,27 @@ spec:
         set -e
 
         echo "========================================"
-        echo "  Building gt CLI from daedalus"
+        echo "  Building gt CLI from gastown"
         echo "========================================"
         echo ""
         echo "Go version: $(go version)"
-        echo "Daedalus: $(params.daedalus-url)@$(params.daedalus-revision)"
+        echo "Gastown: $(params.gastown-url)@$(params.gastown-revision)"
         echo ""
 
-        # Create temp directory for daedalus clone
-        mkdir -p /tmp/daedalus
-        cd /tmp/daedalus
+        # Create temp directory for gastown clone
+        mkdir -p /tmp/gastown
+        cd /tmp/gastown
 
-        # Clone daedalus - Tekton git-credentials should be available
-        echo "Cloning daedalus..."
-        git clone --depth 1 --branch $(params.daedalus-revision) \
-          $(params.daedalus-url) .
+        # Clone gastown
+        echo "Cloning gastown..."
+        git clone --depth 1 --branch $(params.gastown-revision) \
+          $(params.gastown-url) .
 
-        # Download dependencies first using local go.mod
-        # IMPORTANT: Use GOPROXY=direct to avoid pulling broken upstream from proxy cache
-        echo "Downloading dependencies (direct, no proxy cache)..."
-        export GOPROXY=direct
+        # Download dependencies
+        echo "Downloading dependencies..."
         go mod download
 
-        # Build gt CLI from local source
+        # Build gt CLI
         echo "Building gt CLI..."
         CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
           go build -trimpath -ldflags="-s -w" -o gt ./cmd/gt

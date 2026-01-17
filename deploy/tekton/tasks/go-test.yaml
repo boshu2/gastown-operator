@@ -6,13 +6,14 @@
 # - controller-runtime version must match (release-0.22)
 #
 # Usage:
-#   oc apply -f deploy/tekton/tasks/go-test.yaml -n olympus-ci
+#   kubectl apply -f deploy/tekton/tasks/go-test.yaml -n <YOUR_NAMESPACE>
 ---
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: go-test-gastown
-  namespace: olympus-ci
+  # CUSTOMIZE: Set to your CI namespace
+  namespace: gastown-ci
   labels:
     app.kubernetes.io/component: task
     app.kubernetes.io/name: gastown-operator
@@ -38,7 +39,7 @@ spec:
       description: Test execution status (passed/failed)
   steps:
     - name: setup-and-test
-      image: quay.io/projectquay/golang:$(params.go-version)
+      image: golang:$(params.go-version)
       workingDir: $(workspaces.source.path)
       computeResources:
         requests:
