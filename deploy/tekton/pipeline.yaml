@@ -62,6 +62,8 @@ spec:
       description: Registry credentials for image push
     - name: reports
       description: Workspace for security scan reports
+    - name: git-credentials
+      description: Git basic-auth credentials for private repos
       optional: true
 
   tasks:
@@ -75,6 +77,8 @@ spec:
       workspaces:
         - name: output
           workspace: source
+        - name: basic-auth
+          workspace: git-credentials
       params:
         - name: url
           value: $(params.git-url)
@@ -105,25 +109,27 @@ spec:
     # 2b. Trivy filesystem scan - secrets and misconfigs
     - name: scan-secrets
       taskRef:
-        name: trivy-scanner
+        name: jren-trivy-fs
         kind: ClusterTask
       runAfter:
         - clone
       workspaces:
-        - name: manifest-dir
+        - name: source
           workspace: source
+        - name: reports
+          workspace: reports
       params:
-        - name: ARGS
-          value:
-            - "fs"
-            - "--scanners=secret,misconfig"
-            - "--severity=LOW,MEDIUM,HIGH,CRITICAL"
-            - "."
+        - name: SCANNERS
+          value: "vuln,secret,misconfig"
+        - name: SEVERITY
+          value: "MEDIUM,HIGH,CRITICAL"
+        - name: FAIL_ON
+          value: "CRITICAL"
 
     # 2c. Hadolint - Dockerfile best practices
     - name: lint-dockerfile
       taskRef:
-        name: hadolint
+        name: jren-hadolint-scan
         kind: ClusterTask
       runAfter:
         - clone
@@ -131,8 +137,10 @@ spec:
         - name: source
           workspace: source
       params:
-        - name: dockerfile-path
+        - name: DOCKERFILE
           value: "Dockerfile"
+        - name: FAILURE_THRESHOLD
+          value: "error"
 
     # =========================================================================
     # Stage 3: Build Image
@@ -140,7 +148,7 @@ spec:
 
     - name: build-operator
       taskRef:
-        name: kaniko
+        name: jren-kaniko-build
         kind: ClusterTask
       runAfter:
         - go-test
@@ -158,9 +166,8 @@ spec:
           value: "Dockerfile"
         - name: CONTEXT
           value: "."
-        - name: EXTRA_ARGS
-          value:
-            - "--build-arg=VERSION=$(params.image-tag)"
+        - name: BUILD_EXTRA_ARGS
+          value: "--build-arg=VERSION=$(params.image-tag)"
 
     # =========================================================================
     # Stage 4: Image Security Scan
@@ -168,19 +175,22 @@ spec:
 
     - name: scan-image
       taskRef:
-        name: trivy-scanner
+        name: jren-trivy-image
         kind: ClusterTask
       runAfter:
         - build-operator
       workspaces:
-        - name: manifest-dir
-          workspace: source
+        - name: reports
+          workspace: reports
+        - name: dockerconfig
+          workspace: dockerconfig
       params:
-        - name: ARGS
-          value:
-            - "image"
-            - "--severity=$(params.trivy-fail-on)"
-            - "$(params.registry)/labyrinth:$(params.image-tag)"
+        - name: IMAGE
+          value: "$(params.registry)/labyrinth:$(params.image-tag)"
+        - name: SEVERITY
+          value: "MEDIUM,HIGH,CRITICAL"
+        - name: FAIL_ON
+          value: "$(params.trivy-fail-on)"
 
   # ===========================================================================
   # Finally: Summary Report

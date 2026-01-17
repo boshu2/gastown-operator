@@ -32,10 +32,10 @@ spec:
       type: string
       default: "./internal/..."
       description: Go packages to test
-    - name: go-version
+    - name: go-image
       type: string
-      default: "1.24"
-      description: Go version to use
+      default: "dprusocplvjmp01.deepsky.lab:5000/projectquay/golang:1.24"
+      description: Go container image to use
     - name: envtest-k8s-version
       type: string
       default: "1.31.x"
@@ -47,7 +47,7 @@ spec:
       description: Test coverage percentage
   steps:
     - name: setup-and-test
-      image: golang:$(params.go-version)
+      image: $(params.go-image)
       workingDir: $(workspaces.source.path)
       computeResources:
         requests:
