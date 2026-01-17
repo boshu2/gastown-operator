@@ -137,6 +137,10 @@ build-local: manifests generate fmt vet ## Build local mode binary.
 docker-build: ## Build community docker image (vanilla K8s).
 	$(CONTAINER_TOOL) build -t ${IMG}:${VERSION} -t ${IMG}:latest -f Dockerfile .
 
+.PHONY: docker-build-e2e
+docker-build-e2e: ## Build image for E2E tests (IMG should be full image:tag reference).
+	$(CONTAINER_TOOL) build -t ${IMG} -f Dockerfile .
+
 .PHONY: docker-build-fips
 docker-build-fips: ## Build enterprise/FIPS docker image (OpenShift).
 	$(CONTAINER_TOOL) build -t ${IMG}:${VERSION}-fips -t ${IMG}:latest-fips -f Dockerfile.fips .
