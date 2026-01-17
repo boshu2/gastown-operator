@@ -1,16 +1,71 @@
 # Gas Town Operator
 
-Kubernetes operator for Gas Town multi-agent orchestration primitives.
+> *"Who runs Bartertown? The Kubernetes Operator runs Bartertown."*
 
-## Overview
+[![OpenShift](https://img.shields.io/badge/OpenShift-Native-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
+[![FIPS](https://img.shields.io/badge/FIPS-Compliant-blue)](https://csrc.nist.gov/projects/cryptographic-module-validation-program)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-The Gas Town Operator exposes Gas Town concepts as Kubernetes Custom Resources:
+Kubernetes operator for [Gas Town](https://github.com/steveyegge/gastown) multi-agent orchestration. Run your AI agent army in the cloud.
 
-- **Rig** - Project workspace (cluster-scoped)
-- **Polecat** - Autonomous worker agent
-- **Convoy** - Batch tracking for parallel execution
+```
+     ____           _____
+    / ___| __ _ ___| ____|_ ____      ___ __
+   | |  _ / _` / __||  _| \ \/ / \ /\ / / '_ \
+   | |_| | (_| \__ \| |___ >  <|  V  V /| | | |
+    \____|\__,_|___/|_____/_/\_\\_/\_/ |_| |_|
+                                    OPERATOR
+```
 
-The operator acts as a **view layer** - the `gt` CLI remains the source of truth for all operations.
+## What Is This?
+
+Gas Town Operator brings [steveyegge's Gas Town](https://github.com/steveyegge/gastown) multi-agent orchestration to Kubernetes. Instead of running polecats (autonomous AI workers) on your laptop, run them as pods in your cluster.
+
+**Why?**
+- Scale beyond your laptop's tmux sessions
+- Let Kubernetes handle scheduling and lifecycle
+- Run polecats closer to your infrastructure
+- Enterprise-grade security (OpenShift SCCs, FIPS crypto)
+
+## Design Philosophy
+
+### OpenShift-Native
+
+We don't just "support" OpenShift - we're built for it. Every pod runs with:
+
+```yaml
+securityContext:
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
+```
+
+No privileged containers. No security compromises. Passes `restricted` SCC out of the box.
+
+### FIPS-Compliant
+
+Built with Go's BoringCrypto on Red Hat UBI9:
+
+- **Build**: `registry.access.redhat.com/ubi9/go-toolset:1.22`
+- **Runtime**: `registry.access.redhat.com/ubi9/ubi-micro:9.3`
+- **Crypto**: `GOEXPERIMENT=boringcrypto`
+
+For when your compliance officer asks "but is it FIPS?"
+
+## Custom Resources
+
+| CRD | Description |
+|-----|-------------|
+| **Rig** | Project workspace (cluster-scoped) |
+| **Polecat** | Autonomous worker agent pod |
+| **Convoy** | Batch tracking for parallel execution |
+| **Refinery** | Merge queue processor |
+| **Witness** | Worker lifecycle monitor |
+| **BeadStore** | Issue tracking backend |
 
 ## Quick Start
 
@@ -18,161 +73,127 @@ The operator acts as a **view layer** - the `gt` CLI remains the source of truth
 # Install CRDs
 kubectl apply -f config/crd/bases/
 
-# Run operator (local mode)
+# Run operator
 make run-local
 
 # Create a Rig
 kubectl apply -f - <<EOF
-apiVersion: gastown.gastown.io/v1alpha1
+apiVersion: gastown.io/v1alpha1
 kind: Rig
 metadata:
   name: my-project
 spec:
   gitURL: "git@github.com:myorg/my-project.git"
   beadsPrefix: "proj"
-  localPath: "/Users/me/gt/my-project"
 EOF
 
-# Check status
-kubectl get rigs
-kubectl describe rig my-project
-```
+# Spawn a Polecat
+kubectl apply -f - <<EOF
+apiVersion: gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: furiosa
+  namespace: gastown-workers
+spec:
+  rig: my-project
+  beadID: proj-abc123
+  kubernetes:
+    gitRepository: "git@github.com:myorg/my-project.git"
+    gitBranch: main
+    gitSecretRef:
+      name: git-ssh-key
+    claudeCredsSecretRef:
+      name: claude-api-key
+EOF
 
-## Installation
-
-### Helm
-
-```bash
-helm install gastown-operator ./helm/gastown-operator \
-  --namespace gastown-system \
-  --create-namespace \
-  --set gtConfig.townRoot=/path/to/gt
-```
-
-### From Source
-
-```bash
-make install    # Install CRDs
-make run        # Run operator
+# Watch it work
+kubectl logs -f polecat-furiosa -n gastown-workers
 ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│              Kubernetes                  │
-│  ┌─────┐  ┌─────────┐  ┌────────┐       │
-│  │ Rig │  │ Polecat │  │ Convoy │       │
-│  └──┬──┘  └────┬────┘  └───┬────┘       │
-│     └──────────┼───────────┘            │
-│                │                         │
-│         ┌──────┴──────┐                  │
-│         │  Operator   │                  │
-│         └──────┬──────┘                  │
-└────────────────┼────────────────────────┘
-                 │
-          ┌──────┴──────┐
-          │   gt CLI    │  ← Source of Truth
-          └─────────────┘
+┌────────────────────────────────────────────────────────┐
+│                  OpenShift Cluster                      │
+│                                                         │
+│   ┌─────────────────────────────────────────────────┐  │
+│   │              gastown-operator                    │  │
+│   │                                                  │  │
+│   │   Rig       Polecat     Convoy     Witness      │  │
+│   │ Controller  Controller  Controller  Controller  │  │
+│   └──────────────────┬──────────────────────────────┘  │
+│                      │                                  │
+│          ┌───────────┴───────────┐                     │
+│          ▼                       ▼                     │
+│   ┌─────────────┐         ┌─────────────┐             │
+│   │   Polecat   │   ...   │   Polecat   │             │
+│   │    (Pod)    │         │    (Pod)    │             │
+│   │  ┌───────┐  │         │  ┌───────┐  │             │
+│   │  │Claude │  │         │  │Claude │  │             │
+│   │  │ Code  │  │         │  │ Code  │  │             │
+│   │  └───────┘  │         │  └───────┘  │             │
+│   └─────────────┘         └─────────────┘             │
+└────────────────────────────────────────────────────────┘
+          │
+          │ Claims work via webhook
+          ▼
+┌────────────────────────────────────────────────────────┐
+│              Local Gas Town (gt CLI)                    │
+│  - Source of truth for state                           │
+│  - Beads, mail, molecules                              │
+└────────────────────────────────────────────────────────┘
 ```
 
-The operator queries `gt` CLI for state and executes commands through it. CRDs provide Kubernetes-native access to Gas Town without duplicating state.
+The operator is a **view layer** - `gt` CLI remains authoritative. Kubernetes handles scheduling, scaling, and lifecycle.
 
-## Documentation
+## Installation
 
-- [Quick Start](docs/quickstart.md) - Get up and running
-- [CRD Reference](docs/crds.md) - Full API documentation
-- [Architecture](docs/architecture.md) - How it works
-- [Development](docs/development.md) - Contributing guide
+### Helm (Recommended)
+
+```bash
+helm repo add gastown https://boshu2.github.io/gastown-operator
+helm install gastown-operator gastown/gastown-operator \
+  --namespace gastown-system \
+  --create-namespace
+```
+
+### From Source
+
+```bash
+make install      # Install CRDs
+make deploy IMG=ghcr.io/boshu2/gastown-operator:v0.1.0
+```
 
 ## Requirements
 
-- Kubernetes 1.26+
-- Go 1.22+ (for development)
-- `gt` CLI installed on operator host
-- Gas Town setup (`~/gt/` directory structure)
+- Kubernetes 1.26+ (OpenShift 4.13+ recommended)
+- `gt` CLI accessible to operator (for local mode)
+- Git SSH credentials (for polecat git operations)
+- Claude API credentials (for polecat AI operations)
 
-## Development
+## Related Projects
 
-```bash
-# Set up pre-push hooks (validates before push)
-make setup-hooks
+- [Gas Town](https://github.com/steveyegge/gastown) - The multi-agent orchestration framework
+- [gastown-gui](https://github.com/web3dev1337/gastown-gui) - Web UI dashboard (we're integrating!)
+- [Beads](https://github.com/steveyegge/beads) - Git-based issue tracking
 
-# Run local validation (lint + vet)
-make validate
+## Status
 
-# Run locally
-make run-local GT_TOWN_ROOT=~/gt GT_PATH=/usr/local/bin/gt
+**v0.1.0** - Early release. Core CRDs and controllers working. Deployment proof coming soon.
 
-# Run tests
-make test
+Feedback welcome! See [steveyegge/gastown#668](https://github.com/steveyegge/gastown/issues/668) for discussion.
 
-# Build container
-make docker-build IMG=myregistry/gastown-operator:latest
-```
+## Contributing
 
-The pre-push hook runs `make validate` automatically. Lint/complexity checks run locally, not in CI.
-
-See [Development Guide](docs/development.md) for details.
-
-## CI/CD
-
-This project uses **Tekton Pipelines** for CI/CD. The pipeline runs on OpenShift in the `olympus-ci` namespace.
-
-### Running the Pipeline
-
-```bash
-# Apply Tasks and Pipeline (first time or after changes)
-oc apply -f deploy/tekton/tasks/ -n olympus-ci
-oc apply -f deploy/tekton/pipeline.yaml -n olympus-ci
-
-# Create a PipelineRun
-oc create -f deploy/tekton/pipelinerun.yaml -n olympus-ci
-
-# Watch progress
-tkn pipelinerun logs -f --last -n olympus-ci
-```
-
-### Pipeline Stages
-
-1. **Clone** - Fetch source from GitLab
-2. **Parallel Stage**:
-   - `go-test` - Unit tests with envtest
-   - `scan-secrets` - Trivy filesystem scan (secrets, misconfigs)
-   - `lint-dockerfile` - Hadolint Dockerfile linting
-   - `build-gt-cli` - Build gt CLI from source
-3. **Build** - Kaniko container build + push to DPR
-4. **Scan** - Trivy image vulnerability scan + SBOM generation
-
-### ClusterTasks Used
-
-| Task | Purpose |
-|------|---------|
-| `git-clone` | Clone source repository |
-| `jren-kaniko-build` | Build container image (no Docker daemon) |
-| `jren-trivy-fs` | Filesystem security scan |
-| `jren-hadolint-scan` | Dockerfile linting |
-| `jren-trivy-image` | Container vulnerability scan + SBOM |
-
-### Local Tasks
-
-- `go-test-gastown` - Controller tests with envtest
-- `build-gt-cli` - Build gt CLI from boshu2/gastown fork
-
-See `deploy/tekton/` for full configuration.
+PRs welcome. Please:
+1. Run `make validate` before pushing
+2. Add tests for new controllers
+3. Keep the Mad Max references tasteful
 
 ## License
 
-Copyright 2026.
+Apache 2.0. See [LICENSE](LICENSE).
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+---
 
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+*Built with mass production*
