@@ -15,11 +15,17 @@ ARG RUNTIME_IMAGE=gcr.io/distroless/static:nonroot
 # ------------------------------------------------------------------------------
 FROM ${GO_IMAGE} AS gt-builder
 
+ARG GIT_TOKEN=""
+
 RUN apk add --no-cache git ca-certificates
 WORKDIR /src
 
-# Clone and build gt CLI
-RUN git clone https://git.deepskylab.io/olympus/daedalus.git . && \
+# Clone and build gt CLI (use token if provided for private repos)
+RUN if [ -n "${GIT_TOKEN}" ]; then \
+      git clone https://oauth2:${GIT_TOKEN}@git.deepskylab.io/olympus/daedalus.git . ; \
+    else \
+      git clone https://git.deepskylab.io/olympus/daedalus.git . ; \
+    fi && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -trimpath -ldflags="-s -w" -o /out/gt ./cmd/gt
 
