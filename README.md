@@ -115,6 +115,52 @@ The pre-push hook runs `make validate` automatically. Lint/complexity checks run
 
 See [Development Guide](docs/development.md) for details.
 
+## CI/CD
+
+This project uses **Tekton Pipelines** for CI/CD. The pipeline runs on OpenShift in the `olympus-ci` namespace.
+
+### Running the Pipeline
+
+```bash
+# Apply Tasks and Pipeline (first time or after changes)
+oc apply -f deploy/tekton/tasks/ -n olympus-ci
+oc apply -f deploy/tekton/pipeline.yaml -n olympus-ci
+
+# Create a PipelineRun
+oc create -f deploy/tekton/pipelinerun.yaml -n olympus-ci
+
+# Watch progress
+tkn pipelinerun logs -f --last -n olympus-ci
+```
+
+### Pipeline Stages
+
+1. **Clone** - Fetch source from GitLab
+2. **Parallel Stage**:
+   - `go-test` - Unit tests with envtest
+   - `scan-secrets` - Trivy filesystem scan (secrets, misconfigs)
+   - `lint-dockerfile` - Hadolint Dockerfile linting
+   - `build-gt-cli` - Build gt CLI from source
+3. **Build** - Kaniko container build + push to DPR
+4. **Scan** - Trivy image vulnerability scan + SBOM generation
+
+### ClusterTasks Used
+
+| Task | Purpose |
+|------|---------|
+| `git-clone` | Clone source repository |
+| `jren-kaniko-build` | Build container image (no Docker daemon) |
+| `jren-trivy-fs` | Filesystem security scan |
+| `jren-hadolint-scan` | Dockerfile linting |
+| `jren-trivy-image` | Container vulnerability scan + SBOM |
+
+### Local Tasks
+
+- `go-test-gastown` - Controller tests with envtest
+- `build-gt-cli` - Build gt CLI from boshu2/gastown fork
+
+See `deploy/tekton/` for full configuration.
+
 ## License
 
 Copyright 2026.
