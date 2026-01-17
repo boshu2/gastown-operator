@@ -42,7 +42,7 @@ const (
 	ClaudeCredsMountPath = "/claude-creds"
 
 	// Default images
-	DefaultGitImage    = "alpine/git:latest"
+	DefaultGitImage    = "alpine/git:2.43.0"
 	DefaultClaudeImage = "node:20-slim"
 
 	// Default resource values

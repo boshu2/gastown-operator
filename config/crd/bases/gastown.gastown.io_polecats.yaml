@@ -102,9 +102,12 @@ spec:
                   gitBranch:
                     default: main
                     description: GitBranch is the branch to checkout
+                    pattern: ^[a-zA-Z0-9._/-]+$
                     type: string
                   gitRepository:
-                    description: GitRepository is the git repo URL to clone
+                    description: GitRepository is the git repo URL to clone (SSH or
+                      HTTPS format)
+                    pattern: ^(git@[a-zA-Z0-9._-]+:|https?://[a-zA-Z0-9._-]+/)[a-zA-Z0-9._/-]+(\.git)?$
                     type: string
                   gitSecretRef:
                     description: GitSecretRef references a Secret containing SSH key
@@ -181,6 +184,7 @@ spec:
                   workBranch:
                     description: WorkBranch is the branch name to create for work
                       (defaults to feature/<beadID>)
+                    pattern: ^[a-zA-Z0-9._/-]+$
                     type: string
                 required:
                 - claudeCredsSecretRef

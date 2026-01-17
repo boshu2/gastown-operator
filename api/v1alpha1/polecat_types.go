@@ -44,16 +44,19 @@ const (
 
 // KubernetesSpec defines configuration for kubernetes execution mode
 type KubernetesSpec struct {
-	// GitRepository is the git repo URL to clone
+	// GitRepository is the git repo URL to clone (SSH or HTTPS format)
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^(git@[a-zA-Z0-9._-]+:|https?://[a-zA-Z0-9._-]+/)[a-zA-Z0-9._/-]+(\.git)?$`
 	GitRepository string `json:"gitRepository"`
 
 	// GitBranch is the branch to checkout
 	// +kubebuilder:default=main
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._/-]+$`
 	// +optional
 	GitBranch string `json:"gitBranch,omitempty"`
 
 	// WorkBranch is the branch name to create for work (defaults to feature/<beadID>)
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._/-]+$`
 	// +optional
 	WorkBranch string `json:"workBranch,omitempty"`
 
