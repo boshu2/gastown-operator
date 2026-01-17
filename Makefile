@@ -1,5 +1,6 @@
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG ?= gastown-operator
+VERSION ?= v0.1.0
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -133,12 +134,28 @@ build-local: manifests generate fmt vet ## Build local mode binary.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+docker-build: ## Build community docker image (vanilla K8s).
+	$(CONTAINER_TOOL) build -t ${IMG}:${VERSION} -t ${IMG}:latest -f Dockerfile .
+
+.PHONY: docker-build-fips
+docker-build-fips: ## Build enterprise/FIPS docker image (OpenShift).
+	$(CONTAINER_TOOL) build -t ${IMG}:${VERSION}-fips -t ${IMG}:latest-fips -f Dockerfile.fips .
+
+.PHONY: docker-build-all
+docker-build-all: docker-build docker-build-fips ## Build both community and enterprise images.
 
 .PHONY: docker-push
-docker-push: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push ${IMG}
+docker-push: ## Push community docker image.
+	$(CONTAINER_TOOL) push ${IMG}:${VERSION}
+	$(CONTAINER_TOOL) push ${IMG}:latest
+
+.PHONY: docker-push-fips
+docker-push-fips: ## Push enterprise/FIPS docker image.
+	$(CONTAINER_TOOL) push ${IMG}:${VERSION}-fips
+	$(CONTAINER_TOOL) push ${IMG}:latest-fips
+
+.PHONY: docker-push-all
+docker-push-all: docker-push docker-push-fips ## Push both community and enterprise images.
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -158,10 +175,19 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	rm Dockerfile.cross
 
 .PHONY: build-installer
-build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
+build-installer: manifests generate kustomize ## Generate community install manifest.
 	mkdir -p dist
-	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
-	"$(KUSTOMIZE)" build config/default > dist/install.yaml
+	cd config/deploy/community && "$(KUSTOMIZE)" edit set image gastown-operator=${IMG}:${VERSION}
+	"$(KUSTOMIZE)" build config/deploy/community > dist/install.yaml
+
+.PHONY: build-installer-fips
+build-installer-fips: manifests generate kustomize ## Generate enterprise/FIPS install manifest.
+	mkdir -p dist
+	cd config/deploy/fips && "$(KUSTOMIZE)" edit set image gastown-operator=${IMG}:${VERSION}-fips
+	"$(KUSTOMIZE)" build config/deploy/fips > dist/install-fips.yaml
+
+.PHONY: build-installer-all
+build-installer-all: build-installer build-installer-fips ## Generate both community and FIPS install manifests.
 
 ##@ Deployment
 

@@ -18,6 +18,7 @@ package pod
 
 import (
 	"fmt"
+	"os"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -45,9 +46,16 @@ const (
 	TmpMountPath         = "/tmp"
 	HomeMountPath        = "/home/nonroot"
 
-	// Default images - UBI-based for FIPS/OpenShift compliance
-	DefaultGitImage    = "registry.access.redhat.com/ubi9/ubi-minimal:9.3"
-	DefaultClaudeImage = "registry.access.redhat.com/ubi9/nodejs-20:1"
+	// Environment variable names for image configuration
+	EnvGitImage    = "GASTOWN_GIT_IMAGE"
+	EnvClaudeImage = "GASTOWN_CLAUDE_IMAGE"
+
+	// Default images (community edition - vanilla Kubernetes)
+	// For enterprise/FIPS, set env vars to UBI images:
+	//   GASTOWN_GIT_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:9.3
+	//   GASTOWN_CLAUDE_IMAGE=registry.access.redhat.com/ubi9/nodejs-20:1
+	DefaultGitImage    = "alpine/git:2.43.0"
+	DefaultClaudeImage = "node:20-slim"
 
 	// Default resource values
 	DefaultCPURequest    = "500m"
@@ -64,6 +72,22 @@ type Builder struct {
 // NewBuilder creates a new Pod builder for the given Polecat
 func NewBuilder(polecat *gastownv1alpha1.Polecat) *Builder {
 	return &Builder{polecat: polecat}
+}
+
+// GetGitImage returns the git image to use, checking environment variable first
+func GetGitImage() string {
+	if img := os.Getenv(EnvGitImage); img != "" {
+		return img
+	}
+	return DefaultGitImage
+}
+
+// GetClaudeImage returns the Claude image to use, checking environment variable first
+func GetClaudeImage() string {
+	if img := os.Getenv(EnvClaudeImage); img != "" {
+		return img
+	}
+	return DefaultClaudeImage
 }
 
 // Build constructs the complete Pod spec for the Polecat
@@ -147,7 +171,7 @@ echo "Git setup complete. Working branch: %s"
 
 	return corev1.Container{
 		Name:            GitInitContainerName,
-		Image:           DefaultGitImage,
+		Image:           GetGitImage(),
 		Command:         []string{"/bin/sh", "-c"},
 		Args:            []string{gitScript},
 		SecurityContext: b.buildSecurityContext(),
@@ -177,8 +201,8 @@ echo "Git setup complete. Working branch: %s"
 func (b *Builder) buildClaudeContainer() corev1.Container {
 	k8sSpec := b.polecat.Spec.Kubernetes
 
-	// Use custom image if specified
-	image := DefaultClaudeImage
+	// Use custom image if specified, otherwise use configured default
+	image := GetClaudeImage()
 	if k8sSpec.Image != "" {
 		image = k8sSpec.Image
 	}

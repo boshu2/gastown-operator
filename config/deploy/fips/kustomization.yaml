@@ -1,0 +1,27 @@
+# Enterprise/FIPS Edition deployment overlay
+# For OpenShift and FIPS-compliant environments
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: gastown-operator-system
+
+resources:
+- ../../default
+
+images:
+- name: controller
+  newName: gastown-operator
+  newTag: latest-fips
+
+patches:
+- target:
+    kind: Deployment
+    name: controller-manager
+  patch: |-
+    - op: add
+      path: /spec/template/spec/containers/0/env
+      value:
+        - name: GASTOWN_GIT_IMAGE
+          value: "registry.access.redhat.com/ubi9/ubi-minimal:9.3"
+        - name: GASTOWN_CLAUDE_IMAGE
+          value: "registry.access.redhat.com/ubi9/nodejs-20:1"
