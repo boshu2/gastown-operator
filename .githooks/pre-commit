@@ -1,0 +1,66 @@
+#!/bin/bash
+# Pre-commit hook: Fast checks before commit
+# Install: git config core.hooksPath .githooks
+#
+# Quick validation to catch obvious issues before commit
+
+set -e
+
+echo "=== Pre-commit validation ==="
+
+# Check for unstaged changes to generated files
+STAGED_GO=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+
+if [ -z "$STAGED_GO" ]; then
+    echo "No Go files staged, skipping checks."
+    exit 0
+fi
+
+# 1. Format check (fast)
+echo "[1/4] Checking gofmt..."
+UNFORMATTED=$(gofmt -l $STAGED_GO 2>/dev/null || true)
+if [ -n "$UNFORMATTED" ]; then
+    echo "ERROR: Files not formatted with gofmt:"
+    echo "$UNFORMATTED"
+    echo ""
+    echo "Run: gofmt -w <file> or make fmt"
+    exit 1
+fi
+
+# 2. Import check
+echo "[2/4] Checking goimports..."
+if command -v goimports &> /dev/null; then
+    BADIMPORTS=$(goimports -l $STAGED_GO 2>/dev/null || true)
+    if [ -n "$BADIMPORTS" ]; then
+        echo "ERROR: Files have incorrect imports:"
+        echo "$BADIMPORTS"
+        echo ""
+        echo "Run: goimports -w <file>"
+        exit 1
+    fi
+else
+    echo "  (goimports not installed, skipping)"
+fi
+
+# 3. Go vet (fast, catches common issues)
+echo "[3/4] Running go vet..."
+go vet ./...
+
+# 4. Check for common issues
+echo "[4/4] Checking for common issues..."
+
+# Check for TODO/FIXME in staged files (warn only)
+TODOS=$(grep -n "TODO\|FIXME\|XXX\|HACK" $STAGED_GO 2>/dev/null || true)
+if [ -n "$TODOS" ]; then
+    echo "  Note: Found TODOs in staged files (not blocking):"
+    echo "$TODOS" | head -5
+fi
+
+# Check for debug statements
+DEBUG=$(grep -n "fmt.Print\|log.Print\|println(" $STAGED_GO 2>/dev/null | grep -v "_test.go" || true)
+if [ -n "$DEBUG" ]; then
+    echo "  Warning: Possible debug statements (review before push):"
+    echo "$DEBUG" | head -5
+fi
+
+echo "=== Pre-commit passed ==="
