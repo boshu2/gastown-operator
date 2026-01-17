@@ -242,7 +242,7 @@ kubectl get convoys -o jsonpath='{.items[*].status}'
 ### Force Reconcile
 
 ```bash
-kubectl annotate rig fractal reconcile=$(date +%s) --overwrite
+kubectl annotate rig myproject reconcile=$(date +%s) --overwrite
 ```
 
 ## Makefile Targets

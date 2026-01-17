@@ -1,82 +1,66 @@
-# gastown-operator CI PipelineRun
+# Labyrinth CI PipelineRun Template
 # Creates a new pipeline execution for building and scanning the operator
+#
+# This file uses placeholders that are replaced by GitLab CI:
+#   __GIT_URL__      - Repository URL
+#   __GIT_REVISION__ - Commit SHA or branch
+#   __IMAGE_TAG__    - Image tag (usually commit SHA)
+#   __REGISTRY__     - Container registry URL
 #
 # Prerequisites:
 #   1. Apply the Tasks:
-#      kubectl apply -f deploy/tekton/tasks/ -n <YOUR_NAMESPACE>
+#      kubectl apply -f deploy/tekton/tasks/ -n olympus-ci
 #
 #   2. Apply the Pipeline:
-#      kubectl apply -f deploy/tekton/pipeline.yaml -n <YOUR_NAMESPACE>
+#      kubectl apply -f deploy/tekton/pipeline.yaml -n olympus-ci
 #
 #   3. Create registry credentials:
 #      kubectl create secret docker-registry registry-credentials \
-#        --docker-server=<YOUR_REGISTRY> \
-#        --docker-username=xxx --docker-password=xxx -n <YOUR_NAMESPACE>
+#        --docker-server=<REGISTRY> \
+#        --docker-username=xxx --docker-password=xxx -n olympus-ci
 #
-# Usage:
-#   kubectl create -f deploy/tekton/pipelinerun.yaml
+# Manual Usage (replace placeholders first):
+#   kubectl create -f deploy/tekton/pipelinerun.yaml -n olympus-ci
 #
 # Watch progress:
-#   tkn pipelinerun logs -f --last -n <YOUR_NAMESPACE>
-#   kubectl get pipelinerun -n <YOUR_NAMESPACE> -w
-#
-# Trigger with specific branch/tag:
-#   kubectl create -f - <<EOF
-#   apiVersion: tekton.dev/v1
-#   kind: PipelineRun
-#   metadata:
-#     generateName: gastown-operator-ci-run-
-#     namespace: <YOUR_NAMESPACE>
-#   spec:
-#     pipelineRef:
-#       name: gastown-operator-ci
-#     params:
-#       - name: git-revision
-#         value: "feature-branch-name"
-#       - name: image-tag
-#         value: "feature-branch-name"
-#     ...
-#   EOF
+#   tkn pipelinerun logs -f --last -n olympus-ci
 ---
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
-  generateName: gastown-operator-ci-run-
-  # CUSTOMIZE: Set to your CI namespace
-  namespace: gastown-ci
+  generateName: labyrinth-ci-run-
+  namespace: olympus-ci
   labels:
     app.kubernetes.io/component: pipelinerun
-    app.kubernetes.io/name: gastown-operator
-  annotations:
-    # FedRAMP compliance metadata (optional)
-    fedramp.gov/controls: "RA-5,SI-2,CM-14"
+    app.kubernetes.io/name: labyrinth
+    app.kubernetes.io/part-of: olympus
+    tekton.dev/pipeline: labyrinth-ci
 spec:
   pipelineRef:
-    name: gastown-operator-ci
+    name: labyrinth-ci
   params:
-    # Git parameters
+    # Git parameters - replaced by GitLab CI
     - name: git-url
-      # CUSTOMIZE: Your git repository URL
-      value: "https://github.com/boshu2/gastown-operator.git"
+      value: "__GIT_URL__"
     - name: git-revision
-      value: "main"
+      value: "__GIT_REVISION__"
     # Build parameters
     - name: image-tag
-      value: "dev"
+      value: "__IMAGE_TAG__"
     - name: registry
-      # CUSTOMIZE: Your container registry
-      value: "ghcr.io/boshu2"
-    # Security scanning parameters
+      value: "__REGISTRY__"
+    # Security scanning
     - name: trivy-fail-on
       value: "CRITICAL,HIGH"
-    - name: generate-sbom
-      value: "true"
+    # envtest version (must match controller-runtime v0.22.x)
+    - name: envtest-k8s-version
+      value: "1.31.x"
   taskRunTemplate:
     serviceAccountName: pipeline
   timeouts:
     pipeline: 30m0s
   workspaces:
-    # Source code workspace - created dynamically
+    # Source code workspace
     - name: source
       volumeClaimTemplate:
         spec:
@@ -85,14 +69,11 @@ spec:
           resources:
             requests:
               storage: 2Gi
-          # CUSTOMIZE: Your StorageClass (or omit for default)
-          # storageClassName: standard
-    # Registry credentials for image push/pull
+    # Registry credentials
     - name: dockerconfig
       secret:
-        # CUSTOMIZE: Name of your registry credentials secret
         secretName: registry-credentials
-    # Reports workspace (reuses source for simplicity)
+    # Reports workspace
     - name: reports
       volumeClaimTemplate:
         spec:

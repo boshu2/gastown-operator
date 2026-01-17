@@ -1,46 +1,202 @@
-# gastown-operator CI Pipeline - DEPRECATED
+# Labyrinth Operator CI Pipeline
+# Kubernetes operator for Gas Town multi-agent orchestration
 #
-# This project has migrated to Tekton Pipelines.
-# See deploy/tekton/ for the current CI/CD configuration.
+# This pipeline uses Tekton for actual builds. GitLab CI handles:
+#   - Triggering Tekton pipelines via webhook
+#   - Basic lint/validation that can run without cluster access
+#   - MR (merge request) checks
 #
-# To run the Tekton pipeline manually:
-#   oc create -f deploy/tekton/pipelinerun.yaml -n olympus-ci
-#   tkn pipelinerun logs -f --last -n olympus-ci
+# Tekton pipeline location: deploy/tekton/
+# Manual trigger: oc create -f deploy/tekton/pipelinerun.yaml -n olympus-ci
 #
-# The pipeline stages are:
-#   1. Clone source code
-#   2. Parallel: go-test, trivy-fs scan, hadolint, build-gt-cli
-#   3. Kaniko build + push to DPR
-#   4. Trivy image scan + SBOM generation
+# Required CI/CD Variables (set in GitLab project settings):
+#   - KUBE_CONFIG: Base64-encoded kubeconfig for olympus-ci namespace
+#   - REGISTRY_URL: Container registry URL (e.g., registry.example.com)
+#   - REGISTRY_USER: Registry username
+#   - REGISTRY_PASSWORD: Registry password
 #
-# This file is kept for reference and to prevent GitLab from using
-# Auto DevOps. Remove once Tekton EventListener triggers are configured.
+# Optional Variables:
+#   - TEKTON_NAMESPACE: Override default (olympus-ci)
+#   - TRIVY_SEVERITY: Override scan threshold (default: CRITICAL,HIGH)
 
-# Disable all jobs - Tekton handles CI now
-workflow:
+variables:
+  GO_VERSION: "1.24"
+  TEKTON_NAMESPACE: "olympus-ci"
+  PIPELINE_NAME: "labyrinth-ci"
+
+stages:
+  - validate
+  - trigger
+  - monitor
+
+# =============================================================================
+# Stage: Validate (runs in GitLab, no cluster access needed)
+# =============================================================================
+
+lint:go:
+  stage: validate
+  image: golangci/golangci-lint:v1.62-alpine
+  script:
+    - golangci-lint run --timeout 5m ./...
   rules:
-    - when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-# Legacy reference (do not uncomment)
-#
-# variables:
-#   DPR_REGISTRY: "dprusocplvjmp01.deepsky.lab:5000"
-#   GO_IMAGE: "${DPR_REGISTRY}/ci-images/golang:1.24-alpine"
-#   KANIKO_IMAGE: "${DPR_REGISTRY}/ci-images/kaniko:v1.23.2-debug"
-#
-# stages:
-#   - test
-#   - build
-#   - security
-#
-# go:test:
-#   stage: test
-#   # ... migrated to deploy/tekton/tasks/go-test.yaml
-#
-# build:operator:
-#   stage: build
-#   # ... migrated to deploy/tekton/pipeline.yaml (jren-kaniko-build ClusterTask)
-#
-# security:trivy:
-#   stage: security
-#   # ... migrated to deploy/tekton/pipeline.yaml (jren-trivy-image ClusterTask)
+lint:yaml:
+  stage: validate
+  image: cytopia/yamllint:latest
+  script:
+    - yamllint -d relaxed deploy/ config/
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+validate:manifests:
+  stage: validate
+  image: golang:${GO_VERSION}
+  script:
+    - make manifests
+    - |
+      if ! git diff --exit-code config/; then
+        echo "ERROR: Generated manifests are out of date. Run 'make manifests' and commit."
+        exit 1
+      fi
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+validate:generate:
+  stage: validate
+  image: golang:${GO_VERSION}
+  script:
+    - make generate
+    - |
+      if ! git diff --exit-code api/; then
+        echo "ERROR: Generated code is out of date. Run 'make generate' and commit."
+        exit 1
+      fi
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# =============================================================================
+# Stage: Trigger Tekton Pipeline
+# =============================================================================
+
+trigger:tekton:
+  stage: trigger
+  image: bitnami/kubectl:latest
+  variables:
+    IMAGE_TAG: ${CI_COMMIT_SHORT_SHA}
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
+    - chmod 600 ~/.kube/config
+  script:
+    - |
+      echo "Triggering Tekton pipeline: ${PIPELINE_NAME}"
+      echo "  Namespace: ${TEKTON_NAMESPACE}"
+      echo "  Git URL: ${CI_REPOSITORY_URL}"
+      echo "  Git Revision: ${CI_COMMIT_SHA}"
+      echo "  Image Tag: ${IMAGE_TAG}"
+
+      # Create PipelineRun from template
+      cat deploy/tekton/pipelinerun.yaml | \
+        sed "s|__GIT_URL__|${CI_REPOSITORY_URL}|g" | \
+        sed "s|__GIT_REVISION__|${CI_COMMIT_SHA}|g" | \
+        sed "s|__IMAGE_TAG__|${IMAGE_TAG}|g" | \
+        sed "s|__REGISTRY__|${REGISTRY_URL}|g" | \
+        kubectl create -f - -n ${TEKTON_NAMESPACE}
+
+      # Get the PipelineRun name
+      PIPELINERUN_NAME=$(kubectl get pipelinerun -n ${TEKTON_NAMESPACE} \
+        --sort-by='.metadata.creationTimestamp' \
+        -l "tekton.dev/pipeline=${PIPELINE_NAME}" \
+        -o jsonpath='{.items[-1].metadata.name}')
+
+      echo "Created PipelineRun: ${PIPELINERUN_NAME}"
+      echo "PIPELINERUN_NAME=${PIPELINERUN_NAME}" >> trigger.env
+  artifacts:
+    reports:
+      dotenv: trigger.env
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+# =============================================================================
+# Stage: Monitor Tekton Pipeline
+# =============================================================================
+
+monitor:tekton:
+  stage: monitor
+  image: bitnami/kubectl:latest
+  needs:
+    - job: trigger:tekton
+      artifacts: true
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
+    - chmod 600 ~/.kube/config
+  script:
+    - |
+      echo "Monitoring PipelineRun: ${PIPELINERUN_NAME}"
+
+      # Wait for completion (timeout: 30 minutes)
+      TIMEOUT=1800
+      ELAPSED=0
+      INTERVAL=30
+
+      while [ $ELAPSED -lt $TIMEOUT ]; do
+        STATUS=$(kubectl get pipelinerun ${PIPELINERUN_NAME} -n ${TEKTON_NAMESPACE} \
+          -o jsonpath='{.status.conditions[?(@.type=="Succeeded")].status}')
+        REASON=$(kubectl get pipelinerun ${PIPELINERUN_NAME} -n ${TEKTON_NAMESPACE} \
+          -o jsonpath='{.status.conditions[?(@.type=="Succeeded")].reason}')
+
+        echo "[$(date +%H:%M:%S)] Status: ${STATUS} (${REASON})"
+
+        if [ "${STATUS}" = "True" ]; then
+          echo ""
+          echo "========================================"
+          echo "  Pipeline SUCCEEDED"
+          echo "========================================"
+          exit 0
+        elif [ "${STATUS}" = "False" ]; then
+          echo ""
+          echo "========================================"
+          echo "  Pipeline FAILED: ${REASON}"
+          echo "========================================"
+          echo ""
+          echo "Fetching logs..."
+          kubectl get pipelinerun ${PIPELINERUN_NAME} -n ${TEKTON_NAMESPACE} -o yaml
+          exit 1
+        fi
+
+        sleep $INTERVAL
+        ELAPSED=$((ELAPSED + INTERVAL))
+      done
+
+      echo "ERROR: Pipeline timed out after ${TIMEOUT}s"
+      exit 1
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+# =============================================================================
+# Manual Jobs
+# =============================================================================
+
+deploy:dev:
+  stage: .post
+  image: bitnami/kubectl:latest
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
+  script:
+    - |
+      echo "Deploying to dev cluster..."
+      make deploy IMG=${REGISTRY_URL}/labyrinth:${CI_COMMIT_SHORT_SHA}
+  environment:
+    name: development
+  when: manual
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

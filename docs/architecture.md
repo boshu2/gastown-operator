@@ -136,12 +136,12 @@ This handles:
 
 ```yaml
 gtConfig:
-  townRoot: "/Users/you/gt"
+  townRoot: "/home/user/workspaces"
   gtBinary: "/usr/local/bin/gt"
 
 volumes:
   enabled: true
-  hostPath: "/Users/you/gt"
+  hostPath: "/home/user/workspaces"
 ```
 
 ## Metrics

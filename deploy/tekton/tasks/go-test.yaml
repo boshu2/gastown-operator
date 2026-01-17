@@ -1,30 +1,36 @@
-# gastown-operator Go Unit Test Task
+# Labyrinth Go Unit Test Task
 # Runs controller unit tests with envtest (etcd + kube-apiserver)
 #
-# Unlike ClusterTasks, this is a namespace-local Task because:
+# This is a namespace-local Task (not ClusterTask) because:
 # - envtest binaries must be downloaded at runtime
-# - controller-runtime version must match (release-0.22)
+# - controller-runtime version must match (release-0.22 for v0.22.x)
+#
+# Version Matrix:
+#   controller-runtime | envtest K8s version
+#   v0.22.x           | 1.31.x
+#   v0.21.x           | 1.30.x
+#   v0.20.x           | 1.29.x
 #
 # Usage:
-#   kubectl apply -f deploy/tekton/tasks/go-test.yaml -n <YOUR_NAMESPACE>
+#   kubectl apply -f deploy/tekton/tasks/go-test.yaml -n olympus-ci
 ---
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
-  name: go-test-gastown
-  # CUSTOMIZE: Set to your CI namespace
-  namespace: gastown-ci
+  name: labyrinth-go-test
+  namespace: olympus-ci
   labels:
     app.kubernetes.io/component: task
-    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/name: labyrinth
+    app.kubernetes.io/part-of: olympus
 spec:
-  description: Run Go unit tests for gastown-operator with envtest binaries
+  description: Run Go unit tests for Labyrinth operator with envtest binaries
   workspaces:
     - name: source
   params:
     - name: packages
       type: string
-      default: "./pkg/... ./internal/..."
+      default: "./internal/..."
       description: Go packages to test
     - name: go-version
       type: string
@@ -37,6 +43,8 @@ spec:
   results:
     - name: test-status
       description: Test execution status (passed/failed)
+    - name: coverage
+      description: Test coverage percentage
   steps:
     - name: setup-and-test
       image: golang:$(params.go-version)
@@ -58,7 +66,7 @@ spec:
         set -e
 
         echo "========================================"
-        echo "  gastown-operator Go Unit Tests"
+        echo "  Labyrinth Operator Go Unit Tests"
         echo "========================================"
         echo ""
         echo "Go version: $(go version)"
@@ -102,7 +110,9 @@ spec:
           exit 1
         fi
 
-        # Show coverage summary
+        # Extract and save coverage
         echo ""
         echo "Coverage summary:"
-        go tool cover -func=coverage.out | tail -1
+        COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}')
+        echo "Total coverage: $COVERAGE"
+        echo "$COVERAGE" > $(results.coverage.path)

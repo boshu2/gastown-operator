@@ -41,11 +41,11 @@ You should see:
 apiVersion: gastown.gastown.io/v1alpha1
 kind: Rig
 metadata:
-  name: fractal
+  name: myproject
 spec:
-  gitURL: "git@github.com:myorg/fractal.git"
+  gitURL: "git@github.com:myorg/myproject.git"
   beadsPrefix: "frac"
-  localPath: "/Users/you/gt/fractal"
+  localPath: "/home/user/workspaces/myproject"
   settings:
     namepoolTheme: "mad-max"
     maxPolecats: 5
@@ -61,12 +61,12 @@ kubectl apply -f my-rig.yaml
 
 ```bash
 kubectl get rigs
-kubectl describe rig fractal
+kubectl describe rig myproject
 ```
 
 The operator will:
 1. Verify the local path exists
-2. Query `gt rig status fractal` for current state
+2. Query `gt rig status myproject` for current state
 3. Update the Rig status with polecat count, active convoys, etc.
 
 ## Create a Polecat
@@ -81,16 +81,16 @@ metadata:
   name: worker-1
   namespace: default
 spec:
-  rig: fractal
+  rig: myproject
   desiredState: Working
-  beadID: "frac-abc-123"
+  beadID: "mp-abc-123"
 ```
 
 ```bash
 kubectl apply -f worker-polecat.yaml
 ```
 
-The operator will call `gt sling frac-abc-123 fractal` to spawn the polecat.
+The operator will call `gt sling mp-abc-123 myproject` to spawn the polecat.
 
 ## Create a Convoy
 
@@ -106,9 +106,9 @@ metadata:
 spec:
   description: "Wave 1 implementation tasks"
   trackedBeads:
-    - "frac-abc-123"
-    - "frac-def-456"
-    - "frac-ghi-789"
+    - "mp-abc-123"
+    - "mp-def-456"
+    - "mp-ghi-789"
   notifyOnComplete: true
 ```
 
