@@ -1,0 +1,198 @@
+# Labyrinth E2E Test Task
+# Runs end-to-end tests in a kind (Kubernetes-in-Docker) cluster
+#
+# This task:
+#   1. Creates a kind cluster
+#   2. Loads the operator image into kind
+#   3. Deploys CRDs and the operator
+#   4. Runs E2E tests
+#   5. Cleans up the kind cluster
+#
+# Prerequisites:
+#   - Docker-in-Docker (DinD) sidecar with privileged access
+#   - Built operator image available (passed as IMAGE param)
+#
+# Usage:
+#   kubectl apply -f deploy/tekton/tasks/e2e-test.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: labyrinth-e2e-test
+  namespace: olympus-ci
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: labyrinth
+    app.kubernetes.io/part-of: olympus
+spec:
+  description: Run E2E tests for Labyrinth operator using kind cluster
+  workspaces:
+    - name: source
+    - name: dockerconfig
+      description: Registry credentials for pulling operator image
+  params:
+    - name: IMAGE
+      type: string
+      description: Operator image to test (built in previous stage)
+    - name: go-image
+      type: string
+      default: "dprusocplvjmp01.deepsky.lab:5000/projectquay/golang:1.24"
+      description: Go container image to use
+    - name: kind-version
+      type: string
+      default: "v0.27.0"
+      description: Kind version to install
+    - name: k8s-version
+      type: string
+      default: "v1.31.0"
+      description: Kubernetes version for kind cluster
+  results:
+    - name: e2e-status
+      description: E2E test execution status (passed/failed/skipped)
+  sidecars:
+    # Docker-in-Docker sidecar for kind
+    - name: dind
+      image: docker:26-dind
+      args:
+        - "--insecure-registry=dprusocplvjmp01.deepsky.lab:5000"
+      securityContext:
+        privileged: true
+      env:
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+      volumeMounts:
+        - name: dind-storage
+          mountPath: /var/lib/docker
+      readinessProbe:
+        exec:
+          command:
+            - docker
+            - info
+        initialDelaySeconds: 10
+        periodSeconds: 5
+  volumes:
+    - name: dind-storage
+      emptyDir: {}
+  steps:
+    - name: e2e-tests
+      image: $(params.go-image)
+      workingDir: $(workspaces.source.path)
+      computeResources:
+        requests:
+          memory: 2Gi
+          cpu: "1"
+        limits:
+          memory: 4Gi
+          cpu: "2"
+      env:
+        - name: DOCKER_HOST
+          value: tcp://localhost:2375
+        - name: GOCACHE
+          value: "/workspace/source/.cache/go-build"
+        - name: GOMODCACHE
+          value: "/workspace/source/.cache/go-mod"
+      script: |
+        #!/bin/bash
+        set -e
+
+        echo "========================================"
+        echo "  Labyrinth Operator E2E Tests"
+        echo "========================================"
+        echo ""
+        echo "Image: $(params.IMAGE)"
+        echo "Kind version: $(params.kind-version)"
+        echo "K8s version: $(params.k8s-version)"
+        echo ""
+
+        # Wait for Docker daemon
+        echo "Waiting for Docker daemon..."
+        for i in {1..30}; do
+          if docker info >/dev/null 2>&1; then
+            echo "Docker is ready"
+            break
+          fi
+          sleep 2
+        done
+
+        if ! docker info >/dev/null 2>&1; then
+          echo "ERROR: Docker daemon not available"
+          echo "skipped" > $(results.e2e-status.path)
+          exit 1
+        fi
+
+        # Install kind
+        echo ""
+        echo "Installing kind $(params.kind-version)..."
+        curl -Lo ./kind "https://kind.sigs.k8s.io/dl/$(params.kind-version)/kind-linux-amd64"
+        chmod +x ./kind
+        mv ./kind /usr/local/bin/kind
+
+        # Install kubectl
+        echo "Installing kubectl..."
+        curl -Lo ./kubectl "https://dl.k8s.io/release/$(params.k8s-version)/bin/linux/amd64/kubectl"
+        chmod +x ./kubectl
+        mv ./kubectl /usr/local/bin/kubectl
+
+        # Create kind cluster
+        echo ""
+        echo "Creating kind cluster..."
+        cat <<EOF | kind create cluster --name labyrinth-e2e --image kindest/node:$(params.k8s-version) --config=-
+        kind: Cluster
+        apiVersion: kind.x-k8s.io/v1alpha4
+        containerdConfigPatches:
+        - |-
+          [plugins."io.containerd.grpc.v1.cri".registry.mirrors."dprusocplvjmp01.deepsky.lab:5000"]
+            endpoint = ["http://dprusocplvjmp01.deepsky.lab:5000"]
+          [plugins."io.containerd.grpc.v1.cri".registry.configs."dprusocplvjmp01.deepsky.lab:5000".tls]
+            insecure_skip_verify = true
+        EOF
+
+        # Set kubeconfig
+        export KUBECONFIG="${HOME}/.kube/config"
+        kind get kubeconfig --name labyrinth-e2e > "$KUBECONFIG"
+
+        # Verify cluster
+        echo ""
+        echo "Verifying cluster..."
+        kubectl cluster-info
+        kubectl get nodes
+
+        # Pull and load operator image
+        echo ""
+        echo "Loading operator image into kind..."
+        docker pull $(params.IMAGE) || {
+          echo "WARNING: Could not pull image, attempting to use local"
+        }
+        kind load docker-image $(params.IMAGE) --name labyrinth-e2e
+
+        # Run E2E tests
+        echo ""
+        echo "Running E2E tests..."
+        echo "----------------------------------------"
+
+        export USE_EXISTING_CLUSTER=true
+        export IMG=$(params.IMAGE)
+
+        if make test-e2e 2>&1 | tee /tmp/e2e-output.txt; then
+          echo "passed" > $(results.e2e-status.path)
+          echo ""
+          echo "========================================"
+          echo "  E2E Tests PASSED"
+          echo "========================================"
+        else
+          echo "failed" > $(results.e2e-status.path)
+          echo ""
+          echo "========================================"
+          echo "  E2E Tests FAILED"
+          echo "========================================"
+          echo ""
+          echo "Collecting debug information..."
+          kubectl get pods -A
+          kubectl get events -A --sort-by='.lastTimestamp' | tail -50
+          exit 1
+        fi
+
+        # Cleanup
+        echo ""
+        echo "Cleaning up kind cluster..."
+        kind delete cluster --name labyrinth-e2e

@@ -91,10 +91,10 @@ func main() {
 	}
 
 	// Create gt client
-	gtClient := &gt.Client{
+	gtClient := gt.NewClientWithConfig(gt.ClientConfig{
 		GTPath:   gtPath,
 		TownRoot: townRoot,
-	}
+	})
 
 	// Setup Rig controller
 	if err := (&controller.RigReconciler{

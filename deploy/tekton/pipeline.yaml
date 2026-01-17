@@ -54,6 +54,10 @@ spec:
       type: string
       default: "1.31.x"
       description: Kubernetes version for envtest (must match controller-runtime)
+    - name: git-token
+      type: string
+      default: ""
+      description: Git token for private repo access during Docker build
 
   workspaces:
     - name: source
@@ -167,7 +171,7 @@ spec:
         - name: CONTEXT
           value: "."
         - name: BUILD_EXTRA_ARGS
-          value: "--build-arg=VERSION=$(params.image-tag) --build-arg=GO_IMAGE=dprusocplvjmp01.deepsky.lab:5000/library/golang:1.24-alpine --build-arg=RUNTIME_IMAGE=dprusocplvjmp01.deepsky.lab:5000/distroless/static:nonroot"
+          value: "--build-arg=VERSION=$(params.image-tag) --build-arg=GO_IMAGE=dprusocplvjmp01.deepsky.lab:5000/library/golang:1.24-alpine --build-arg=RUNTIME_IMAGE=dprusocplvjmp01.deepsky.lab:5000/distroless/static:nonroot --build-arg=GIT_TOKEN=$(params.git-token)"
 
     # =========================================================================
     # Stage 4: Image Security Scan
@@ -191,6 +195,24 @@ spec:
           value: "MEDIUM,HIGH,CRITICAL"
         - name: FAIL_ON
           value: "$(params.trivy-fail-on)"
+
+    # =========================================================================
+    # Stage 5: E2E Tests (kind cluster)
+    # =========================================================================
+
+    - name: e2e-tests
+      taskRef:
+        name: labyrinth-e2e-test
+      runAfter:
+        - scan-image
+      workspaces:
+        - name: source
+          workspace: source
+        - name: dockerconfig
+          workspace: dockerconfig
+      params:
+        - name: IMAGE
+          value: "$(params.registry)/labyrinth:$(params.image-tag)"
 
   # ===========================================================================
   # Finally: Summary Report
@@ -224,5 +246,10 @@ spec:
               echo "  - Trivy filesystem scan (secrets, misconfigs)"
               echo "  - Hadolint Dockerfile lint"
               echo "  - Trivy image vulnerability scan"
+              echo ""
+              echo "E2E tests completed:"
+              echo "  - Kind cluster provisioned"
+              echo "  - CRDs installed and operator deployed"
+              echo "  - Controller reconciliation verified"
               echo ""
               echo "========================================"

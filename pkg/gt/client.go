@@ -23,41 +23,140 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
+
+	gterrors "github.com/org/gastown-operator/pkg/errors"
 )
 
-// Client wraps the gt CLI tool for operator use
-type Client struct {
+const (
+	// DefaultTimeout is the default timeout for gt CLI commands.
+	// This prevents hung processes from blocking reconciliation indefinitely.
+	DefaultTimeout = 30 * time.Second
+)
+
+// ClientConfig holds configuration for the gt CLI client.
+type ClientConfig struct {
 	// GTPath is the path to the gt binary
 	GTPath string
 
 	// TownRoot is the GT_TOWN_ROOT directory
 	TownRoot string
+
+	// Timeout is the maximum duration for a single gt CLI command.
+	// If zero, DefaultTimeout is used.
+	Timeout time.Duration
+
+	// CircuitBreaker is an optional circuit breaker for the client.
+	// If nil, no circuit breaker is used.
+	CircuitBreaker *CircuitBreaker
 }
 
-// NewClient creates a new gt client with default settings
+// Client wraps the gt CLI tool for operator use
+type Client struct {
+	config ClientConfig
+}
+
+// GTPath returns the configured gt binary path.
+func (c *Client) GTPath() string {
+	return c.config.GTPath
+}
+
+// TownRoot returns the configured town root directory.
+func (c *Client) TownRoot() string {
+	return c.config.TownRoot
+}
+
+// Timeout returns the configured timeout, or DefaultTimeout if not set.
+func (c *Client) Timeout() time.Duration {
+	if c.config.Timeout <= 0 {
+		return DefaultTimeout
+	}
+	return c.config.Timeout
+}
+
+// NewClient creates a new gt client with default settings.
 func NewClient(townRoot string) *Client {
-	gtPath := "gt"
-	if p := os.Getenv("GT_PATH"); p != "" {
-		gtPath = p
+	return NewClientWithConfig(ClientConfig{
+		TownRoot: townRoot,
+	})
+}
+
+// NewClientWithConfig creates a new gt client with the given configuration.
+func NewClientWithConfig(cfg ClientConfig) *Client {
+	if cfg.GTPath == "" {
+		cfg.GTPath = "gt"
+		if p := os.Getenv("GT_PATH"); p != "" {
+			cfg.GTPath = p
+		}
+	}
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = DefaultTimeout
 	}
 	return &Client{
-		GTPath:   gtPath,
-		TownRoot: townRoot,
+		config: cfg,
 	}
 }
 
-// run executes a gt command and returns stdout
+// CircuitBreaker returns the configured circuit breaker, if any.
+func (c *Client) CircuitBreaker() *CircuitBreaker {
+	return c.config.CircuitBreaker
+}
+
+// ErrCircuitOpen is returned when the circuit breaker is open.
+var ErrCircuitOpen = gterrors.New("circuit breaker is open")
+
+// run executes a gt command and returns stdout.
+// It applies the configured timeout to prevent hung processes.
+// If a circuit breaker is configured, it checks/updates the circuit state.
 func (c *Client) run(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, c.GTPath, args...)
-	cmd.Env = append(os.Environ(), "GT_TOWN_ROOT="+c.TownRoot)
+	// Check circuit breaker if configured
+	if cb := c.config.CircuitBreaker; cb != nil {
+		if !cb.AllowRequest() {
+			return nil, gterrors.Transient(ErrCircuitOpen, "gt CLI circuit breaker is open, failing fast")
+		}
+	}
+
+	// Apply timeout to context
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.Timeout())
+	defer cancel()
+
+	cmd := exec.CommandContext(timeoutCtx, c.config.GTPath, args...)
+	cmd.Env = append(os.Environ(), "GT_TOWN_ROOT="+c.config.TownRoot)
 
 	output, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("gt %s: %w: %s", strings.Join(args, " "), err, string(exitErr.Stderr))
+		// Record failure with circuit breaker
+		if cb := c.config.CircuitBreaker; cb != nil {
+			cb.RecordFailure()
 		}
-		return nil, fmt.Errorf("gt %s: %w", strings.Join(args, " "), err)
+
+		cmdStr := strings.Join(args, " ")
+
+		// Check if the error is due to context timeout/cancellation
+		if timeoutCtx.Err() == context.DeadlineExceeded {
+			return nil, gterrors.Transient(err, fmt.Sprintf("gt %s: command timed out after %v", cmdStr, c.Timeout()))
+		}
+		if timeoutCtx.Err() == context.Canceled {
+			return nil, gterrors.Transient(err, fmt.Sprintf("gt %s: command cancelled", cmdStr))
+		}
+
+		// Handle exit errors with stderr
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, gterrors.GTCLIError(
+				fmt.Errorf("%w: %s", err, string(exitErr.Stderr)),
+				cmdStr,
+			)
+		}
+
+		// Other errors (e.g., command not found)
+		return nil, gterrors.GTCLIError(err, cmdStr)
 	}
+
+	// Record success with circuit breaker
+	if cb := c.config.CircuitBreaker; cb != nil {
+		cb.RecordSuccess()
+	}
+
 	return output, nil
 }
 
