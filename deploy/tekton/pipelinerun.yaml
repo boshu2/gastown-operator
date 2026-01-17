@@ -86,9 +86,10 @@ spec:
               storage: 2Gi
           storageClassName: flash
     # Registry credentials for image push/pull
+    # Uses shared registry-credentials in olympus-ci namespace
     - name: dockerconfig
       secret:
-        secretName: gastown-registry-credentials
+        secretName: registry-credentials
     # Reports workspace (reuses source for simplicity)
     - name: reports
       volumeClaimTemplate:

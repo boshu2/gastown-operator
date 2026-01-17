@@ -114,7 +114,7 @@ spec:
         - name: FAIL_ON
           value: ""  # Don't fail on findings, report only
 
-    # 2c. Hadolint - Dockerfile best practices
+    # 2c. Hadolint - Dockerfile best practices (lint Tekton Dockerfile)
     - name: lint-dockerfile
       taskRef:
         name: jren-hadolint-scan
@@ -126,12 +126,32 @@ spec:
           workspace: source
       params:
         - name: DOCKERFILE
-          value: "Dockerfile"
+          value: "Dockerfile.tekton"
         - name: FAILURE_THRESHOLD
           value: "error"  # Only fail on errors, not warnings
 
     # =========================================================================
-    # Stage 3: Build Image
+    # Stage 3: Pre-build gt CLI (needed for operator image)
+    # =========================================================================
+
+    # 3a. Build gt CLI from daedalus source
+    # This runs after clone so git credentials are available
+    - name: build-gt-cli
+      taskRef:
+        name: build-gt-cli
+      runAfter:
+        - clone
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: daedalus-url
+          value: "https://github.com/boshu2/gastown.git"
+        - name: daedalus-revision
+          value: "main"
+
+    # =========================================================================
+    # Stage 4: Build Image
     # =========================================================================
 
     - name: build-operator
@@ -142,6 +162,7 @@ spec:
         - go-test
         - scan-secrets
         - lint-dockerfile
+        - build-gt-cli
       workspaces:
         - name: source
           workspace: source
@@ -151,7 +172,7 @@ spec:
         - name: IMAGE
           value: "$(params.registry)/gastown-operator:$(params.image-tag)"
         - name: DOCKERFILE
-          value: "Dockerfile"
+          value: "Dockerfile.tekton"
         - name: CONTEXT
           value: "."
         - name: PUSH
@@ -162,7 +183,7 @@ spec:
           value: "--build-arg=GO_IMAGE=$(params.registry)/ci-images/golang:1.24-alpine --build-arg=DISTROLESS_IMAGE=$(params.registry)/ci-images/distroless-static:nonroot"
 
     # =========================================================================
-    # Stage 4: Image Security Scan + SBOM
+    # Stage 5: Image Security Scan + SBOM
     # =========================================================================
 
     - name: scan-image

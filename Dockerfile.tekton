@@ -1,0 +1,48 @@
+# gastown-operator Dockerfile for Tekton CI
+# Multi-stage build for the Gas Town Kubernetes operator
+#
+# IMPORTANT: This Dockerfile expects gt CLI to be pre-built and available
+# at bin/gt in the build context. The Tekton pipeline runs the build-gt-cli
+# Task before Kaniko to create this binary.
+#
+# Build args allow DPR image override in CI:
+#   --build-arg GO_IMAGE=${DPR_REGISTRY}/ci-images/golang:1.24-alpine
+
+ARG GO_IMAGE=golang:1.24-alpine
+ARG DISTROLESS_IMAGE=gcr.io/distroless/static:nonroot
+
+# ------------------------------------------------------------------------------
+# Stage 1: Build operator manager
+# ------------------------------------------------------------------------------
+FROM ${GO_IMAGE} AS builder
+
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+RUN apk add --no-cache git ca-certificates
+WORKDIR /src
+
+# Cache deps
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Build
+COPY . .
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/manager cmd/main.go
+
+# ------------------------------------------------------------------------------
+# Stage 2: Minimal runtime image
+# ------------------------------------------------------------------------------
+FROM ${DISTROLESS_IMAGE}
+
+WORKDIR /
+
+# Copy pre-built gt CLI from context (built by Tekton build-gt-cli Task)
+COPY bin/gt /usr/local/bin/gt
+
+# Copy operator manager
+COPY --from=builder /out/manager .
+
+USER 65532:65532
+ENTRYPOINT ["/manager"]
