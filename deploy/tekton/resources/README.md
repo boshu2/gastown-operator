@@ -1,7 +1,7 @@
-# Namespace Resources for gastown-operator CI
+# Namespace Resources for Labyrinth CI
 
 This document describes the Kubernetes resources needed to run the
-gastown-operator Tekton pipeline.
+Labyrinth Tekton pipeline.
 
 ## Required Resources
 
@@ -10,7 +10,7 @@ gastown-operator Tekton pipeline.
 Create a namespace for your CI pipelines:
 
 ```bash
-kubectl create namespace gastown-ci
+kubectl create namespace olympus-ci
 ```
 
 ### 2. Registry Credentials Secret
@@ -22,7 +22,7 @@ kubectl create secret docker-registry registry-credentials \
   --docker-server=<YOUR_REGISTRY> \
   --docker-username=${REGISTRY_USER} \
   --docker-password=${REGISTRY_PASSWORD} \
-  -n gastown-ci
+  -n olympus-ci
 ```
 
 **Examples for common registries:**
@@ -33,21 +33,21 @@ kubectl create secret docker-registry registry-credentials \
   --docker-server=ghcr.io \
   --docker-username=${GITHUB_USER} \
   --docker-password=${GITHUB_TOKEN} \
-  -n gastown-ci
+  -n olympus-ci
 
 # Docker Hub
 kubectl create secret docker-registry registry-credentials \
   --docker-server=docker.io \
   --docker-username=${DOCKER_USER} \
   --docker-password=${DOCKER_PASSWORD} \
-  -n gastown-ci
+  -n olympus-ci
 
 # Quay.io
 kubectl create secret docker-registry registry-credentials \
   --docker-server=quay.io \
   --docker-username=${QUAY_USER} \
   --docker-password=${QUAY_PASSWORD} \
-  -n gastown-ci
+  -n olympus-ci
 ```
 
 ### 3. ServiceAccount
@@ -56,13 +56,13 @@ The `pipeline` ServiceAccount is typically created automatically when
 Tekton Pipelines is installed. Verify it exists:
 
 ```bash
-kubectl get sa pipeline -n gastown-ci
+kubectl get sa pipeline -n olympus-ci
 ```
 
 If missing, create it:
 
 ```bash
-kubectl create serviceaccount pipeline -n gastown-ci
+kubectl create serviceaccount pipeline -n olympus-ci
 ```
 
 ### 4. Storage Class (Optional)
@@ -83,7 +83,7 @@ Run this to check all required resources:
 
 ```bash
 #!/bin/bash
-NS=gastown-ci
+NS=olympus-ci
 
 echo "Checking namespace..."
 kubectl get namespace $NS || echo "ERROR: namespace missing"
