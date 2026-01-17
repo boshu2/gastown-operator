@@ -35,15 +35,19 @@ const (
 	WorkspaceVolumeName   = "workspace"
 	GitCredsVolumeName    = "git-creds"
 	ClaudeCredsVolumeName = "claude-creds"
+	TmpVolumeName         = "tmp"
+	HomeVolumeName        = "home"
 
 	// Mount paths
 	WorkspaceMountPath   = "/workspace"
 	GitCredsMountPath    = "/git-creds"
 	ClaudeCredsMountPath = "/claude-creds"
+	TmpMountPath         = "/tmp"
+	HomeMountPath        = "/home/nonroot"
 
-	// Default images
-	DefaultGitImage    = "alpine/git:2.43.0"
-	DefaultClaudeImage = "node:20-slim"
+	// Default images - UBI-based for FIPS/OpenShift compliance
+	DefaultGitImage    = "registry.access.redhat.com/ubi9/ubi-minimal:9.3"
+	DefaultClaudeImage = "registry.access.redhat.com/ubi9/nodejs-20:1"
 
 	// Default resource values
 	DefaultCPURequest    = "500m"
@@ -84,6 +88,7 @@ func (b *Builder) Build() (*corev1.Pod, error) {
 		Spec: corev1.PodSpec{
 			RestartPolicy:         corev1.RestartPolicyNever,
 			ActiveDeadlineSeconds: k8sSpec.ActiveDeadlineSeconds,
+			SecurityContext:       b.buildPodSecurityContext(),
 			InitContainers: []corev1.Container{
 				b.buildGitInitContainer(),
 			},
@@ -141,10 +146,11 @@ echo "Git setup complete. Working branch: %s"
 	)
 
 	return corev1.Container{
-		Name:    GitInitContainerName,
-		Image:   DefaultGitImage,
-		Command: []string{"/bin/sh", "-c"},
-		Args:    []string{gitScript},
+		Name:            GitInitContainerName,
+		Image:           DefaultGitImage,
+		Command:         []string{"/bin/sh", "-c"},
+		Args:            []string{gitScript},
+		SecurityContext: b.buildSecurityContext(),
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      WorkspaceVolumeName,
@@ -154,6 +160,14 @@ echo "Git setup complete. Working branch: %s"
 				Name:      GitCredsVolumeName,
 				MountPath: GitCredsMountPath,
 				ReadOnly:  true,
+			},
+			{
+				Name:      TmpVolumeName,
+				MountPath: TmpMountPath,
+			},
+			{
+				Name:      HomeVolumeName,
+				MountPath: HomeMountPath,
 			},
 		},
 	}
@@ -187,11 +201,12 @@ exec claude --dangerously-skip-permissions
 `
 
 	container := corev1.Container{
-		Name:       ClaudeContainerName,
-		Image:      image,
-		Command:    []string{"/bin/sh", "-c"},
-		Args:       []string{agentScript},
-		WorkingDir: fmt.Sprintf("%s/repo", WorkspaceMountPath),
+		Name:            ClaudeContainerName,
+		Image:           image,
+		Command:         []string{"/bin/sh", "-c"},
+		Args:            []string{agentScript},
+		WorkingDir:      fmt.Sprintf("%s/repo", WorkspaceMountPath),
+		SecurityContext: b.buildSecurityContext(),
 		Env: []corev1.EnvVar{
 			{
 				Name:  "CLAUDE_CONFIG_DIR",
@@ -209,6 +224,10 @@ exec claude --dangerously-skip-permissions
 				Name:  "GT_RIG",
 				Value: b.polecat.Spec.Rig,
 			},
+			{
+				Name:  "HOME",
+				Value: HomeMountPath,
+			},
 		},
 		VolumeMounts: []corev1.VolumeMount{
 			{
@@ -219,6 +238,14 @@ exec claude --dangerously-skip-permissions
 				Name:      ClaudeCredsVolumeName,
 				MountPath: ClaudeCredsMountPath,
 				ReadOnly:  true,
+			},
+			{
+				Name:      TmpVolumeName,
+				MountPath: TmpMountPath,
+			},
+			{
+				Name:      HomeVolumeName,
+				MountPath: HomeMountPath,
 			},
 		},
 		Resources: b.buildResources(),
@@ -255,6 +282,18 @@ func (b *Builder) buildVolumes() []corev1.Volume {
 				},
 			},
 		},
+		{
+			Name: TmpVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
+		{
+			Name: HomeVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
 	}
 }
 
@@ -283,4 +322,46 @@ func (b *Builder) buildResources() corev1.ResourceRequirements {
 // int32Ptr returns a pointer to an int32
 func int32Ptr(i int32) *int32 {
 	return &i
+}
+
+// int64Ptr returns a pointer to an int64
+func int64Ptr(i int64) *int64 {
+	return &i
+}
+
+// boolPtr returns a pointer to a bool
+func boolPtr(b bool) *bool {
+	return &b
+}
+
+// buildPodSecurityContext returns a restricted Pod-level SecurityContext
+// compliant with OpenShift's restricted SCC and Kubernetes Pod Security Standards
+func (b *Builder) buildPodSecurityContext() *corev1.PodSecurityContext {
+	return &corev1.PodSecurityContext{
+		RunAsNonRoot: boolPtr(true),
+		RunAsUser:    int64Ptr(65532),
+		RunAsGroup:   int64Ptr(65532),
+		FSGroup:      int64Ptr(65532),
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+}
+
+// buildSecurityContext returns a restricted container-level SecurityContext
+// compliant with OpenShift's restricted SCC and Kubernetes Pod Security Standards
+func (b *Builder) buildSecurityContext() *corev1.SecurityContext {
+	return &corev1.SecurityContext{
+		RunAsNonRoot:             boolPtr(true),
+		RunAsUser:                int64Ptr(65532),
+		RunAsGroup:               int64Ptr(65532),
+		AllowPrivilegeEscalation: boolPtr(false),
+		ReadOnlyRootFilesystem:   boolPtr(true),
+		Capabilities: &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+		},
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
 }
