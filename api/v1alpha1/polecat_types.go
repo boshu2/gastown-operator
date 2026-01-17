@@ -42,6 +42,86 @@ const (
 	ExecutionModeKubernetes ExecutionMode = "kubernetes"
 )
 
+// AgentType represents the coding agent to use
+// +kubebuilder:validation:Enum=opencode;claude-code;aider;custom
+type AgentType string
+
+const (
+	AgentTypeOpenCode   AgentType = "opencode"
+	AgentTypeClaudeCode AgentType = "claude-code"
+	AgentTypeAider      AgentType = "aider"
+	AgentTypeCustom     AgentType = "custom"
+)
+
+// LLMProvider represents the LLM provider to use
+// +kubebuilder:validation:Enum=litellm;anthropic;openai;ollama
+type LLMProvider string
+
+const (
+	LLMProviderLiteLLM   LLMProvider = "litellm"
+	LLMProviderAnthropic LLMProvider = "anthropic"
+	LLMProviderOpenAI    LLMProvider = "openai"
+	LLMProviderOllama    LLMProvider = "ollama"
+)
+
+// SecretKeyRef references a key in a Secret
+type SecretKeyRef struct {
+	// Name is the name of the secret
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Key is the key in the secret
+	// +kubebuilder:validation:Required
+	Key string `json:"key"`
+}
+
+// ModelProviderConfig configures the LLM provider endpoint
+type ModelProviderConfig struct {
+	// Endpoint is the API base URL (e.g., https://ai-gateway.example.com/v1)
+	// +optional
+	Endpoint string `json:"endpoint,omitempty"`
+
+	// APIKeySecretRef references the secret containing the API key
+	// +optional
+	APIKeySecretRef *SecretKeyRef `json:"apiKeySecretRef,omitempty"`
+}
+
+// AgentConfig configures the coding agent
+type AgentConfig struct {
+	// Provider is the LLM provider to use
+	// +kubebuilder:default=litellm
+	// +optional
+	Provider LLMProvider `json:"provider,omitempty"`
+
+	// Model is the model name/ID to use (e.g., "claude-sonnet-4", "devstral-123b")
+	// +optional
+	Model string `json:"model,omitempty"`
+
+	// ModelProvider configures the LLM endpoint and credentials
+	// +optional
+	ModelProvider *ModelProviderConfig `json:"modelProvider,omitempty"`
+
+	// Image overrides the default container image for the agent
+	// +optional
+	Image string `json:"image,omitempty"`
+
+	// Command overrides the default entrypoint command
+	// +optional
+	Command []string `json:"command,omitempty"`
+
+	// Args provides additional arguments to the agent command
+	// +optional
+	Args []string `json:"args,omitempty"`
+
+	// ConfigMapRef references a ConfigMap containing agent configuration (e.g., opencode.json)
+	// +optional
+	ConfigMapRef *corev1.LocalObjectReference `json:"configMapRef,omitempty"`
+
+	// Env provides additional environment variables
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
+}
+
 // KubernetesSpec defines configuration for kubernetes execution mode
 type KubernetesSpec struct {
 	// GitRepository is the git repo URL to clone (SSH or HTTPS format)
@@ -106,6 +186,27 @@ type PolecatSpec struct {
 	// Required when executionMode is "kubernetes"
 	// +optional
 	Kubernetes *KubernetesSpec `json:"kubernetes,omitempty"`
+
+	// Agent is the coding agent type to use
+	// +kubebuilder:default=opencode
+	// +optional
+	Agent AgentType `json:"agent,omitempty"`
+
+	// AgentConfig provides configuration for the coding agent
+	// +optional
+	AgentConfig *AgentConfig `json:"agentConfig,omitempty"`
+
+	// Resources defines compute resources for the polecat pod
+	// +optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// TTLSecondsAfterFinished limits how long a completed polecat persists
+	// +optional
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
+
+	// MaxIdleSeconds terminates polecat if idle for this duration
+	// +optional
+	MaxIdleSeconds *int32 `json:"maxIdleSeconds,omitempty"`
 }
 
 // PolecatPhase represents the observed lifecycle phase
@@ -168,6 +269,18 @@ type PolecatStatus struct {
 	// +optional
 	CleanupStatus CleanupStatus `json:"cleanupStatus,omitempty"`
 
+	// Agent is the agent type currently running
+	// +optional
+	Agent AgentType `json:"agent,omitempty"`
+
+	// AgentImage is the container image being used
+	// +optional
+	AgentImage string `json:"agentImage,omitempty"`
+
+	// AgentModel is the LLM model being used
+	// +optional
+	AgentModel string `json:"agentModel,omitempty"`
+
 	// Conditions represent the current state of the Polecat resource
 	// +listType=map
 	// +listMapKey=type
@@ -179,9 +292,12 @@ type PolecatStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Rig",type="string",JSONPath=".spec.rig"
 // +kubebuilder:printcolumn:name="Mode",type="string",JSONPath=".spec.executionMode"
+// +kubebuilder:printcolumn:name="Agent",type="string",JSONPath=".spec.agent"
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Bead",type="string",JSONPath=".status.assignedBead"
-// +kubebuilder:printcolumn:name="Pod",type="string",JSONPath=".status.podName"
+// +kubebuilder:printcolumn:name="Model",type="string",JSONPath=".status.agentModel",priority=1
+// +kubebuilder:printcolumn:name="Pod",type="string",JSONPath=".status.podName",priority=1
+// +kubebuilder:printcolumn:name="Session",type="boolean",JSONPath=".status.sessionActive"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // Polecat is the Schema for the polecats API.
