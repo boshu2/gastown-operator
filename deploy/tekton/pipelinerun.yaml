@@ -1,0 +1,101 @@
+# gastown-operator CI PipelineRun
+# Creates a new pipeline execution for building and scanning the operator
+#
+# Prerequisites:
+#   1. Apply the go-test Task:
+#      oc apply -f deploy/tekton/tasks/go-test.yaml -n olympus-ci
+#
+#   2. Apply the Pipeline:
+#      oc apply -f deploy/tekton/pipeline.yaml -n olympus-ci
+#
+#   3. Create registry credentials (if not already created):
+#      oc create secret docker-registry gastown-registry-credentials \
+#        --docker-server=dprusocplvjmp01.deepsky.lab:5000 \
+#        --docker-username=xxx --docker-password=xxx -n olympus-ci
+#
+# Usage:
+#   oc create -f deploy/tekton/pipelinerun.yaml
+#
+# Watch progress:
+#   tkn pipelinerun logs -f --last -n olympus-ci
+#   oc get pipelinerun -n olympus-ci -w
+#
+# Trigger with specific branch/tag:
+#   oc create -f - <<EOF
+#   apiVersion: tekton.dev/v1
+#   kind: PipelineRun
+#   metadata:
+#     generateName: gastown-operator-ci-run-
+#     namespace: olympus-ci
+#   spec:
+#     pipelineRef:
+#       name: gastown-operator-ci
+#     params:
+#       - name: git-revision
+#         value: "feature-branch-name"
+#       - name: image-tag
+#         value: "feature-branch-name"
+#     ...
+#   EOF
+---
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: gastown-operator-ci-run-
+  namespace: olympus-ci
+  labels:
+    app.kubernetes.io/component: pipelinerun
+    app.kubernetes.io/name: gastown-operator
+    pipeline.jren.io/type: gastown-operator
+  annotations:
+    # FedRAMP compliance metadata
+    fedramp.gov/controls: "RA-5,SI-2,CM-14"
+    security.jren.io/scans: "trivy,hadolint"
+spec:
+  pipelineRef:
+    name: gastown-operator-ci
+  params:
+    # Git parameters
+    - name: git-url
+      value: "https://git.deepskylab.io/olympus/gastown-operator.git"
+    - name: git-revision
+      value: "main"
+    # Build parameters
+    - name: image-tag
+      value: "dev"
+    - name: registry
+      value: "dprusocplvjmp01.deepsky.lab:5000"
+    # Security scanning parameters
+    - name: trivy-fail-on
+      value: "CRITICAL,HIGH"
+    - name: generate-sbom
+      value: "true"
+  taskRunTemplate:
+    serviceAccountName: pipeline
+  timeouts:
+    pipeline: 30m0s
+  workspaces:
+    # Source code workspace - created dynamically
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 2Gi
+          storageClassName: flash
+    # Registry credentials for image push/pull
+    - name: dockerconfig
+      secret:
+        secretName: gastown-registry-credentials
+    # Reports workspace (reuses source for simplicity)
+    - name: reports
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+          storageClassName: flash
