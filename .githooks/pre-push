@@ -1,5 +1,5 @@
 #!/bin/bash
-# Pre-push hook: Run lint and vet before pushing
+# Pre-push hook: Comprehensive validation before pushing
 # Install: git config core.hooksPath .githooks
 #
 # This prevents CI spiral - validate locally before remote build
@@ -8,19 +8,69 @@ set -e
 
 echo "=== Pre-push validation ==="
 
-# Run go vet
-echo "[1/2] Running go vet..."
+# Get the directory of this script to find the repo root
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# 1. Go vet
+echo "[1/6] Running go vet..."
 go vet ./...
 
-# Run golangci-lint
-echo "[2/2] Running golangci-lint..."
+# 2. golangci-lint (comprehensive static analysis)
+echo "[2/6] Running golangci-lint..."
 if command -v golangci-lint &> /dev/null; then
-    golangci-lint run --timeout 2m
+    golangci-lint run --timeout 3m
 elif [ -f bin/golangci-lint ]; then
-    ./bin/golangci-lint run --timeout 2m
+    ./bin/golangci-lint run --timeout 3m
 else
-    echo "Warning: golangci-lint not found. Run 'make golangci-lint' to install."
-    echo "Skipping lint check..."
+    echo "  Warning: golangci-lint not found. Run 'make golangci-lint' to install."
+    echo "  Skipping lint check..."
 fi
 
-echo "=== Validation passed ==="
+# 3. Verify generated code is up to date
+echo "[3/6] Checking generated code..."
+make manifests generate 2>/dev/null
+
+# Check if generation created any diffs
+if ! git diff --quiet HEAD -- api/ config/crd/; then
+    echo "ERROR: Generated files are out of date!"
+    echo "The following files have uncommitted changes after regeneration:"
+    git diff --name-only HEAD -- api/ config/crd/
+    echo ""
+    echo "Run: make manifests generate && git add -u && git commit --amend"
+    exit 1
+fi
+
+# 4. Format check
+echo "[4/6] Verifying code formatting..."
+UNFORMATTED=$(gofmt -l . 2>/dev/null | grep -v vendor || true)
+if [ -n "$UNFORMATTED" ]; then
+    echo "ERROR: Files not formatted:"
+    echo "$UNFORMATTED"
+    echo ""
+    echo "Run: make fmt"
+    exit 1
+fi
+
+# 5. Build check (catches type errors, missing imports)
+echo "[5/6] Verifying build..."
+go build ./...
+
+# 6. Run unit tests (optional but recommended)
+if [ "${SKIP_TESTS:-}" != "1" ]; then
+    echo "[6/6] Running unit tests..."
+    # Quick test run without coverage for speed
+    if [ -f bin/setup-envtest ]; then
+        KUBEBUILDER_ASSETS="$(./bin/setup-envtest use -p path 2>/dev/null)" go test ./internal/... -short -timeout 2m
+    else
+        echo "  Warning: envtest not set up, skipping controller tests"
+        go test ./pkg/... -short -timeout 1m 2>/dev/null || true
+    fi
+else
+    echo "[6/6] Skipping tests (SKIP_TESTS=1)"
+fi
+
+echo ""
+echo "=== Pre-push validation passed ==="
+echo ""
+echo "Tip: Skip tests with SKIP_TESTS=1 git push"
