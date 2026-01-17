@@ -1,23 +1,22 @@
 ---
 name: Feature Request
-about: Suggest a new feature
-title: '[FEATURE] '
+about: Suggest a new feature for gastown-operator
+title: ''
 labels: enhancement
 assignees: ''
 ---
 
-## Problem
-
-<!-- What problem does this solve? -->
+## Problem Statement
+<!-- What problem does this feature solve? -->
 
 ## Proposed Solution
-
-<!-- How would you like this to work? -->
+<!-- Describe the feature you'd like -->
 
 ## Alternatives Considered
+<!-- Any alternative solutions or features you've considered -->
 
-<!-- Any alternative solutions you've considered -->
+## Use Case
+<!-- How would you use this feature? -->
 
 ## Additional Context
-
-<!-- Any other context, examples, or references -->
+<!-- Any other context, mockups, or examples -->

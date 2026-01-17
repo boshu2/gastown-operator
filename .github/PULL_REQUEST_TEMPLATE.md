@@ -1,26 +1,19 @@
-## Description
+## Summary
+<!-- Brief description of changes -->
 
-<!-- What does this PR do? -->
+## Related Issue
+<!-- Link to issue: Fixes #123 or Closes #123 -->
 
-## Type of Change
+## Changes
+<!-- Bullet list of changes -->
+-
 
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Breaking change
-- [ ] Documentation
-- [ ] Refactor
-
-## Related Issues
-
-<!-- Link to related issues: Fixes #123 -->
+## Testing
+<!-- How did you test these changes? -->
+- [ ] Unit tests pass (`make test`)
+- [ ] Manual testing performed
 
 ## Checklist
-
-- [ ] Tests pass (`make test`)
-- [ ] Linting passes (`make validate`)
-- [ ] Documentation updated (if needed)
-- [ ] CHANGELOG.md updated (for features/fixes)
-
-## Additional Notes
-
-<!-- Any additional context for reviewers -->
+- [ ] Code follows project style
+- [ ] Documentation updated (if applicable)
+- [ ] No breaking changes (or documented in summary)

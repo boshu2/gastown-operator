@@ -1,38 +1,35 @@
 ---
 name: Bug Report
-about: Report a bug in the operator
-title: '[BUG] '
+about: Report a bug in gastown-operator
+title: ''
 labels: bug
 assignees: ''
 ---
 
-## Describe the Bug
-
+## Bug Description
 <!-- A clear description of what the bug is -->
 
-## To Reproduce
-
-1. Deploy operator with '...'
-2. Create resource '...'
-3. See error
+## Steps to Reproduce
+1.
+2.
+3.
 
 ## Expected Behavior
-
 <!-- What you expected to happen -->
 
+## Actual Behavior
+<!-- What actually happened -->
+
 ## Environment
+- **Operator version**:
+- **Kubernetes version**:
+- **Platform**: (OpenShift / EKS / GKE / kind / etc)
+- **Edition**: (Community / Enterprise-FIPS)
 
-- Operator version:
-- Kubernetes version:
-- Platform: (OpenShift / EKS / GKE / kind / etc)
-- Edition: (Community / Enterprise-FIPS)
-
-## Logs
-
+## Logs / Error Output
 ```
-<!-- Paste relevant logs here -->
+<!-- Paste relevant operator logs or error messages -->
 ```
 
 ## Additional Context
-
 <!-- Any other context about the problem -->
