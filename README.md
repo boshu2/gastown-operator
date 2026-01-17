@@ -1,25 +1,25 @@
-# Gas Town Operator
+# Kubernetes Operator for Gas Town
 
-> *"Who runs Bartertown? The Kubernetes Operator runs Bartertown."*
+> *"Who runs Bartertown? Kubernetes runs Bartertown."*
 
 [![OpenShift](https://img.shields.io/badge/OpenShift-Native-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
 [![FIPS](https://img.shields.io/badge/FIPS-Compliant-blue)](https://csrc.nist.gov/projects/cryptographic-module-validation-program)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-Kubernetes operator for [Gas Town](https://github.com/steveyegge/gastown) multi-agent orchestration. Run your AI agent army in the cloud.
+A Kubernetes operator that runs [Gas Town](https://github.com/steveyegge/gastown) polecats as pods. Scale your AI agent army beyond the laptop.
 
 ```
-     ____           _____
-    / ___| __ _ ___| ____|_ ____      ___ __
-   | |  _ / _` / __||  _| \ \/ / \ /\ / / '_ \
-   | |_| | (_| \__ \| |___ >  <|  V  V /| | | |
-    \____|\__,_|___/|_____/_/\_\\_/\_/ |_| |_|
-                                    OPERATOR
+    ╔═══════════════════════════════════════╗
+    ║   GAS TOWN + KUBERNETES = SCALE       ║
+    ║                                       ║
+    ║   Polecats in pods. Convoys in CRDs.  ║
+    ║   Same gt CLI. Cloud-native runtime.  ║
+    ╚═══════════════════════════════════════╝
 ```
 
 ## What Is This?
 
-Gas Town Operator brings [steveyegge's Gas Town](https://github.com/steveyegge/gastown) multi-agent orchestration to Kubernetes. Instead of running polecats (autonomous AI workers) on your laptop, run them as pods in your cluster.
+[Gas Town](https://github.com/steveyegge/gastown) is a multi-agent orchestration framework - it runs AI agents (polecats) locally via tmux. This operator extends Gas Town to Kubernetes, so polecats run as pods instead of local processes.
 
 **Why?**
 - Scale beyond your laptop's tmux sessions
