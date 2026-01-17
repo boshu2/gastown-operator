@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
@@ -59,5 +60,8 @@ func (r *BeadStoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gastownv1alpha1.BeadStore{}).
 		Named("beadstore").
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: 1, // BeadStore is a singleton config
+		}).
 		Complete(r)
 }

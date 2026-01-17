@@ -496,3 +496,99 @@ func TestRigCustomValidator_WrongType(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected a Rig")
 }
+
+func TestRigCustomDefaulter_Default(t *testing.T) {
+	defaulter := &RigCustomDefaulter{}
+	ctx := context.Background()
+
+	tests := []struct {
+		name              string
+		rig               *Rig
+		wantMaxPolecats   int
+		wantNamepoolTheme string
+	}{
+		{
+			name: "defaults applied when empty",
+			rig: &Rig{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-rig"},
+				Spec: RigSpec{
+					GitURL:      "git@github.com:org/repo.git",
+					BeadsPrefix: "test",
+					LocalPath:   "/home/user/rig",
+				},
+			},
+			wantMaxPolecats:   8,
+			wantNamepoolTheme: "mad-max",
+		},
+		{
+			name: "MaxPolecats preserved when set",
+			rig: &Rig{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-rig"},
+				Spec: RigSpec{
+					GitURL:      "git@github.com:org/repo.git",
+					BeadsPrefix: "test",
+					LocalPath:   "/home/user/rig",
+					Settings: RigSettings{
+						MaxPolecats: 20,
+					},
+				},
+			},
+			wantMaxPolecats:   20,
+			wantNamepoolTheme: "mad-max", // Still defaulted
+		},
+		{
+			name: "NamepoolTheme preserved when set",
+			rig: &Rig{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-rig"},
+				Spec: RigSpec{
+					GitURL:      "git@github.com:org/repo.git",
+					BeadsPrefix: "test",
+					LocalPath:   "/home/user/rig",
+					Settings: RigSettings{
+						NamepoolTheme: "minerals",
+					},
+				},
+			},
+			wantMaxPolecats:   8, // Still defaulted
+			wantNamepoolTheme: "minerals",
+		},
+		{
+			name: "nothing defaulted when all set",
+			rig: &Rig{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-rig"},
+				Spec: RigSpec{
+					GitURL:      "git@github.com:org/repo.git",
+					BeadsPrefix: "test",
+					LocalPath:   "/home/user/rig",
+					Settings: RigSettings{
+						MaxPolecats:   15,
+						NamepoolTheme: "wasteland",
+					},
+				},
+			},
+			wantMaxPolecats:   15,
+			wantNamepoolTheme: "wasteland",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := defaulter.Default(ctx, tt.rig)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantMaxPolecats, tt.rig.Spec.Settings.MaxPolecats)
+			assert.Equal(t, tt.wantNamepoolTheme, tt.rig.Spec.Settings.NamepoolTheme)
+		})
+	}
+}
+
+func TestRigCustomDefaulter_WrongType(t *testing.T) {
+	defaulter := &RigCustomDefaulter{}
+	ctx := context.Background()
+
+	// Pass a non-Rig object
+	wrongObj := &Polecat{}
+
+	err := defaulter.Default(ctx, wrongObj)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected a Rig")
+}

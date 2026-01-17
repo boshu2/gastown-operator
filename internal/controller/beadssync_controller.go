@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -174,6 +175,9 @@ func (r *BeadsSyncReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// We don't watch any specific resource - we just poll periodically
 		// The controller will be triggered by the initial reconcile and then requeue
 		For(&gastownv1alpha1.Polecat{}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: 1, // Only one sync at a time
+		}).
 		Complete(reconcile.Func(func(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 			// Ignore the actual request - we sync all resources
 			return r.Reconcile(ctx, req)

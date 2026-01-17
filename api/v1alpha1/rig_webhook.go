@@ -38,7 +38,36 @@ func SetupRigWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(&Rig{}).
 		WithValidator(&RigCustomValidator{}).
+		WithDefaulter(&RigCustomDefaulter{}).
 		Complete()
+}
+
+// +kubebuilder:webhook:path=/mutate-gastown-gastown-io-v1alpha1-rig,mutating=true,failurePolicy=fail,sideEffects=None,groups=gastown.gastown.io,resources=rigs,verbs=create;update,versions=v1alpha1,name=mrig.kb.io,admissionReviewVersions=v1
+
+// RigCustomDefaulter implements admission.CustomDefaulter for Rig.
+type RigCustomDefaulter struct{}
+
+var _ webhook.CustomDefaulter = &RigCustomDefaulter{}
+
+// Default implements webhook.CustomDefaulter so a webhook will be registered for the type.
+func (d *RigCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
+	rig, ok := obj.(*Rig)
+	if !ok {
+		return fmt.Errorf("expected a Rig but got a %T", obj)
+	}
+	riglog.Info("defaulting", "name", rig.Name)
+
+	// Default MaxPolecats to 8 if not set
+	if rig.Spec.Settings.MaxPolecats == 0 {
+		rig.Spec.Settings.MaxPolecats = 8
+	}
+
+	// Default NamepoolTheme to "mad-max" if not set
+	if rig.Spec.Settings.NamepoolTheme == "" {
+		rig.Spec.Settings.NamepoolTheme = "mad-max"
+	}
+
+	return nil
 }
 
 // +kubebuilder:webhook:path=/validate-gastown-gastown-io-v1alpha1-rig,mutating=false,failurePolicy=fail,sideEffects=None,groups=gastown.gastown.io,resources=rigs,verbs=create;update,versions=v1alpha1,name=vrig.kb.io,admissionReviewVersions=v1
