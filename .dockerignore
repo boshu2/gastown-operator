@@ -9,3 +9,6 @@
 # Re-include Go module files
 !go.mod
 !go.sum
+
+# Re-include pre-built gt CLI (created by Tekton build-gt-cli Task)
+!bin/gt
