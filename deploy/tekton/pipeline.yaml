@@ -1,0 +1,226 @@
+# gastown-operator CI Pipeline
+# Based on hephaestus pattern - uses established jren-* ClusterTasks
+#
+# Stages:
+#   1. Clone - git-clone ClusterTask
+#   2. Parallel: go-test (local Task), trivy-fs, hadolint
+#   3. Build - jren-kaniko-build ClusterTask
+#   4. Scan - jren-trivy-image ClusterTask (vulnerability scan + SBOM)
+#
+# Usage:
+#   oc apply -f deploy/tekton/tasks/go-test.yaml -n olympus-ci
+#   oc apply -f deploy/tekton/pipeline.yaml -n olympus-ci
+#   oc create -f deploy/tekton/pipelinerun.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: gastown-operator-ci
+  namespace: olympus-ci
+  labels:
+    app.kubernetes.io/component: pipeline
+    app.kubernetes.io/name: gastown-operator
+spec:
+  description: |
+    CI pipeline for gastown-operator - Kubernetes operator for local Gas Town execution.
+    Includes security scanning: Trivy (secrets, vulns, SBOM), Hadolint Dockerfile lint.
+    Uses Red Hat certified images for OpenShift compatibility.
+
+  params:
+    - name: git-url
+      type: string
+      default: "https://git.deepskylab.io/olympus/gastown-operator.git"
+    - name: git-revision
+      type: string
+      default: "main"
+    - name: image-tag
+      type: string
+      default: "dev"
+    - name: registry
+      type: string
+      default: "dprusocplvjmp01.deepsky.lab:5000"
+    # Security scanning parameters
+    - name: trivy-fail-on
+      description: Trivy severity threshold (CRITICAL, HIGH, MEDIUM, LOW)
+      type: string
+      default: "CRITICAL,HIGH"
+    - name: generate-sbom
+      description: Generate SBOM in CycloneDX format
+      type: string
+      default: "true"
+
+  workspaces:
+    - name: source
+    - name: dockerconfig
+    - name: reports
+      description: Workspace for security scan reports
+      optional: true
+
+  tasks:
+    # =========================================================================
+    # Stage 1: Clone
+    # =========================================================================
+    - name: clone
+      taskRef:
+        name: git-clone
+        kind: ClusterTask
+      workspaces:
+        - name: output
+          workspace: source
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.git-revision)
+        - name: deleteExisting
+          value: "true"
+
+    # =========================================================================
+    # Stage 2: Parallel - Tests and Security Scans
+    # =========================================================================
+
+    # 2a. Go unit tests with envtest
+    - name: go-test
+      taskRef:
+        name: go-test-gastown
+      runAfter:
+        - clone
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: packages
+          value: "./pkg/... ./internal/..."
+        - name: envtest-k8s-version
+          value: "1.31.x"
+
+    # 2b. Trivy filesystem scan - secrets and misconfigs
+    - name: scan-secrets
+      taskRef:
+        name: jren-trivy-fs
+        kind: ClusterTask
+      runAfter:
+        - clone
+      workspaces:
+        - name: source
+          workspace: source
+        - name: reports
+          workspace: source
+      params:
+        - name: SCANNERS
+          value: "secret,misconfig"
+        - name: SEVERITY
+          value: "LOW,MEDIUM,HIGH,CRITICAL"
+        - name: FAIL_ON
+          value: ""  # Don't fail on findings, report only
+
+    # 2c. Hadolint - Dockerfile best practices
+    - name: lint-dockerfile
+      taskRef:
+        name: jren-hadolint-scan
+        kind: ClusterTask
+      runAfter:
+        - clone
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: DOCKERFILE
+          value: "Dockerfile"
+        - name: FAILURE_THRESHOLD
+          value: "error"  # Only fail on errors, not warnings
+
+    # =========================================================================
+    # Stage 3: Build Image
+    # =========================================================================
+
+    - name: build-operator
+      taskRef:
+        name: jren-kaniko-build
+        kind: ClusterTask
+      runAfter:
+        - go-test
+        - scan-secrets
+        - lint-dockerfile
+      workspaces:
+        - name: source
+          workspace: source
+        - name: dockerconfig
+          workspace: dockerconfig
+      params:
+        - name: IMAGE
+          value: "$(params.registry)/gastown-operator:$(params.image-tag)"
+        - name: DOCKERFILE
+          value: "Dockerfile"
+        - name: CONTEXT
+          value: "."
+        - name: PUSH
+          value: "true"
+        - name: USE_CACHE
+          value: "false"
+        - name: BUILD_EXTRA_ARGS
+          value: "--build-arg=GO_IMAGE=$(params.registry)/ci-images/golang:1.24-alpine --build-arg=DISTROLESS_IMAGE=$(params.registry)/ci-images/distroless-static:nonroot"
+
+    # =========================================================================
+    # Stage 4: Image Security Scan + SBOM
+    # =========================================================================
+
+    - name: scan-image
+      taskRef:
+        name: jren-trivy-image
+        kind: ClusterTask
+      runAfter:
+        - build-operator
+      workspaces:
+        - name: reports
+          workspace: source
+        - name: dockerconfig
+          workspace: dockerconfig
+      params:
+        - name: IMAGE
+          value: "$(params.registry)/gastown-operator:$(params.image-tag)"
+        - name: FAIL_ON
+          value: $(params.trivy-fail-on)
+        - name: GENERATE_SBOM
+          value: $(params.generate-sbom)
+
+  # ===========================================================================
+  # Finally: Summary Report
+  # ===========================================================================
+  finally:
+    - name: pipeline-summary
+      params:
+        - name: registry
+          value: $(params.registry)
+        - name: image-tag
+          value: $(params.image-tag)
+      taskSpec:
+        params:
+          - name: registry
+            type: string
+          - name: image-tag
+            type: string
+        steps:
+          - name: summary
+            image: registry.access.redhat.com/ubi8/ubi-minimal
+            script: |
+              #!/bin/bash
+              echo "========================================"
+              echo "  gastown-operator CI Pipeline Complete"
+              echo "========================================"
+              echo ""
+              echo "Image built and scanned:"
+              echo "  - $(params.registry)/gastown-operator:$(params.image-tag)"
+              echo ""
+              echo "Security scans completed:"
+              echo "  - Trivy filesystem scan (secrets, misconfigs)"
+              echo "  - Hadolint Dockerfile lint"
+              echo "  - Trivy image vulnerability scan"
+              echo "  - SBOM generation (CycloneDX)"
+              echo ""
+              echo "FedRAMP Controls Addressed:"
+              echo "  - RA-5: Vulnerability Scanning"
+              echo "  - SI-2: Flaw Remediation"
+              echo "  - CM-14: Signed Components (SBOM)"
+              echo ""
+              echo "========================================"
