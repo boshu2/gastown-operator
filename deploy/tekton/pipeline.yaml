@@ -167,7 +167,7 @@ spec:
         - name: CONTEXT
           value: "."
         - name: BUILD_EXTRA_ARGS
-          value: "--build-arg=VERSION=$(params.image-tag)"
+          value: "--build-arg=VERSION=$(params.image-tag) --build-arg=GO_IMAGE=dprusocplvjmp01.deepsky.lab:5000/library/golang:1.24-alpine --build-arg=RUNTIME_IMAGE=dprusocplvjmp01.deepsky.lab:5000/distroless/static:nonroot"
 
     # =========================================================================
     # Stage 4: Image Security Scan
@@ -210,7 +210,7 @@ spec:
             type: string
         steps:
           - name: summary
-            image: alpine:3.19
+            image: dprusocplvjmp01.deepsky.lab:5000/library/alpine:3.19
             script: |
               #!/bin/sh
               echo "========================================"
