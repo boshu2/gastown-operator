@@ -25,15 +25,41 @@ A Kubernetes operator that runs [Gas Town](https://github.com/steveyegge/gastown
 - Scale beyond your laptop's tmux sessions
 - Let Kubernetes handle scheduling and lifecycle
 - Run polecats closer to your infrastructure
-- Enterprise-grade security (OpenShift SCCs, FIPS crypto)
 
-## Design Philosophy
+## Two Editions
 
-### OpenShift-Native
+We provide **two build profiles** - use what fits your environment:
 
-We don't just "support" OpenShift - we're built for it. Every pod runs with:
+| | **Community Edition** | **Enterprise Edition** |
+|---|---|---|
+| **Target** | Vanilla Kubernetes | OpenShift / Regulated environments |
+| **Base Image** | `golang:alpine` / `distroless` | Red Hat UBI9 |
+| **Crypto** | Standard Go | FIPS-validated (BoringCrypto) |
+| **Security** | Standard PSS | Restricted SCC compliant |
+| **Image Tag** | `:latest`, `:v0.1.0` | `:latest-fips`, `:v0.1.0-fips` |
+
+### Community Edition (Vanilla K8s)
+
+Lightweight, runs anywhere:
+
+```bash
+# Standard Kubernetes
+kubectl apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.0/install.yaml
+```
+
+### Enterprise Edition (OpenShift + FIPS)
+
+For regulated environments (FedRAMP, HIPAA, government):
+
+```bash
+# OpenShift with FIPS
+oc apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.0/install-fips.yaml
+```
+
+**What makes it enterprise-ready:**
 
 ```yaml
+# Every pod runs with restricted SCC compliance
 securityContext:
   runAsNonRoot: true
   readOnlyRootFilesystem: true
@@ -44,15 +70,10 @@ securityContext:
     type: RuntimeDefault
 ```
 
-No privileged containers. No security compromises. Passes `restricted` SCC out of the box.
-
-### FIPS-Compliant
-
-Built with Go's BoringCrypto on Red Hat UBI9:
-
-- **Build**: `registry.access.redhat.com/ubi9/go-toolset:1.22`
-- **Runtime**: `registry.access.redhat.com/ubi9/ubi-micro:9.3`
-- **Crypto**: `GOEXPERIMENT=boringcrypto`
+**FIPS-compliant build:**
+- `registry.access.redhat.com/ubi9/go-toolset:1.22` (build)
+- `registry.access.redhat.com/ubi9/ubi-micro:9.3` (runtime)
+- `GOEXPERIMENT=boringcrypto` (FIPS-validated crypto)
 
 For when your compliance officer asks "but is it FIPS?"
 
