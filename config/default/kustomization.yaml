@@ -42,6 +42,11 @@ patches:
 - path: manager_metrics_patch.yaml
   target:
     kind: Deployment
+# [NO-WEBHOOK] Disable webhooks when cert-manager/webhook service is not deployed.
+# Comment this out if you enable webhooks above.
+- path: manager_disable_webhooks_patch.yaml
+  target:
+    kind: Deployment
 
 # Uncomment the patches line if you enable Metrics and CertManager
 # [METRICS-WITH-CERTS] To enable metrics protected with certManager, uncomment the following line.

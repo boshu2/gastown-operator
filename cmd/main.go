@@ -61,6 +61,7 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var disableWebhooks bool
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8443", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or set to 0 to disable the metrics service.")
@@ -80,6 +81,8 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.BoolVar(&disableWebhooks, "disable-webhooks", false,
+		"Disable admission webhooks. Use when webhook service is not deployed (e.g., E2E tests without cert-manager).")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -216,13 +219,17 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "BeadStore")
 		os.Exit(1)
 	}
-	if err := gastownv1alpha1.SetupRigWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "Rig")
-		os.Exit(1)
-	}
-	if err := gastownv1alpha1.SetupPolecatWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "Polecat")
-		os.Exit(1)
+	if !disableWebhooks {
+		if err := gastownv1alpha1.SetupRigWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "Rig")
+			os.Exit(1)
+		}
+		if err := gastownv1alpha1.SetupPolecatWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "Polecat")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("webhooks disabled via --disable-webhooks flag")
 	}
 	// +kubebuilder:scaffold:builder
 
