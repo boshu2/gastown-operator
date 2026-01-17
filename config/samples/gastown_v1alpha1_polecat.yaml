@@ -6,4 +6,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: polecat-sample
 spec:
-  # TODO(user): Add fields here
+  rig: sample-rig
+  desiredState: Idle
+  executionMode: local
+  # For kubernetes mode, see polecat-kubernetes-sample.yaml

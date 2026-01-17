@@ -1,0 +1,29 @@
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: test-worker
+  namespace: gastown-system
+  labels:
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  rig: test-rig
+  beadID: go-test-001
+  desiredState: Working
+  executionMode: kubernetes
+  kubernetes:
+    gitRepository: "git@github.com:example/repo.git"
+    gitBranch: main
+    workBranch: feature/go-test-001
+    gitSecretRef:
+      name: git-creds
+    claudeCredsSecretRef:
+      name: claude-creds
+    activeDeadlineSeconds: 3600
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2"
+        memory: "4Gi"

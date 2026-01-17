@@ -18,15 +18,18 @@ spec:
     - jsonPath: .spec.rig
       name: Rig
       type: string
+    - jsonPath: .spec.executionMode
+      name: Mode
+      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
     - jsonPath: .status.assignedBead
       name: Bead
       type: string
-    - jsonPath: .status.sessionActive
-      name: Session
-      type: boolean
+    - jsonPath: .status.podName
+      name: Pod
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -68,6 +71,122 @@ spec:
                 - Working
                 - Terminated
                 type: string
+              executionMode:
+                default: local
+                description: ExecutionMode determines where the polecat runs
+                enum:
+                - local
+                - kubernetes
+                type: string
+              kubernetes:
+                description: |-
+                  Kubernetes contains configuration for kubernetes execution mode
+                  Required when executionMode is "kubernetes"
+                properties:
+                  activeDeadlineSeconds:
+                    default: 3600
+                    description: ActiveDeadlineSeconds is the max runtime before Pod
+                      is terminated
+                    format: int64
+                    type: integer
+                  claudeCredsSecretRef:
+                    description: ClaudeCredsSecretRef references a Secret containing
+                      ~/.claude/ contents
+                    properties:
+                      name:
+                        description: name is the name of the secret.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  gitBranch:
+                    default: main
+                    description: GitBranch is the branch to checkout
+                    type: string
+                  gitRepository:
+                    description: GitRepository is the git repo URL to clone
+                    type: string
+                  gitSecretRef:
+                    description: GitSecretRef references a Secret containing SSH key
+                      for git
+                    properties:
+                      name:
+                        description: name is the name of the secret.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  image:
+                    description: Image overrides the default agent container image
+                    type: string
+                  resources:
+                    description: Resources for the agent container
+                    properties:
+                      claims:
+                        description: |-
+                          Claims lists the names of resources, defined in spec.resourceClaims,
+                          that are used by this container.
+
+                          This field depends on the
+                          DynamicResourceAllocation feature gate.
+
+                          This field is immutable. It can only be set for containers.
+                        items:
+                          description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                          properties:
+                            name:
+                              description: |-
+                                Name must match the name of one entry in pod.spec.resourceClaims of
+                                the Pod where this field is used. It makes that resource available
+                                inside a container.
+                              type: string
+                            request:
+                              description: |-
+                                Request is the name chosen for a request in the referenced claim.
+                                If empty, everything from the claim is made available, otherwise
+                                only the result of this request.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Limits describes the maximum amount of compute resources allowed.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Requests describes the minimum amount of compute resources required.
+                          If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                          otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                    type: object
+                  workBranch:
+                    description: WorkBranch is the branch name to create for work
+                      (defaults to feature/<beadID>)
+                    type: string
+                required:
+                - claudeCredsSecretRef
+                - gitRepository
+                - gitSecretRef
+                type: object
               rig:
                 description: Rig is the name of the rig this polecat belongs to
                 type: string
@@ -167,11 +286,16 @@ spec:
                 - Stuck
                 - Terminated
                 type: string
+              podName:
+                description: PodName is the name of the Pod running the agent (kubernetes
+                  mode)
+                type: string
               sessionActive:
                 description: SessionActive indicates if the tmux session is running
+                  (local mode)
                 type: boolean
               tmuxSession:
-                description: TmuxSession is the tmux session name
+                description: TmuxSession is the tmux session name (local mode)
                 type: string
               worktreePath:
                 description: WorktreePath is the filesystem path to the worktree

@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,6 +30,54 @@ const (
 	PolecatDesiredWorking    PolecatDesiredState = "Working"
 	PolecatDesiredTerminated PolecatDesiredState = "Terminated"
 )
+
+// ExecutionMode determines where the polecat runs
+// +kubebuilder:validation:Enum=local;kubernetes
+type ExecutionMode string
+
+const (
+	// ExecutionModeLocal runs via gt CLI and tmux (default)
+	ExecutionModeLocal ExecutionMode = "local"
+	// ExecutionModeKubernetes runs as a Pod in the cluster
+	ExecutionModeKubernetes ExecutionMode = "kubernetes"
+)
+
+// KubernetesSpec defines configuration for kubernetes execution mode
+type KubernetesSpec struct {
+	// GitRepository is the git repo URL to clone
+	// +kubebuilder:validation:Required
+	GitRepository string `json:"gitRepository"`
+
+	// GitBranch is the branch to checkout
+	// +kubebuilder:default=main
+	// +optional
+	GitBranch string `json:"gitBranch,omitempty"`
+
+	// WorkBranch is the branch name to create for work (defaults to feature/<beadID>)
+	// +optional
+	WorkBranch string `json:"workBranch,omitempty"`
+
+	// GitSecretRef references a Secret containing SSH key for git
+	// +kubebuilder:validation:Required
+	GitSecretRef SecretReference `json:"gitSecretRef"`
+
+	// ClaudeCredsSecretRef references a Secret containing ~/.claude/ contents
+	// +kubebuilder:validation:Required
+	ClaudeCredsSecretRef SecretReference `json:"claudeCredsSecretRef"`
+
+	// Image overrides the default agent container image
+	// +optional
+	Image string `json:"image,omitempty"`
+
+	// Resources for the agent container
+	// +optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// ActiveDeadlineSeconds is the max runtime before Pod is terminated
+	// +kubebuilder:default=3600
+	// +optional
+	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
+}
 
 // PolecatSpec defines the desired state of Polecat
 type PolecatSpec struct {
@@ -44,6 +93,16 @@ type PolecatSpec struct {
 	// BeadID is the bead to hook (triggers gt sling if set)
 	// +optional
 	BeadID string `json:"beadID,omitempty"`
+
+	// ExecutionMode determines where the polecat runs
+	// +kubebuilder:default=local
+	// +optional
+	ExecutionMode ExecutionMode `json:"executionMode,omitempty"`
+
+	// Kubernetes contains configuration for kubernetes execution mode
+	// Required when executionMode is "kubernetes"
+	// +optional
+	Kubernetes *KubernetesSpec `json:"kubernetes,omitempty"`
 }
 
 // PolecatPhase represents the observed lifecycle phase
@@ -87,12 +146,16 @@ type PolecatStatus struct {
 	// +optional
 	WorktreePath string `json:"worktreePath,omitempty"`
 
-	// TmuxSession is the tmux session name
+	// TmuxSession is the tmux session name (local mode)
 	// +optional
 	TmuxSession string `json:"tmuxSession,omitempty"`
 
-	// SessionActive indicates if the tmux session is running
+	// SessionActive indicates if the tmux session is running (local mode)
 	SessionActive bool `json:"sessionActive,omitempty"`
+
+	// PodName is the name of the Pod running the agent (kubernetes mode)
+	// +optional
+	PodName string `json:"podName,omitempty"`
 
 	// LastActivity is when the polecat last showed activity
 	// +optional
@@ -112,9 +175,10 @@ type PolecatStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Rig",type="string",JSONPath=".spec.rig"
+// +kubebuilder:printcolumn:name="Mode",type="string",JSONPath=".spec.executionMode"
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Bead",type="string",JSONPath=".status.assignedBead"
-// +kubebuilder:printcolumn:name="Session",type="boolean",JSONPath=".status.sessionActive"
+// +kubebuilder:printcolumn:name="Pod",type="string",JSONPath=".status.podName"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // Polecat is the Schema for the polecats API.
