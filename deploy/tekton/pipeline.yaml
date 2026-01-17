@@ -1,4 +1,4 @@
-# Labyrinth Operator CI Pipeline
+# Gas Town Operator CI Pipeline
 # Multi-stage pipeline with security scanning
 #
 # Stages:
@@ -8,27 +8,27 @@
 #   4. Scan Image - trivy-image ClusterTask
 #
 # Prerequisites:
-#   - olympus-ci namespace with ClusterTasks installed
+#   - gastown-ci namespace with ClusterTasks installed
 #   - registry-credentials secret for image push
 #   - git-credentials secret (if private repo)
 #
 # Usage:
-#   kubectl apply -f deploy/tekton/tasks/ -n olympus-ci
-#   kubectl apply -f deploy/tekton/pipeline.yaml -n olympus-ci
-#   kubectl create -f deploy/tekton/pipelinerun.yaml -n olympus-ci
+#   kubectl apply -f deploy/tekton/tasks/ -n gastown-ci
+#   kubectl apply -f deploy/tekton/pipeline.yaml -n gastown-ci
+#   kubectl create -f deploy/tekton/pipelinerun.yaml -n gastown-ci
 ---
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: labyrinth-ci
-  namespace: olympus-ci
+  name: gastown-operator-ci
+  namespace: gastown-ci
   labels:
     app.kubernetes.io/component: pipeline
-    app.kubernetes.io/name: labyrinth
+    app.kubernetes.io/name: gastown-operator
     app.kubernetes.io/part-of: olympus
 spec:
   description: |
-    CI pipeline for Labyrinth - Kubernetes operator for Gas Town multi-agent orchestration.
+    CI pipeline for Gas Town Operator - Kubernetes operator for Gas Town multi-agent orchestration.
     Includes security scanning: Trivy (secrets, vulns), Hadolint Dockerfile lint.
 
   params:
@@ -90,7 +90,7 @@ spec:
     # 2a. Go unit tests with envtest
     - name: go-test
       taskRef:
-        name: labyrinth-go-test
+        name: gastown-operator-go-test
       runAfter:
         - clone
       workspaces:
@@ -153,7 +153,7 @@ spec:
           workspace: dockerconfig
       params:
         - name: IMAGE
-          value: "$(params.registry)/labyrinth:$(params.image-tag)"
+          value: "$(params.registry)/gastown-operator:$(params.image-tag)"
         - name: DOCKERFILE
           value: "Dockerfile"
         - name: CONTEXT
@@ -180,7 +180,7 @@ spec:
           value:
             - "image"
             - "--severity=$(params.trivy-fail-on)"
-            - "$(params.registry)/labyrinth:$(params.image-tag)"
+            - "$(params.registry)/gastown-operator:$(params.image-tag)"
 
   # ===========================================================================
   # Finally: Summary Report
@@ -204,11 +204,11 @@ spec:
             script: |
               #!/bin/sh
               echo "========================================"
-              echo "  Labyrinth CI Pipeline Complete"
+              echo "  Gas Town Operator CI Pipeline Complete"
               echo "========================================"
               echo ""
               echo "Image built and scanned:"
-              echo "  - $(params.registry)/labyrinth:$(params.image-tag)"
+              echo "  - $(params.registry)/gastown-operator:$(params.image-tag)"
               echo ""
               echo "Security scans completed:"
               echo "  - Trivy filesystem scan (secrets, misconfigs)"

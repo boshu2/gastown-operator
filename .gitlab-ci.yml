@@ -22,7 +22,7 @@
 variables:
   GO_VERSION: "1.24"
   TEKTON_NAMESPACE: "olympus-ci"
-  PIPELINE_NAME: "labyrinth-ci"
+  PIPELINE_NAME: "gastown-operator-ci"
 
 stages:
   - validate
@@ -194,7 +194,7 @@ deploy:dev:
   script:
     - |
       echo "Deploying to dev cluster..."
-      make deploy IMG=${REGISTRY_URL}/labyrinth:${CI_COMMIT_SHORT_SHA}
+      make deploy IMG=${REGISTRY_URL}/gastown-operator:${CI_COMMIT_SHORT_SHA}
   environment:
     name: development
   when: manual

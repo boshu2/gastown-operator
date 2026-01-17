@@ -12,16 +12,16 @@
 #   v0.20.x           | 1.29.x
 #
 # Usage:
-#   kubectl apply -f deploy/tekton/tasks/go-test.yaml -n olympus-ci
+#   kubectl apply -f deploy/tekton/tasks/go-test.yaml -n gastown-ci
 ---
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
-  name: labyrinth-go-test
-  namespace: olympus-ci
+  name: gastown-operator-go-test
+  namespace: gastown-ci
   labels:
     app.kubernetes.io/component: task
-    app.kubernetes.io/name: labyrinth
+    app.kubernetes.io/name: gastown-operator
     app.kubernetes.io/part-of: olympus
 spec:
   description: Run Go unit tests for Labyrinth operator with envtest binaries
@@ -66,7 +66,7 @@ spec:
         set -e
 
         echo "========================================"
-        echo "  Labyrinth Operator Go Unit Tests"
+        echo "  Gas Town Operator Go Unit Tests"
         echo "========================================"
         echo ""
         echo "Go version: $(go version)"
