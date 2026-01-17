@@ -28,4 +28,21 @@ go.work
 
 # Kubeconfig might contain secrets
 *.kubeconfig
+
+# Claude Code / Gas Town
 .agents/
+.claude/
+.runtime/
+state.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+dist/
+cover.out
+
+# Local config
+config.toml
+!config.example.toml
