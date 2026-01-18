@@ -61,7 +61,6 @@ spec:
       description: Registry credentials for image push
     - name: reports
       description: Workspace for security scan reports
-      optional: true
 
   tasks:
     # =========================================================================
@@ -170,12 +169,14 @@ spec:
       runAfter:
         - build-operator
       workspaces:
-        - name: source
-          workspace: source
+        - name: reports
+          workspace: reports
+        - name: dockerconfig
+          workspace: dockerconfig
       params:
-        - name: image
+        - name: IMAGE
           value: "$(params.registry)/gastown-operator:$(params.image-tag)"
-        - name: severity
+        - name: SEVERITY
           value: "$(params.trivy-fail-on)"
 
     # =========================================================================
@@ -215,7 +216,7 @@ spec:
             type: string
         steps:
           - name: summary
-            image: alpine:3.19
+            image: dprusocplvjmp01.deepsky.lab:5000/library/alpine:3.19
             script: |
               #!/bin/sh
               echo "========================================"
