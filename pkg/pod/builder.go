@@ -42,7 +42,7 @@ const (
 	// Mount paths
 	WorkspaceMountPath   = "/workspace"
 	GitCredsMountPath    = "/git-creds"
-	ClaudeCredsMountPath = "/home/nonroot/.claude" // Standard Linux location for Claude credentials
+	ClaudeCredsMountPath = "/claude-creds" // Temporary mount for credentials (copied to $HOME/.claude at startup)
 	TmpMountPath         = "/tmp"
 	HomeMountPath        = "/home/nonroot"
 
@@ -214,13 +214,20 @@ func (b *Builder) buildClaudeContainer() corev1.Container {
 	}
 
 	// Build the agent startup script
-	agentScript := `
+	agentScript := fmt.Sprintf(`
 set -e
 
 # Configure npm for non-root global installs
 export NPM_CONFIG_PREFIX="$HOME/.npm-global"
 export PATH="$HOME/.npm-global/bin:$PATH"
 mkdir -p "$HOME/.npm-global"
+
+# Copy Claude credentials from read-only mount to writable HOME
+mkdir -p "$HOME/.claude"
+if [ -f "%s/.credentials.json" ]; then
+    cp "%s/.credentials.json" "$HOME/.claude/.credentials.json"
+    echo "Claude credentials copied to $HOME/.claude/"
+fi
 
 # Install Claude Code CLI
 echo "Installing Claude Code CLI..."
@@ -233,7 +240,7 @@ claude --version || echo "Claude CLI installed"
 echo "Starting Claude Code agent..."
 echo "Working on issue: $GT_ISSUE"
 exec claude --dangerously-skip-permissions
-`
+`, ClaudeCredsMountPath, ClaudeCredsMountPath)
 
 	container := corev1.Container{
 		Name:            ClaudeContainerName,

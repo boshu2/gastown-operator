@@ -517,7 +517,7 @@ func TestClaudeCredsVolumeMount(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	t.Run("mounts claude creds at $HOME/.claude", func(t *testing.T) {
+	t.Run("mounts claude creds at staging path for copy to HOME", func(t *testing.T) {
 		var foundMount *corev1.VolumeMount
 		for i, vm := range pod.Spec.Containers[0].VolumeMounts {
 			if vm.Name == ClaudeCredsVolumeName {
@@ -530,8 +530,10 @@ func TestClaudeCredsVolumeMount(t *testing.T) {
 			t.Fatal("claude-creds volume mount not found")
 		}
 
-		// Should be mounted at /home/nonroot/.claude (standard Linux location)
-		expectedPath := "/home/nonroot/.claude"
+		// Mounted at /claude-creds (read-only secret mount)
+		// Startup script copies to $HOME/.claude which is writable
+		// This allows Claude to create subdirs like .claude/debug
+		expectedPath := ClaudeCredsMountPath
 		if foundMount.MountPath != expectedPath {
 			t.Errorf("expected claude creds mount at %s, got %s", expectedPath, foundMount.MountPath)
 		}
