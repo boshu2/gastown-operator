@@ -217,6 +217,11 @@ func (b *Builder) buildClaudeContainer() corev1.Container {
 	agentScript := `
 set -e
 
+# Configure npm for non-root global installs
+export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+export PATH="$HOME/.npm-global/bin:$PATH"
+mkdir -p "$HOME/.npm-global"
+
 # Install Claude Code CLI
 echo "Installing Claude Code CLI..."
 npm install -g @anthropic-ai/claude-code
