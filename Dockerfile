@@ -5,9 +5,9 @@
 # For FIPS/OpenShift environments, use Dockerfile.fips instead.
 #
 # Build args allow image override in CI:
-#   --build-arg GO_IMAGE=${REGISTRY}/golang:1.24-alpine
+#   --build-arg GO_IMAGE=${REGISTRY}/golang:1.25-alpine
 
-ARG GO_IMAGE=golang:1.24-alpine
+ARG GO_IMAGE=golang:1.25-alpine
 ARG RUNTIME_IMAGE=gcr.io/distroless/static:nonroot
 
 # ------------------------------------------------------------------------------
@@ -41,7 +41,7 @@ RUN go mod download
 # Build with standard Go crypto
 COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags="-s -w" -o /out/manager cmd/main.go
+    go build -trimpath -ldflags="-s -w" -o /out/manager ./cmd/main.go
 
 # ------------------------------------------------------------------------------
 # Stage 3: Minimal distroless runtime image

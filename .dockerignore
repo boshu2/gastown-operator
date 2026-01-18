@@ -1,14 +1,29 @@
 # More info: https://docs.docker.com/engine/reference/builder/#dockerignore-file
-# Ignore everything by default and re-include only needed files
-**
+# Ignore build artifacts, tests, and unnecessary files
+bin/
+testbin/
+cover.out
+*.test
+*_test.go
 
-# Re-include Go source files (but not *_test.go)
-!**/*.go
-**/*_test.go
+# Ignore IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-# Re-include Go module files
+# Ignore git
+.git/
+.gitignore
+
+# Ignore docs and configs not needed for build
+docs/
+config/samples/
+*.md
 !go.mod
 !go.sum
 
-# Re-include pre-built gt CLI (created by Tekton build-gt-cli Task)
-!bin/gt
+# Ignore local development files
+.envrc
+.tool-versions

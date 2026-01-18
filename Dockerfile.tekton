@@ -6,9 +6,9 @@
 # Task before Kaniko to create this binary.
 #
 # Build args allow DPR image override in CI:
-#   --build-arg GO_IMAGE=${DPR_REGISTRY}/ci-images/golang:1.24-alpine
+#   --build-arg GO_IMAGE=${DPR_REGISTRY}/ci-images/golang:1.25-alpine
 
-ARG GO_IMAGE=golang:1.24-alpine
+ARG GO_IMAGE=golang:1.25-alpine
 ARG DISTROLESS_IMAGE=gcr.io/distroless/static:nonroot
 
 # ------------------------------------------------------------------------------
