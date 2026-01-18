@@ -25,7 +25,7 @@ variables:
 
   # CI Images from DPR
   GO_IMAGE: "${DPR_REGISTRY}/ci-images/golang:1.24"
-  GO_LINT_IMAGE: "${DPR_REGISTRY}/ci-images/golangci-lint:v1.62-alpine"
+  GO_LINT_IMAGE: "${DPR_REGISTRY}/ci-images/golangci-lint:v2.7.2"
   KUBECTL_IMAGE: "${DPR_REGISTRY}/ci-images/kubectl:latest"
   YAMLLINT_IMAGE: "${DPR_REGISTRY}/ci-images/yamllint:latest"
 
