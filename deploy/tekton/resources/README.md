@@ -3,6 +3,40 @@
 This document describes the Kubernetes resources needed to run the
 Labyrinth Tekton pipeline.
 
+## GitLab CI Variables
+
+The following variables must be set in GitLab CI/CD settings:
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `KUBE_CONFIG` | Yes | Base64-encoded kubeconfig for olympus-ci namespace |
+| `REGISTRY_URL` | Yes | Container registry URL (e.g., `dprusocplvjmp01.deepsky.lab:5000`) |
+| `REGISTRY_USER` | Yes | Registry username |
+| `REGISTRY_PASSWORD` | Yes | Registry password |
+| `GITHUB_DEPLOY_KEY` | Yes | Base64-encoded SSH deploy key for GitHub push (code sync) |
+| `GITHUB_TOKEN` | Yes | GitHub PAT with `write:packages` scope (GHCR push) |
+| `TEKTON_NAMESPACE` | No | Override default (`olympus-ci`) |
+| `TRIVY_SEVERITY` | No | Override scan threshold (default: `CRITICAL,HIGH`) |
+
+### Setting Up GitHub Integration
+
+**1. Create GitHub Deploy Key (for code sync):**
+
+```bash
+# Generate SSH key
+ssh-keygen -t ed25519 -C "gitlab-ci" -f gitlab-deploy-key
+
+# Add public key to GitHub repo: Settings → Deploy keys → Add (with write access)
+# Base64 encode private key for GitLab CI variable
+cat gitlab-deploy-key | base64 -w0
+```
+
+**2. Create GitHub PAT (for GHCR push):**
+
+- Go to GitHub: Settings → Developer settings → Personal access tokens
+- Create token with `write:packages` scope
+- Add as `GITHUB_TOKEN` in GitLab CI variables
+
 ## Required Resources
 
 ### 1. CI Namespace
@@ -15,17 +49,43 @@ kubectl create namespace olympus-ci
 
 ### 2. Registry Credentials Secret
 
-Allows Kaniko to push images to your container registry:
+The pipeline pushes to DPR (primary) and mirrors to GHCR (public).
+Both registries must be in the same secret. See `registry-secret.yaml`
+for detailed instructions.
+
+**Quick setup for dual-registry (DPR + GHCR):**
 
 ```bash
-kubectl create secret docker-registry registry-credentials \
-  --docker-server=<YOUR_REGISTRY> \
-  --docker-username=${REGISTRY_USER} \
-  --docker-password=${REGISTRY_PASSWORD} \
-  -n olympus-ci
+# Create temp files for each registry
+kubectl create secret docker-registry dpr-creds \
+  --docker-server=dprusocplvjmp01.deepsky.lab:5000 \
+  --docker-username=${DPR_USER} \
+  --docker-password=${DPR_PASSWORD} \
+  -n olympus-ci --dry-run=client -o json > /tmp/dpr.json
+
+kubectl create secret docker-registry ghcr-creds \
+  --docker-server=ghcr.io \
+  --docker-username=${GITHUB_USER} \
+  --docker-password=${GITHUB_TOKEN} \
+  -n olympus-ci --dry-run=client -o json > /tmp/ghcr.json
+
+# Merge into single secret
+jq -s '.[0] * {
+  "metadata": {"name": "registry-credentials"},
+  "data": {
+    ".dockerconfigjson": (
+      [.[].data[".dockerconfigjson"] | @base64d | fromjson] |
+      reduce .[] as $x ({}; .auths += $x.auths) |
+      @json | @base64
+    )
+  }
+}' /tmp/dpr.json /tmp/ghcr.json | kubectl apply -n olympus-ci -f -
+
+# Cleanup
+rm /tmp/dpr.json /tmp/ghcr.json
 ```
 
-**Examples for common registries:**
+**Single registry examples:**
 
 ```bash
 # GitHub Container Registry (ghcr.io)

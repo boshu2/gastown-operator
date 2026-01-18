@@ -209,3 +209,29 @@ deploy:dev:
   when: manual
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# =============================================================================
+# GitHub Code Sync (after successful pipeline)
+# =============================================================================
+
+sync:github:
+  stage: .post
+  image: ${KUBECTL_IMAGE}
+  needs:
+    - job: monitor:tekton
+  before_script:
+    - apk add --no-cache git openssh-client
+    - mkdir -p ~/.ssh
+    - echo "${GITHUB_DEPLOY_KEY}" | base64 -d > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-keyscan github.com >> ~/.ssh/known_hosts
+  script:
+    - |
+      echo "Syncing code to GitHub..."
+      git clone --mirror ${CI_REPOSITORY_URL} /tmp/repo.git
+      cd /tmp/repo.git
+      git remote add github git@github.com:boshu2/gastown-operator.git
+      git push github --mirror
+      echo "Code synced to https://github.com/boshu2/gastown-operator"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
