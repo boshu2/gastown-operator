@@ -52,6 +52,25 @@ This installs hooks that run `make validate` (lint + vet) before every push. Thi
 
 ## Local Development
 
+### Namespace Setup
+
+Before running locally, create the namespaces used by the operator:
+
+```bash
+# Control plane namespace (operator runs here)
+kubectl create namespace gastown-system
+
+# Worker namespace (polecat pods run here in kubernetes mode)
+kubectl create namespace gastown-workers
+```
+
+The operator watches all namespaces by default. To restrict to specific namespaces, set `WATCH_NAMESPACE`:
+
+```bash
+# Watch only gastown-workers namespace
+WATCH_NAMESPACE=gastown-workers make run-local
+```
+
 ### 1. Install CRDs
 
 ```bash

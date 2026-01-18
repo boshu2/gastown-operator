@@ -10,6 +10,44 @@ Get the Gas Town Operator running in minutes.
 - `gt` CLI installed and configured
 - A Gas Town setup (`~/gt/` with rigs)
 
+## Namespace Strategy
+
+The Gas Town Operator uses a 3-namespace architecture for separation of concerns:
+
+| Namespace | Purpose | Resources |
+|-----------|---------|-----------|
+| `gastown-system` | Control plane | Operator deployment, controller-manager |
+| `gastown-workers` | Workloads | Polecat pods (kubernetes mode), Secrets |
+| Cluster-scoped | Global resources | Rig CRDs |
+
+### Why This Architecture?
+
+1. **Security isolation**: Workloads run separately from control plane
+2. **RBAC scoping**: Different permissions for operators vs workers
+3. **Resource quotas**: Apply limits per namespace for workloads
+4. **Network policies**: Restrict egress differently per namespace
+
+### Namespace Setup
+
+```bash
+# Create namespaces
+kubectl create namespace gastown-system
+kubectl create namespace gastown-workers
+
+# Apply network policies (optional but recommended)
+kubectl label namespace gastown-system pod-security.kubernetes.io/enforce=restricted
+kubectl label namespace gastown-workers pod-security.kubernetes.io/enforce=baseline
+```
+
+### Which Namespace for What?
+
+- **Operator install** → `gastown-system`
+- **Polecat CRs** → `gastown-workers` (for kubernetes mode)
+- **Convoy CRs** → `gastown-workers`
+- **Witness/Refinery CRs** → `gastown-system`
+- **Secrets (git, claude)** → Same namespace as the Polecats referencing them
+- **Rig CRs** → No namespace (cluster-scoped)
+
 ## Installation
 
 ### 1. Add the Helm repository (or install from local chart)
@@ -79,7 +117,7 @@ apiVersion: gastown.gastown.io/v1alpha1
 kind: Polecat
 metadata:
   name: worker-1
-  namespace: default
+  namespace: gastown-workers
 spec:
   rig: myproject
   desiredState: Working
@@ -102,7 +140,7 @@ apiVersion: gastown.gastown.io/v1alpha1
 kind: Convoy
 metadata:
   name: wave-1
-  namespace: default
+  namespace: gastown-workers
 spec:
   description: "Wave 1 implementation tasks"
   trackedBeads:
