@@ -104,25 +104,23 @@ spec:
     # 2b. Trivy filesystem scan - secrets and misconfigs
     - name: scan-secrets
       taskRef:
-        name: trivy-scanner
+        name: jren-trivy-fs
         kind: ClusterTask
       runAfter:
         - clone
       workspaces:
-        - name: manifest-dir
+        - name: source
           workspace: source
       params:
-        - name: ARGS
-          value:
-            - "fs"
-            - "--scanners=secret,misconfig"
-            - "--severity=LOW,MEDIUM,HIGH,CRITICAL"
-            - "."
+        - name: scanners
+          value: "secret,misconfig"
+        - name: severity
+          value: "LOW,MEDIUM,HIGH,CRITICAL"
 
     # 2c. Hadolint - Dockerfile best practices
     - name: lint-dockerfile
       taskRef:
-        name: hadolint
+        name: jren-hadolint-scan
         kind: ClusterTask
       runAfter:
         - clone
@@ -139,7 +137,7 @@ spec:
 
     - name: build-operator
       taskRef:
-        name: kaniko
+        name: jren-kaniko-build
         kind: ClusterTask
       runAfter:
         - go-test
@@ -167,19 +165,18 @@ spec:
 
     - name: scan-image
       taskRef:
-        name: trivy-scanner
+        name: jren-trivy-image
         kind: ClusterTask
       runAfter:
         - build-operator
       workspaces:
-        - name: manifest-dir
+        - name: source
           workspace: source
       params:
-        - name: ARGS
-          value:
-            - "image"
-            - "--severity=$(params.trivy-fail-on)"
-            - "$(params.registry)/gastown-operator:$(params.image-tag)"
+        - name: image
+          value: "$(params.registry)/gastown-operator:$(params.image-tag)"
+        - name: severity
+          value: "$(params.trivy-fail-on)"
 
   # ===========================================================================
   # Finally: Summary Report
