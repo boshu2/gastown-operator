@@ -239,7 +239,7 @@ claude --version || echo "Claude CLI installed"
 # Run Claude with dangerously-skip-permissions for headless mode
 echo "Starting Claude Code agent..."
 echo "Working on issue: $GT_ISSUE"
-exec claude --dangerously-skip-permissions
+exec claude --print --dangerously-skip-permissions "You are a Gas Town polecat worker assigned to issue $GT_ISSUE. Read the repository CLAUDE.md and .beads/ directory to understand the task. Execute the work autonomously."
 `, ClaudeCredsMountPath, ClaudeCredsMountPath)
 
 	container := corev1.Container{
