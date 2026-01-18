@@ -68,10 +68,13 @@ spec:
           resources:
             requests:
               storage: 2Gi
-    # Registry credentials
+    # Registry credentials (project .dockerconfigjson as config.json for skopeo)
     - name: dockerconfig
       secret:
         secretName: registry-credentials
+        items:
+          - key: .dockerconfigjson
+            path: config.json
     # Reports workspace
     - name: reports
       volumeClaimTemplate:
