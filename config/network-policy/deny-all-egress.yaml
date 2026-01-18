@@ -1,0 +1,37 @@
+# This NetworkPolicy restricts egress traffic from the controller manager.
+# It allows:
+# - DNS resolution (port 53)
+# - Kubernetes API server (port 443)
+# - HTTPS to external services (port 443) for webhook calls
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: controller-manager-egress
+  namespace: system
+spec:
+  podSelector:
+    matchLabels:
+      control-plane: controller-manager
+      app.kubernetes.io/name: gastown-operator
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Allow communication with Kubernetes API server
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 6443
+          protocol: TCP

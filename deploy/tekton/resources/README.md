@@ -1,7 +1,7 @@
-# Namespace Resources for gastown-operator CI
+# Namespace Resources for Labyrinth CI
 
 This document describes the Kubernetes resources needed to run the
-gastown-operator Tekton pipeline.
+Labyrinth Tekton pipeline.
 
 ## Required Resources
 

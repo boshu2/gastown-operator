@@ -18,8 +18,8 @@ FROM ${GO_IMAGE} AS gt-builder
 RUN apk add --no-cache git ca-certificates
 WORKDIR /src
 
-# Clone and build gt CLI
-RUN git clone https://git.deepskylab.io/olympus/daedalus.git . && \
+# Clone and build gt CLI from upstream GitHub (public)
+RUN git clone https://github.com/steveyegge/gastown.git . && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -trimpath -ldflags="-s -w" -o /out/gt ./cmd/gt
 
