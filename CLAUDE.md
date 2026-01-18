@@ -1,114 +1,131 @@
-# gastown-operator
+# Gas Town Operator - Kubernetes Native Polecats
 
-> **Recovery**: Run `gt prime` after compaction, clear, or new session
+Kubernetes operator that runs Gas Town polecats as pods. Scale your AI agent army beyond the laptop.
 
-K8s operator for Gas Town local execution claims.
+> *"Who runs Bartertown? Kubernetes runs Bartertown."*
 
 ---
 
-## Purpose
+## CI/CD Images - DPR Registry
 
-gastown-operator is the **bridge between K8s and local execution**. It allows Gas Town (local tmux-based execution) to claim and execute Automaton CRs that would otherwise run in K8s pods.
+**REQUIRED:** All CI pipelines must use images from DPR (DeepSky Private Registry) to avoid Docker Hub rate limits.
 
-### Architecture Context (2026-01 Restructuring)
+### Registry Configuration
 
-```
-BEFORE (monolithic hephaestus):
-┌─────────────────────────────────────────┐
-│              HEPHAESTUS                 │
-│  kagent + fractal + gastown-operator    │
-└─────────────────────────────────────────┘
+```yaml
+# In .gitlab-ci.yml variables:
+DPR_REGISTRY: "dprusocplvjmp01.deepsky.lab:5000"
 
-AFTER (separated concerns):
-┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
-│  HEPHAESTUS  │  │   CYCLOPES   │  │ GASTOWN-OPERATOR │
-│  (olympus.io │  │   (kagent    │  │  (local claim    │
-│   operator)  │  │    fork)     │  │   webhook)       │
-└──────────────┘  └──────────────┘  └──────────────────┘
-       │                                     │
-       │         ┌──────────────┐           │
-       └────────>│   DAEDALUS   │<──────────┘
-                 │  (gt CLI -   │
-                 │   local exec)│
-                 └──────────────┘
+# Required image variables:
+GO_IMAGE: "${DPR_REGISTRY}/ci-images/golang:1.24"
+GO_LINT_IMAGE: "${DPR_REGISTRY}/ci-images/golangci-lint:v2.7.2"
+KUBECTL_IMAGE: "${DPR_REGISTRY}/ci-images/kubectl:latest"
+YAMLLINT_IMAGE: "${DPR_REGISTRY}/ci-images/yamllint:latest"
 ```
 
-### Role in the Platform
+### Current Issue
 
-| Component | Responsibility |
-|-----------|----------------|
-| **Hephaestus** | K8s operator for olympus.io CRDs (Automaton, Phalanx, Forge) |
-| **Cyclopes** | kagent fork - AI agent SDK |
-| **Daedalus** | Gas Town CLI - local tmux execution |
-| **gastown-operator** | Webhook allowing local claims of Automaton CRs |
+The .gitlab-ci.yml uses Docker Hub images directly. **This must be fixed** to use DPR:
 
----
+```yaml
+# WRONG (current):
+image: golangci/golangci-lint:v1.62-alpine
+image: golang:${GO_VERSION}
+image: bitnami/kubectl:latest
 
-## How It Works
+# CORRECT (required):
+image: ${DPR_REGISTRY}/ci-images/golangci-lint:v1.62-alpine
+image: ${DPR_REGISTRY}/ci-images/golang:${GO_VERSION}
+image: ${DPR_REGISTRY}/ci-images/kubectl:latest
+```
 
-1. **Automaton CR created** in K8s (via Hephaestus or directly)
-2. **gastown-operator webhook** intercepts
-3. If `spec.executionMode: local` or local claim requested:
-   - Marks Automaton as claimed by local
-   - Sends notification to Gas Town
-4. **Gas Town (gt sling)** picks up and executes locally
-5. **Status reported back** to Automaton CR
-
----
-
-## Key Files
-
-| Path | Purpose |
-|------|---------|
-| `api/v1alpha1/` | CRD types (mirrors hephaestus olympus.io types) |
-| `internal/controller/` | Reconciliation logic |
-| `internal/webhook/` | Mutating/validating webhooks |
-| `config/` | Kustomize manifests, RBAC |
-| `helm/` | Helm chart for deployment |
-
----
-
-## Development
+### Mirroring New Images
 
 ```bash
-# Run locally
-make run
+# From release_engineering repo:
+cd ~/gt/release_engineering/crew/boden
+./scripts/mirror-ci-images.sh --check   # See what's missing
+./scripts/mirror-ci-images.sh           # Mirror all
+```
 
-# Run tests
-make test
+**Never use Docker Hub images directly in CI** - they will fail with rate limit errors.
 
-# Build image
-make docker-build IMG=gastown-operator:dev
+---
 
-# Deploy to cluster
-make deploy IMG=gastown-operator:dev
+## Repository Structure
+
+```
+gastown-operator/
+├── api/v1alpha1/          # CRD types (Polecat, Convoy)
+├── internal/controller/   # Reconciliation logic
+├── config/                # Kustomize manifests
+├── charts/                # Helm chart
+└── hack/                  # Build scripts
 ```
 
 ---
 
-## Beads
-
-This rig uses prefix `go` for gastown-operator issues.
+## Key Commands
 
 ```bash
-bd ready           # See unblocked issues
-bd show go-xxxx    # View issue details
-bd sync            # Sync with git
+# Development
+make generate              # Generate CRD manifests
+make manifests            # Generate RBAC, webhooks
+make test                 # Run unit tests
+
+# Build
+make docker-build         # Build container image
+make docker-push          # Push to registry
+
+# Deploy
+make deploy               # Deploy to current cluster
+make undeploy             # Remove from cluster
 ```
 
 ---
 
-## Related Rigs
+## CRD Types
 
-| Rig | Relationship |
-|-----|--------------|
-| hephaestus | Provides olympus.io CRDs we watch |
-| daedalus | GT CLI that executes claimed work |
-| athena | LiteLLM gateway for model access |
+| CRD | Purpose |
+|-----|---------|
+| **Polecat** | AI worker pod (runs Claude in container) |
+| **Convoy** | Batch coordination (multiple polecats) |
 
 ---
 
-## See Also
+## Two Editions
 
-- `~/gt/olympus/crew/goku/.agents/research/2026-01-14-hephaestus-complete-rewrite-scope.md`
-- `~/gt/olympus/crew/goku/.agents/research/2026-01-15-post-titan-hephaestus-plan.md`
+| Edition | Target | Base Image | Security |
+|---------|--------|------------|----------|
+| **Community** | Vanilla K8s | golang:alpine | Standard PSS |
+| **Enterprise** | OpenShift | Red Hat UBI9 | FIPS + Restricted SCC |
+
+---
+
+## Issue Tracking
+
+Uses [Beads](https://github.com/steveyegge/beads) for git-based issue tracking.
+
+```bash
+bd ready                  # Unblocked issues
+bd show <id>             # Full context
+bd sync && git push      # ALWAYS before stopping
+```
+
+---
+
+## Integration with Gas Town
+
+This operator extends the local `gt` CLI to Kubernetes:
+
+```
+LOCAL (gt CLI)              CLUSTER (operator)
+┌──────────────┐            ┌──────────────────┐
+│ gt sling     │ ─────────► │ Creates Polecat  │
+│              │            │ CR → Pod runs    │
+│ gt convoy    │ ─────────► │ Creates Convoy   │
+│              │            │ CR → Coordinates │
+└──────────────┘            └──────────────────┘
+```
+
+The webhook in this operator receives work assignments from local `gt` CLI and creates the corresponding Kubernetes resources.
