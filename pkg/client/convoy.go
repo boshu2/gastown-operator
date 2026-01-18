@@ -91,7 +91,9 @@ func (c *convoyClient) Update(ctx context.Context, convoy *gastownv1alpha1.Convo
 	return c.unstructuredToConvoy(updated)
 }
 
-func (c *convoyClient) UpdateStatus(ctx context.Context, convoy *gastownv1alpha1.Convoy) (*gastownv1alpha1.Convoy, error) {
+func (c *convoyClient) UpdateStatus(
+	ctx context.Context, convoy *gastownv1alpha1.Convoy,
+) (*gastownv1alpha1.Convoy, error) {
 	unstr, err := c.convoyToUnstructured(convoy)
 	if err != nil {
 		return nil, err

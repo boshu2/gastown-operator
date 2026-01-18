@@ -36,6 +36,9 @@ linters:
           - dupl
           - lll
         path: internal/*
+      - linters:
+          - dupl
+        path: pkg/client/*
     paths:
       - third_party$
       - builtin$

@@ -67,7 +67,9 @@ func (c *polecatClient) List(ctx context.Context, opts metav1.ListOptions) (*gas
 	return polecatList, nil
 }
 
-func (c *polecatClient) Create(ctx context.Context, polecat *gastownv1alpha1.Polecat) (*gastownv1alpha1.Polecat, error) {
+func (c *polecatClient) Create(
+	ctx context.Context, polecat *gastownv1alpha1.Polecat,
+) (*gastownv1alpha1.Polecat, error) {
 	unstr, err := c.polecatToUnstructured(polecat)
 	if err != nil {
 		return nil, err
@@ -79,7 +81,9 @@ func (c *polecatClient) Create(ctx context.Context, polecat *gastownv1alpha1.Pol
 	return c.unstructuredToPolecat(created)
 }
 
-func (c *polecatClient) Update(ctx context.Context, polecat *gastownv1alpha1.Polecat) (*gastownv1alpha1.Polecat, error) {
+func (c *polecatClient) Update(
+	ctx context.Context, polecat *gastownv1alpha1.Polecat,
+) (*gastownv1alpha1.Polecat, error) {
 	unstr, err := c.polecatToUnstructured(polecat)
 	if err != nil {
 		return nil, err
@@ -91,7 +95,9 @@ func (c *polecatClient) Update(ctx context.Context, polecat *gastownv1alpha1.Pol
 	return c.unstructuredToPolecat(updated)
 }
 
-func (c *polecatClient) UpdateStatus(ctx context.Context, polecat *gastownv1alpha1.Polecat) (*gastownv1alpha1.Polecat, error) {
+func (c *polecatClient) UpdateStatus(
+	ctx context.Context, polecat *gastownv1alpha1.Polecat,
+) (*gastownv1alpha1.Polecat, error) {
 	unstr, err := c.polecatToUnstructured(polecat)
 	if err != nil {
 		return nil, err

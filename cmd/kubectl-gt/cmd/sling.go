@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -66,20 +66,20 @@ func runSling(beadID, rig string, wait bool, timeout time.Duration) error {
 
 	// Create Polecat CR
 	polecat := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "gastown.gastown.io/v1alpha1",
 			"kind":       "Polecat",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      polecatName,
 				"namespace": namespace,
 			},
-			"spec": map[string]interface{}{
+			"spec": map[string]any{
 				"rig":           rig,
 				"beadID":        beadID,
 				"desiredState":  "Working",
 				"executionMode": "kubernetes",
-				"kubernetes": map[string]interface{}{
-					"claudeCredsSecretRef": map[string]interface{}{
+				"kubernetes": map[string]any{
+					"claudeCredsSecretRef": map[string]any{
 						"name": "claude-creds",
 					},
 				},
@@ -87,7 +87,8 @@ func runSling(beadID, rig string, wait bool, timeout time.Duration) error {
 		},
 	}
 
-	created, err := client.Resource(polecatGVR).Namespace(namespace).Create(context.Background(), polecat, metav1.CreateOptions{})
+	ctx := context.Background()
+	created, err := client.Resource(polecatGVR).Namespace(namespace).Create(ctx, polecat, metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create polecat: %w", err)
 	}
@@ -108,8 +109,9 @@ func runSling(beadID, rig string, wait bool, timeout time.Duration) error {
 func generatePolecatName(rig string) string {
 	// Simple name generation: rig-<random>
 	// In production, this would use a name pool like the gt CLI does
-	rand.Seed(time.Now().UnixNano())
-	suffix := fmt.Sprintf("%04x", rand.Intn(0xFFFF))
+	b := make([]byte, 2)
+	_, _ = rand.Read(b)
+	suffix := fmt.Sprintf("%04x", b)
 	return fmt.Sprintf("%s-%s", rig, suffix)
 }
 
@@ -140,7 +142,7 @@ func waitForPolecat(client dynamic.Interface, namespace, name string, timeout ti
 				conditions, _, _ := unstructured.NestedSlice(polecat.Object, "status", "conditions")
 				msg := "unknown reason"
 				for _, c := range conditions {
-					cond := c.(map[string]interface{})
+					cond, _ := c.(map[string]any)
 					if condType, _ := cond["type"].(string); condType == "Ready" {
 						if m, _ := cond["message"].(string); m != "" {
 							msg = m

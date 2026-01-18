@@ -91,9 +91,9 @@ func newRigCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&gitURL, "git-url", "", "Git repository URL (required)")
 	cmd.Flags().StringVar(&prefix, "prefix", "", "Beads prefix (required)")
 	cmd.Flags().StringVar(&localPath, "local-path", "", "Local filesystem path (required)")
-	cmd.MarkFlagRequired("git-url")
-	cmd.MarkFlagRequired("prefix")
-	cmd.MarkFlagRequired("local-path")
+	_ = cmd.MarkFlagRequired("git-url")
+	_ = cmd.MarkFlagRequired("prefix")
+	_ = cmd.MarkFlagRequired("local-path")
 
 	return cmd
 }
@@ -142,7 +142,7 @@ func runRigList(outputFormat string) error {
 		}
 	default:
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tPREFIX\tGIT-URL\tPHASE\tAGE")
+		_, _ = fmt.Fprintln(w, "NAME\tPREFIX\tGIT-URL\tPHASE\tAGE")
 		for _, item := range list.Items {
 			name := item.GetName()
 			prefix, _, _ := unstructured.NestedString(item.Object, "spec", "beadsPrefix")
@@ -150,10 +150,10 @@ func runRigList(outputFormat string) error {
 			phase, _, _ := unstructured.NestedString(item.Object, "status", "phase")
 			age := item.GetCreationTimestamp().Time
 
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 				name, prefix, truncate(gitURL, 40), phase, formatAge(age))
 		}
-		w.Flush()
+		_ = w.Flush()
 	}
 
 	return nil
@@ -199,7 +199,7 @@ func runRigStatus(name string) error {
 	if conditions, ok, _ := unstructured.NestedSlice(rig.Object, "status", "conditions"); ok && len(conditions) > 0 {
 		fmt.Println("\nConditions:")
 		for _, c := range conditions {
-			cond := c.(map[string]interface{})
+			cond, _ := c.(map[string]any)
 			condType, _ := cond["type"].(string)
 			status, _ := cond["status"].(string)
 			reason, _ := cond["reason"].(string)
@@ -226,13 +226,13 @@ func runRigCreate(name, gitURL, prefix, localPath string) error {
 	}
 
 	rig := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "gastown.gastown.io/v1alpha1",
 			"kind":       "Rig",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": name,
 			},
-			"spec": map[string]interface{}{
+			"spec": map[string]any{
 				"gitURL":      gitURL,
 				"beadsPrefix": prefix,
 				"localPath":   localPath,

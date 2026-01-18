@@ -148,7 +148,7 @@ func runPolecatList(rig string) error {
 	}
 
 	// Filter by rig if specified
-	var items []unstructured.Unstructured
+	items := make([]unstructured.Unstructured, 0, len(list.Items))
 	for _, item := range list.Items {
 		if rig != "" {
 			itemRig, _, _ := unstructured.NestedString(item.Object, "spec", "rig")
@@ -169,7 +169,7 @@ func runPolecatList(rig string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tRIG\tBEAD\tPHASE\tPOD\tAGE")
+	_, _ = fmt.Fprintln(w, "NAME\tRIG\tBEAD\tPHASE\tPOD\tAGE")
 	for _, item := range items {
 		name := item.GetName()
 		itemRig, _, _ := unstructured.NestedString(item.Object, "spec", "rig")
@@ -178,10 +178,10 @@ func runPolecatList(rig string) error {
 		podName, _, _ := unstructured.NestedString(item.Object, "status", "podName")
 		age := item.GetCreationTimestamp().Time
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			name, itemRig, beadID, phase, podName, formatAge(age))
 	}
-	w.Flush()
+	_ = w.Flush()
 
 	return nil
 }
@@ -240,7 +240,7 @@ func runPolecatStatus(rig, name string) error {
 	if conditions, ok, _ := unstructured.NestedSlice(polecat.Object, "status", "conditions"); ok && len(conditions) > 0 {
 		fmt.Println("\nConditions:")
 		for _, c := range conditions {
-			cond := c.(map[string]interface{})
+			cond, _ := c.(map[string]any)
 			condType, _ := cond["type"].(string)
 			status, _ := cond["status"].(string)
 			reason, _ := cond["reason"].(string)
@@ -255,7 +255,7 @@ func runPolecatStatus(rig, name string) error {
 	return nil
 }
 
-func runPolecatLogs(rig, name string, follow bool, container string) error {
+func runPolecatLogs(_, name string, follow bool, container string) error {
 	// First get the polecat to find its pod name
 	config, err := KubeFlags.ToRESTConfig()
 	if err != nil {
@@ -324,7 +324,7 @@ func runPolecatNuke(rig, name string, force bool) error {
 	}
 
 	// Update desiredState to Terminated
-	unstructured.SetNestedField(polecat.Object, "Terminated", "spec", "desiredState")
+	_ = unstructured.SetNestedField(polecat.Object, "Terminated", "spec", "desiredState")
 
 	_, err = client.Resource(polecatGVR).Namespace(namespace).Update(context.Background(), polecat, metav1.UpdateOptions{})
 	if err != nil {

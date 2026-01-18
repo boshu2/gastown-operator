@@ -103,7 +103,7 @@ func runConvoyList() error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tDESCRIPTION\tCOMPLETED\tPENDING\tPHASE\tAGE")
+	_, _ = fmt.Fprintln(w, "ID\tDESCRIPTION\tCOMPLETED\tPENDING\tPHASE\tAGE")
 	for _, item := range list.Items {
 		name := item.GetName()
 		description, _, _ := unstructured.NestedString(item.Object, "spec", "description")
@@ -114,10 +114,10 @@ func runConvoyList() error {
 		completed, _, _ := unstructured.NestedSlice(item.Object, "status", "completedBeads")
 		pending, _, _ := unstructured.NestedSlice(item.Object, "status", "pendingBeads")
 
-		fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%s\t%s\n",
 			name, truncate(description, 30), len(completed), len(pending), phase, formatAge(age))
 	}
-	w.Flush()
+	_ = w.Flush()
 
 	return nil
 }
@@ -207,27 +207,28 @@ func runConvoyCreate(description string, beads []string) error {
 	convoyName := fmt.Sprintf("cv-%s", generatePolecatName(""))
 
 	// Convert beads to interface slice
-	beadSlice := make([]interface{}, len(beads))
+	beadSlice := make([]any, len(beads))
 	for i, b := range beads {
 		beadSlice[i] = b
 	}
 
 	convoy := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "gastown.gastown.io/v1alpha1",
 			"kind":       "Convoy",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      convoyName,
 				"namespace": namespace,
 			},
-			"spec": map[string]interface{}{
+			"spec": map[string]any{
 				"description":  description,
 				"trackedBeads": beadSlice,
 			},
 		},
 	}
 
-	created, err := client.Resource(convoyGVR).Namespace(namespace).Create(context.Background(), convoy, metav1.CreateOptions{})
+	ctx := context.Background()
+	created, err := client.Resource(convoyGVR).Namespace(namespace).Create(ctx, convoy, metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create convoy: %w", err)
 	}

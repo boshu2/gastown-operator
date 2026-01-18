@@ -81,7 +81,7 @@ func newAuthStatusCmd() *cobra.Command {
 func runAuthSync(claudeDir string, force bool) error {
 	// Check Claude directory exists
 	if _, err := os.Stat(claudeDir); os.IsNotExist(err) {
-		return fmt.Errorf("Claude config directory not found: %s\n\nRun 'claude login' first", claudeDir)
+		return fmt.Errorf("claude config directory not found: %s (run 'claude login' first)", claudeDir)
 	}
 
 	// Read all files in Claude directory
@@ -123,7 +123,8 @@ func runAuthSync(claudeDir string, force bool) error {
 	namespace := GetNamespace()
 
 	// Check if Secret exists
-	existing, err := clientset.CoreV1().Secrets(namespace).Get(context.Background(), claudeCredsSecretName, metav1.GetOptions{})
+	ctx := context.Background()
+	existing, err := clientset.CoreV1().Secrets(namespace).Get(ctx, claudeCredsSecretName, metav1.GetOptions{})
 	if err == nil && !force {
 		lastSync := existing.Annotations[syncTimestampKey]
 		fmt.Printf("Secret %s already exists (last sync: %s)\n", claudeCredsSecretName, lastSync)
@@ -145,9 +146,9 @@ func runAuthSync(claudeDir string, force bool) error {
 	}
 
 	if existing != nil && existing.Name != "" {
-		_, err = clientset.CoreV1().Secrets(namespace).Update(context.Background(), secret, metav1.UpdateOptions{})
+		_, err = clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
 	} else {
-		_, err = clientset.CoreV1().Secrets(namespace).Create(context.Background(), secret, metav1.CreateOptions{})
+		_, err = clientset.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
 	}
 
 	if err != nil {
@@ -171,8 +172,9 @@ func runAuthStatus() error {
 	}
 
 	namespace := GetNamespace()
+	ctx := context.Background()
 
-	secret, err := clientset.CoreV1().Secrets(namespace).Get(context.Background(), claudeCredsSecretName, metav1.GetOptions{})
+	secret, err := clientset.CoreV1().Secrets(namespace).Get(ctx, claudeCredsSecretName, metav1.GetOptions{})
 	if err != nil {
 		fmt.Printf("Secret %s not found in namespace %s\n", claudeCredsSecretName, namespace)
 		fmt.Println("\nRun 'kubectl gt auth sync' to create it.")
