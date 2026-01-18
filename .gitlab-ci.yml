@@ -87,7 +87,7 @@ validate:generate:
 
 trigger:tekton:
   stage: trigger
-  image: ${DPR}/bitnami/kubectl:latest
+  image: ${DPR}/alpine/k8s:1.32.11
   variables:
     IMAGE_TAG: ${CI_COMMIT_SHORT_SHA}
   before_script:
@@ -131,7 +131,7 @@ trigger:tekton:
 
 monitor:tekton:
   stage: monitor
-  image: ${DPR}/bitnami/kubectl:latest
+  image: ${DPR}/alpine/k8s:1.32.11
   needs:
     - job: trigger:tekton
       artifacts: true
@@ -189,7 +189,7 @@ monitor:tekton:
 
 deploy:dev:
   stage: .post
-  image: ${DPR}/bitnami/kubectl:latest
+  image: ${DPR}/alpine/k8s:1.32.11
   before_script:
     - mkdir -p ~/.kube
     - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config

@@ -24,7 +24,7 @@ trap 'echo "Error on line $LINENO. Exit code: $?" >&2' ERR
 VERSION_GO="1.24"
 VERSION_GOLANGCI_LINT="v2.8-alpine"
 VERSION_YAMLLINT="latest"
-VERSION_KUBECTL="latest"
+VERSION_KUBECTL="1.32.11"
 
 # ============================================================================
 # CONFIGURATION
@@ -46,7 +46,7 @@ IMAGES=(
   "docker.io/cytopia/yamllint:${VERSION_YAMLLINT}|cytopia/yamllint:${VERSION_YAMLLINT}"
 
   # Kubernetes
-  "docker.io/bitnami/kubectl:${VERSION_KUBECTL}|bitnami/kubectl:${VERSION_KUBECTL}"
+  "docker.io/alpine/k8s:${VERSION_KUBECTL}|alpine/k8s:${VERSION_KUBECTL}"
 )
 
 # ============================================================================
