@@ -18,11 +18,16 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,6 +35,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
+	"github.com/org/gastown-operator/internal/git"
 )
 
 const (
@@ -57,6 +63,7 @@ type RefineryReconciler struct {
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=refineries/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=refineries/finalizers,verbs=update
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=polecats,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=gastown.gastown.io,resources=rigs,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
@@ -167,30 +174,111 @@ func (r *RefineryReconciler) findMergeReadyPolecats(polecats *gastownv1alpha1.Po
 }
 
 // processMerge handles the merge workflow for a single polecat branch.
-// STUB: This is a simulated implementation. Real git operations are not performed.
-// TODO(he-xxxx): Implement actual git merge workflow:
-//  1. Clone/fetch the repository using GitSecretRef credentials
-//  2. Checkout the target branch
-//  3. Rebase the polecat branch onto target
-//  4. Run tests if TestCommand is configured
-//  5. Push to target branch
-//  6. Clean up polecat branch
-func (r *RefineryReconciler) processMerge(ctx context.Context, refinery *gastownv1alpha1.Refinery, polecat *gastownv1alpha1.Polecat) error {
+// Workflow:
+//  1. Get the Rig to find the git URL
+//  2. Get git credentials from GitSecretRef
+//  3. Clone/fetch the repository
+//  4. Rebase the polecat branch onto target
+//  5. Run tests if TestCommand is configured
+//  6. Push to target branch
+//  7. Clean up polecat branch
+func (r *RefineryReconciler) processMerge(
+	ctx context.Context, refinery *gastownv1alpha1.Refinery, polecat *gastownv1alpha1.Polecat,
+) error {
 	log := logf.FromContext(ctx)
 
-	// STUB: Simulate success without actual git operations
-	log.Info("Processing merge (STUB - simulated, no actual git operations)",
+	// Get the source branch from polecat status
+	sourceBranch := polecat.Status.Branch
+	if sourceBranch == "" {
+		return fmt.Errorf("polecat %s has no branch in status", polecat.Name)
+	}
+
+	targetBranch := refinery.Spec.TargetBranch
+	if targetBranch == "" {
+		targetBranch = "main"
+	}
+
+	log.Info("Processing merge",
 		"polecat", polecat.Name,
-		"targetBranch", refinery.Spec.TargetBranch,
+		"sourceBranch", sourceBranch,
+		"targetBranch", targetBranch,
 		"testCommand", refinery.Spec.TestCommand)
 
+	// Get the Rig to find the git URL
+	rig := &gastownv1alpha1.Rig{}
+	if err := r.Get(ctx, types.NamespacedName{Name: refinery.Spec.RigRef}, rig); err != nil {
+		return fmt.Errorf("failed to get rig %s: %w", refinery.Spec.RigRef, err)
+	}
+
+	gitURL := rig.Spec.GitURL
+	if gitURL == "" {
+		return fmt.Errorf("rig %s has no gitURL", refinery.Spec.RigRef)
+	}
+
+	// Set up git credentials if specified
+	var sshKeyPath string
+	if refinery.Spec.GitSecretRef != nil {
+		keyPath, cleanup, err := r.setupGitCredentials(ctx, refinery)
+		if err != nil {
+			return fmt.Errorf("failed to setup git credentials: %w", err)
+		}
+		defer cleanup()
+		sshKeyPath = keyPath
+	}
+
+	// Create a temp directory for the clone
+	workDir, err := os.MkdirTemp("", "refinery-merge-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(workDir) }()
+
+	repoDir := filepath.Join(workDir, "repo")
+
+	// Create git client
+	gitClient := git.NewClient(repoDir, gitURL)
+	if sshKeyPath != "" {
+		gitClient = gitClient.WithSSHKey(sshKeyPath)
+	}
+
+	// Clone the repository
+	log.Info("Cloning repository", "url", gitURL)
+	if err := gitClient.Clone(ctx); err != nil {
+		return fmt.Errorf("failed to clone repository: %w", err)
+	}
+
+	// Perform the merge
+	mergeOpts := git.MergeOptions{
+		SourceBranch:       sourceBranch,
+		TargetBranch:       targetBranch,
+		TestCommand:        refinery.Spec.TestCommand,
+		DeleteSourceBranch: true,
+	}
+
+	log.Info("Executing merge workflow",
+		"sourceBranch", sourceBranch,
+		"targetBranch", targetBranch)
+
+	result, err := gitClient.MergeBranch(ctx, mergeOpts)
+	if err != nil {
+		return fmt.Errorf("merge failed: %w", err)
+	}
+
+	if !result.Success {
+		return fmt.Errorf("merge failed: %s", result.Error)
+	}
+
+	log.Info("Merge completed successfully",
+		"mergedCommit", result.MergedCommit,
+		"sourceBranch", sourceBranch,
+		"targetBranch", targetBranch)
+
 	// Update polecat status to indicate merge complete
-	// In production, this would be done after actual git operations
 	meta.SetStatusCondition(&polecat.Status.Conditions, metav1.Condition{
 		Type:               "Merged",
 		Status:             metav1.ConditionTrue,
 		Reason:             "MergeComplete",
-		Message:            "Branch merged to " + refinery.Spec.TargetBranch,
+		Message:            fmt.Sprintf("Branch %s merged to %s (commit: %s)", sourceBranch, targetBranch, result.MergedCommit),
 		LastTransitionTime: metav1.Now(),
 	})
 
@@ -199,6 +287,66 @@ func (r *RefineryReconciler) processMerge(ctx context.Context, refinery *gastown
 	}
 
 	return nil
+}
+
+// setupGitCredentials extracts SSH key from secret and writes to temp file.
+// Returns the path to the key file and a cleanup function.
+func (r *RefineryReconciler) setupGitCredentials(
+	ctx context.Context, refinery *gastownv1alpha1.Refinery,
+) (string, func(), error) {
+	if refinery.Spec.GitSecretRef == nil {
+		return "", func() {}, nil
+	}
+
+	secret := &corev1.Secret{}
+	secretKey := types.NamespacedName{
+		Name:      refinery.Spec.GitSecretRef.Name,
+		Namespace: refinery.Namespace,
+	}
+
+	if err := r.Get(ctx, secretKey, secret); err != nil {
+		return "", nil, fmt.Errorf("failed to get git secret %s: %w", secretKey, err)
+	}
+
+	// Look for SSH key in common key names
+	var sshKey []byte
+	for _, keyName := range []string{"ssh-privatekey", "id_rsa", "id_ed25519", "identity"} {
+		if key, ok := secret.Data[keyName]; ok {
+			sshKey = key
+			break
+		}
+	}
+
+	if sshKey == nil {
+		return "", nil, fmt.Errorf("no SSH key found in secret %s", secretKey)
+	}
+
+	// Write key to temp file
+	keyFile, err := os.CreateTemp("", "git-ssh-key-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create temp key file: %w", err)
+	}
+
+	if _, err := keyFile.Write(sshKey); err != nil {
+		_ = os.Remove(keyFile.Name())
+		return "", nil, fmt.Errorf("failed to write SSH key: %w", err)
+	}
+
+	if err := keyFile.Chmod(0o600); err != nil {
+		_ = os.Remove(keyFile.Name())
+		return "", nil, fmt.Errorf("failed to chmod SSH key: %w", err)
+	}
+
+	if err := keyFile.Close(); err != nil {
+		_ = os.Remove(keyFile.Name())
+		return "", nil, fmt.Errorf("failed to close SSH key file: %w", err)
+	}
+
+	cleanup := func() {
+		_ = os.Remove(keyFile.Name())
+	}
+
+	return keyFile.Name(), cleanup, nil
 }
 
 // setCondition updates or adds a condition to the Refinery status.
