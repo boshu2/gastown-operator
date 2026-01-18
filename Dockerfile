@@ -15,11 +15,17 @@ ARG RUNTIME_IMAGE=gcr.io/distroless/static:nonroot
 # ------------------------------------------------------------------------------
 FROM ${GO_IMAGE} AS gt-builder
 
-# Install git and ca-certificates (works on both Alpine and Debian)
+# Install git and ca-certificates (Alpine, Debian, or RHEL)
 RUN if command -v apk > /dev/null; then \
         apk add --no-cache git ca-certificates; \
-    else \
+    elif command -v apt-get > /dev/null; then \
         apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*; \
+    elif command -v dnf > /dev/null; then \
+        dnf install -y git ca-certificates && dnf clean all; \
+    elif command -v yum > /dev/null; then \
+        yum install -y git ca-certificates && yum clean all; \
+    else \
+        echo "No package manager found" && exit 1; \
     fi
 WORKDIR /src
 
@@ -36,11 +42,17 @@ FROM ${GO_IMAGE} AS builder
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 
-# Install git and ca-certificates (works on both Alpine and Debian)
+# Install git and ca-certificates (Alpine, Debian, or RHEL)
 RUN if command -v apk > /dev/null; then \
         apk add --no-cache git ca-certificates; \
-    else \
+    elif command -v apt-get > /dev/null; then \
         apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*; \
+    elif command -v dnf > /dev/null; then \
+        dnf install -y git ca-certificates && dnf clean all; \
+    elif command -v yum > /dev/null; then \
+        yum install -y git ca-certificates && yum clean all; \
+    else \
+        echo "No package manager found" && exit 1; \
     fi
 WORKDIR /src
 
