@@ -1,0 +1,82 @@
+# Skopeo Copy Task
+# Copies images between registries with explicit auth handling
+#
+# Usage:
+#   kubectl apply -f deploy/tekton/tasks/skopeo-copy.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gastown-operator-skopeo-copy
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/part-of: olympus
+spec:
+  description: Copy container images between registries using skopeo
+  params:
+    - name: srcImageURL
+      type: string
+      description: Source image URL (docker://registry/image:tag)
+    - name: destImageURL
+      type: string
+      description: Destination image URL
+    - name: srcTLSverify
+      type: string
+      default: "false"
+      description: Verify TLS for source registry
+    - name: destTLSverify
+      type: string
+      default: "true"
+      description: Verify TLS for destination registry
+  workspaces:
+    - name: dockerconfig
+      description: Docker config for registry auth
+      optional: false
+  results:
+    - name: DIGEST
+      description: Digest of copied image
+  steps:
+    - name: copy
+      image: dprusocplvjmp01.deepsky.lab:5000/skopeo/stable:v1.14
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        # Debug: show auth file location and registries
+        echo "=== Skopeo Copy ==="
+        echo "Source: $(params.srcImageURL)"
+        echo "Destination: $(params.destImageURL)"
+
+        # Find the auth file in the workspace
+        AUTH_FILE=""
+        if [ -f "$(workspaces.dockerconfig.path)/config.json" ]; then
+          AUTH_FILE="$(workspaces.dockerconfig.path)/config.json"
+        elif [ -f "$(workspaces.dockerconfig.path)/.dockerconfigjson" ]; then
+          AUTH_FILE="$(workspaces.dockerconfig.path)/.dockerconfigjson"
+        fi
+
+        if [ -n "$AUTH_FILE" ]; then
+          echo "Using auth file: $AUTH_FILE"
+          echo "Configured registries:"
+          cat "$AUTH_FILE" | grep -o '"[^"]*":' | head -20 || true
+        else
+          echo "Warning: No auth file found in workspace"
+        fi
+        echo "==================="
+
+        # Run skopeo with explicit authfile
+        skopeo copy \
+          --src-tls-verify=$(params.srcTLSverify) \
+          --dest-tls-verify=$(params.destTLSverify) \
+          ${AUTH_FILE:+--authfile="$AUTH_FILE"} \
+          "$(params.srcImageURL)" \
+          "$(params.destImageURL)"
+
+        # Get digest
+        DIGEST=$(skopeo inspect --tls-verify=$(params.destTLSverify) ${AUTH_FILE:+--authfile="$AUTH_FILE"} "$(params.destImageURL)" | grep -o '"Digest": "[^"]*"' | cut -d'"' -f4)
+        echo -n "${DIGEST}" > $(results.DIGEST.path)
+        echo "Image copied successfully. Digest: ${DIGEST}"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000

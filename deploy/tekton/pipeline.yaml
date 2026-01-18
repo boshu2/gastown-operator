@@ -184,8 +184,7 @@ spec:
 
     - name: mirror-to-ghcr
       taskRef:
-        name: jren-skopeo-copy
-        kind: ClusterTask
+        name: gastown-operator-skopeo-copy
       runAfter:
         - scan-image
       params:
@@ -193,6 +192,10 @@ spec:
           value: "docker://$(params.registry)/gastown-operator:$(params.image-tag)"
         - name: destImageURL
           value: "docker://ghcr.io/boshu2/gastown-operator:$(params.image-tag)"
+        - name: srcTLSverify
+          value: "false"
+        - name: destTLSverify
+          value: "true"
       workspaces:
         - name: dockerconfig
           workspace: dockerconfig
