@@ -175,6 +175,12 @@ echo "Git setup complete. Working branch: %s"
 		Command:         []string{"/bin/sh", "-c"},
 		Args:            []string{gitScript},
 		SecurityContext: b.buildSecurityContext(),
+		Env: []corev1.EnvVar{
+			{
+				Name:  "HOME",
+				Value: HomeMountPath,
+			},
+		},
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      WorkspaceVolumeName,
