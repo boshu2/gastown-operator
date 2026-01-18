@@ -157,6 +157,7 @@ spec:
         - name: EXTRA_ARGS
           value:
             - "--build-arg=VERSION=$(params.image-tag)"
+            - "--build-arg=GO_IMAGE=$(params.registry)/projectquay/golang:1.24"
 
     # =========================================================================
     # Stage 4: Image Security Scan

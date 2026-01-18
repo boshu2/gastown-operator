@@ -15,7 +15,12 @@ ARG RUNTIME_IMAGE=gcr.io/distroless/static:nonroot
 # ------------------------------------------------------------------------------
 FROM ${GO_IMAGE} AS gt-builder
 
-RUN apk add --no-cache git ca-certificates
+# Install git and ca-certificates (works on both Alpine and Debian)
+RUN if command -v apk > /dev/null; then \
+        apk add --no-cache git ca-certificates; \
+    else \
+        apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*; \
+    fi
 WORKDIR /src
 
 # Clone and build gt CLI from upstream GitHub (public)
@@ -31,7 +36,12 @@ FROM ${GO_IMAGE} AS builder
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 
-RUN apk add --no-cache git ca-certificates
+# Install git and ca-certificates (works on both Alpine and Debian)
+RUN if command -v apk > /dev/null; then \
+        apk add --no-cache git ca-certificates; \
+    else \
+        apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*; \
+    fi
 WORKDIR /src
 
 # Cache deps
