@@ -462,9 +462,9 @@ func TestContainerEnvironment(t *testing.T) {
 		envMap[env.Name] = env.Value
 	}
 
-	t.Run("sets CLAUDE_CONFIG_DIR", func(t *testing.T) {
-		if envMap["CLAUDE_CONFIG_DIR"] != ClaudeCredsMountPath {
-			t.Errorf("expected CLAUDE_CONFIG_DIR=%s, got %s", ClaudeCredsMountPath, envMap["CLAUDE_CONFIG_DIR"])
+	t.Run("does not set CLAUDE_CONFIG_DIR (uses default $HOME/.claude)", func(t *testing.T) {
+		if _, exists := envMap["CLAUDE_CONFIG_DIR"]; exists {
+			t.Error("CLAUDE_CONFIG_DIR should not be set - Claude uses default $HOME/.claude location")
 		}
 	})
 
@@ -489,6 +489,56 @@ func TestContainerEnvironment(t *testing.T) {
 	t.Run("sets HOME", func(t *testing.T) {
 		if envMap["HOME"] != HomeMountPath {
 			t.Errorf("expected HOME=%s, got %s", HomeMountPath, envMap["HOME"])
+		}
+	})
+}
+
+func TestClaudeCredsVolumeMount(t *testing.T) {
+	polecat := &gastownv1alpha1.Polecat{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-polecat",
+			Namespace: "default",
+		},
+		Spec: gastownv1alpha1.PolecatSpec{
+			Rig:    "test-rig",
+			BeadID: "test-bead",
+			Kubernetes: &gastownv1alpha1.KubernetesSpec{
+				GitRepository:        "git@github.com:org/repo.git",
+				GitBranch:            "main",
+				GitSecretRef:         gastownv1alpha1.SecretReference{Name: "git-secret"},
+				ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{Name: "claude-secret"},
+			},
+		},
+	}
+
+	builder := NewBuilder(polecat)
+	pod, err := builder.Build()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Run("mounts claude creds at $HOME/.claude", func(t *testing.T) {
+		var foundMount *corev1.VolumeMount
+		for i, vm := range pod.Spec.Containers[0].VolumeMounts {
+			if vm.Name == ClaudeCredsVolumeName {
+				foundMount = &pod.Spec.Containers[0].VolumeMounts[i]
+				break
+			}
+		}
+
+		if foundMount == nil {
+			t.Fatal("claude-creds volume mount not found")
+		}
+
+		// Should be mounted at /home/nonroot/.claude (standard Linux location)
+		expectedPath := "/home/nonroot/.claude"
+		if foundMount.MountPath != expectedPath {
+			t.Errorf("expected claude creds mount at %s, got %s", expectedPath, foundMount.MountPath)
+		}
+
+		// Should be read-only
+		if !foundMount.ReadOnly {
+			t.Error("expected claude creds mount to be read-only")
 		}
 	})
 }

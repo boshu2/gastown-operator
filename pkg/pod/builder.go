@@ -42,7 +42,7 @@ const (
 	// Mount paths
 	WorkspaceMountPath   = "/workspace"
 	GitCredsMountPath    = "/git-creds"
-	ClaudeCredsMountPath = "/claude-creds"
+	ClaudeCredsMountPath = "/home/nonroot/.claude" // Standard Linux location for Claude credentials
 	TmpMountPath         = "/tmp"
 	HomeMountPath        = "/home/nonroot"
 
@@ -232,10 +232,8 @@ exec claude --dangerously-skip-permissions
 		WorkingDir:      fmt.Sprintf("%s/repo", WorkspaceMountPath),
 		SecurityContext: b.buildSecurityContext(),
 		Env: []corev1.EnvVar{
-			{
-				Name:  "CLAUDE_CONFIG_DIR",
-				Value: ClaudeCredsMountPath,
-			},
+			// Claude credentials mounted at $HOME/.claude (standard Linux location)
+			// No CLAUDE_CONFIG_DIR needed - Claude uses default path
 			{
 				Name:  "GT_ISSUE",
 				Value: b.polecat.Spec.BeadID,
