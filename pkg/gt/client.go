@@ -267,7 +267,8 @@ func (c *Client) PolecatExists(ctx context.Context, rig, name string) (bool, err
 
 // ConvoyCreate creates a new convoy for tracking beads
 func (c *Client) ConvoyCreate(ctx context.Context, description string, beadIDs []string) (string, error) {
-	args := []string{"convoy", "create", description}
+	args := make([]string, 0, 3+len(beadIDs))
+	args = append(args, "convoy", "create", description)
 	args = append(args, beadIDs...)
 	output, err := c.run(ctx, args...)
 	if err != nil {
