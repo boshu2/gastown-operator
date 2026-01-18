@@ -9,27 +9,26 @@
 #
 # Prerequisites:
 #   1. Apply the Tasks:
-#      kubectl apply -f deploy/tekton/tasks/ -n gastown-ci
+#      kubectl apply -f deploy/tekton/tasks/ -n olympus-ci
 #
 #   2. Apply the Pipeline:
-#      kubectl apply -f deploy/tekton/pipeline.yaml -n gastown-ci
+#      kubectl apply -f deploy/tekton/pipeline.yaml -n olympus-ci
 #
 #   3. Create registry credentials:
 #      kubectl create secret docker-registry registry-credentials \
 #        --docker-server=<REGISTRY> \
-#        --docker-username=xxx --docker-password=xxx -n gastown-ci
+#        --docker-username=xxx --docker-password=xxx -n olympus-ci
 #
 # Manual Usage (replace placeholders first):
-#   kubectl create -f deploy/tekton/pipelinerun.yaml -n gastown-ci
+#   kubectl create -f deploy/tekton/pipelinerun.yaml -n olympus-ci
 #
 # Watch progress:
-#   tkn pipelinerun logs -f --last -n gastown-ci
+#   tkn pipelinerun logs -f --last -n olympus-ci
 ---
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   generateName: gastown-operator-ci-run-
-  namespace: gastown-ci
   labels:
     app.kubernetes.io/component: pipelinerun
     app.kubernetes.io/name: gastown-operator
