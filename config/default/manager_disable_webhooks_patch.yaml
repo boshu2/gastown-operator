@@ -1,0 +1,5 @@
+# This patch adds --disable-webhooks flag when webhook service is not deployed.
+# Use this for E2E tests or deployments without cert-manager.
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --disable-webhooks

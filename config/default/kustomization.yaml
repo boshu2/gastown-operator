@@ -41,6 +41,11 @@ patches:
   target:
     kind: Deployment
 
+# [DISABLE-WEBHOOKS] Uncomment to disable webhooks for E2E tests or deployments without cert-manager.
+#- path: manager_disable_webhooks_patch.yaml
+#  target:
+#    kind: Deployment
+
 # Uncomment the patches line if you enable Metrics and CertManager
 # [METRICS-WITH-CERTS] To enable metrics protected with certManager, uncomment the following line.
 # This patch will protect the metrics with certManager self-signed certs.
