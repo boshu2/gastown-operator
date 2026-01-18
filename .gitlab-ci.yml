@@ -37,7 +37,7 @@ stages:
 
 lint:go:
   stage: validate
-  image: ${DPR}/golangci/golangci-lint:v1.62-alpine
+  image: ${DPR}/golangci/golangci-lint:v2.8-alpine
   script:
     - golangci-lint run --timeout 5m ./...
   rules:
