@@ -1,0 +1,83 @@
+name: Release kubectl-gt
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build binaries
+        run: |
+          cd cmd/kubectl-gt
+          mkdir -p dist
+
+          # Build for all platforms
+          GOOS=darwin GOARCH=amd64 go build -ldflags "-X github.com/org/gastown-operator/cmd/kubectl-gt/cmd.Version=${{ steps.version.outputs.VERSION }}" -o dist/kubectl-gt-darwin-amd64/kubectl-gt .
+          GOOS=darwin GOARCH=arm64 go build -ldflags "-X github.com/org/gastown-operator/cmd/kubectl-gt/cmd.Version=${{ steps.version.outputs.VERSION }}" -o dist/kubectl-gt-darwin-arm64/kubectl-gt .
+          GOOS=linux GOARCH=amd64 go build -ldflags "-X github.com/org/gastown-operator/cmd/kubectl-gt/cmd.Version=${{ steps.version.outputs.VERSION }}" -o dist/kubectl-gt-linux-amd64/kubectl-gt .
+          GOOS=linux GOARCH=arm64 go build -ldflags "-X github.com/org/gastown-operator/cmd/kubectl-gt/cmd.Version=${{ steps.version.outputs.VERSION }}" -o dist/kubectl-gt-linux-arm64/kubectl-gt .
+
+          # Create tarballs
+          cd dist
+          for dir in kubectl-gt-*; do
+            tar -czvf "${dir}.tar.gz" -C "${dir}" kubectl-gt
+          done
+
+          # Generate checksums
+          sha256sum *.tar.gz > checksums.txt
+          cat checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            cmd/kubectl-gt/dist/*.tar.gz
+            cmd/kubectl-gt/dist/checksums.txt
+          generate_release_notes: true
+
+      - name: Update Krew manifest
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          cd cmd/kubectl-gt/dist
+
+          # Extract checksums
+          DARWIN_AMD64=$(grep darwin-amd64 checksums.txt | awk '{print $1}')
+          DARWIN_ARM64=$(grep darwin-arm64 checksums.txt | awk '{print $1}')
+          LINUX_AMD64=$(grep linux-amd64 checksums.txt | awk '{print $1}')
+          LINUX_ARM64=$(grep linux-arm64 checksums.txt | awk '{print $1}')
+
+          # Update manifest
+          cd $GITHUB_WORKSPACE
+          sed -i "s/version: v.*/version: ${VERSION}/" plugins/gt.yaml
+          sed -i "s|releases/download/v[^/]*/|releases/download/${VERSION}/|g" plugins/gt.yaml
+          sed -i "s/PLACEHOLDER_SHA256_DARWIN_AMD64/${DARWIN_AMD64}/" plugins/gt.yaml
+          sed -i "s/PLACEHOLDER_SHA256_DARWIN_ARM64/${DARWIN_ARM64}/" plugins/gt.yaml
+          sed -i "s/PLACEHOLDER_SHA256_LINUX_AMD64/${LINUX_AMD64}/" plugins/gt.yaml
+          sed -i "s/PLACEHOLDER_SHA256_LINUX_ARM64/${LINUX_ARM64}/" plugins/gt.yaml
+
+          echo "Updated Krew manifest:"
+          cat plugins/gt.yaml
+
+      - name: Upload Krew manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: krew-manifest
+          path: plugins/gt.yaml
