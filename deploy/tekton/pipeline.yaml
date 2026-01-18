@@ -8,20 +8,19 @@
 #   4. Scan Image - trivy-image ClusterTask
 #
 # Prerequisites:
-#   - gastown-ci namespace with ClusterTasks installed
+#   - olympus-ci namespace with ClusterTasks installed
 #   - registry-credentials secret for image push
 #   - git-credentials secret (if private repo)
 #
 # Usage:
-#   kubectl apply -f deploy/tekton/tasks/ -n gastown-ci
-#   kubectl apply -f deploy/tekton/pipeline.yaml -n gastown-ci
-#   kubectl create -f deploy/tekton/pipelinerun.yaml -n gastown-ci
+#   kubectl apply -f deploy/tekton/tasks/ -n olympus-ci
+#   kubectl apply -f deploy/tekton/pipeline.yaml -n olympus-ci
+#   kubectl create -f deploy/tekton/pipelinerun.yaml -n olympus-ci
 ---
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: gastown-operator-ci
-  namespace: gastown-ci
   labels:
     app.kubernetes.io/component: pipeline
     app.kubernetes.io/name: gastown-operator
