@@ -28,7 +28,32 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
+	"github.com/org/gastown-operator/internal/git"
 )
+
+// mockGitClient implements git.GitClient for testing.
+type mockGitClient struct {
+	cloneErr    error
+	mergeErr    error
+	mergeResult *git.MergeResult
+}
+
+func (m *mockGitClient) Clone(ctx context.Context) error {
+	return m.cloneErr
+}
+
+func (m *mockGitClient) MergeBranch(ctx context.Context, opts git.MergeOptions) (*git.MergeResult, error) {
+	if m.mergeErr != nil {
+		return nil, m.mergeErr
+	}
+	if m.mergeResult != nil {
+		return m.mergeResult, nil
+	}
+	return &git.MergeResult{
+		Success:      true,
+		MergedCommit: "abc123",
+	}, nil
+}
 
 var _ = Describe("Refinery Controller", func() {
 	Context("When reconciling a resource", func() {
@@ -184,6 +209,18 @@ var _ = Describe("Refinery Controller", func() {
 		It("should process merge-ready polecats and update status", func() {
 			ctx := context.Background()
 
+			// Create the Rig that the refinery references
+			rig := &gastownv1alpha1.Rig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "merge-test-rig",
+				},
+				Spec: gastownv1alpha1.RigSpec{
+					GitURL:      "git@github.com:test/repo.git",
+					BeadsPrefix: "test",
+				},
+			}
+			Expect(k8sClient.Create(ctx, rig)).To(Succeed())
+
 			// Create a refinery
 			refinery := &gastownv1alpha1.Refinery{
 				ObjectMeta: metav1.ObjectMeta{
@@ -191,7 +228,7 @@ var _ = Describe("Refinery Controller", func() {
 					Namespace: "default",
 				},
 				Spec: gastownv1alpha1.RefinerySpec{
-					RigRef:       "test-rig",
+					RigRef:       "merge-test-rig",
 					TargetBranch: "main",
 					TestCommand:  "make test",
 					Parallelism:  1,
@@ -205,19 +242,20 @@ var _ = Describe("Refinery Controller", func() {
 					Name:      "merge-ready-polecat",
 					Namespace: "default",
 					Labels: map[string]string{
-						"gastown.io/rig": "test-rig",
+						"gastown.io/rig": "merge-test-rig",
 					},
 				},
 				Spec: gastownv1alpha1.PolecatSpec{
-					Rig:          "test-rig",
+					Rig:          "merge-test-rig",
 					DesiredState: gastownv1alpha1.PolecatDesiredWorking,
 					BeadID:       "merge-bead-123",
 				},
 			}
 			Expect(k8sClient.Create(ctx, polecat)).To(Succeed())
 
-			// Set Available condition on polecat
+			// Set Available condition and Branch on polecat
 			polecat.Status.Phase = gastownv1alpha1.PolecatPhaseDone
+			polecat.Status.Branch = "feature/merge-bead-123"
 			polecat.Status.Conditions = []metav1.Condition{
 				{
 					Type:               "Available",
@@ -229,11 +267,18 @@ var _ = Describe("Refinery Controller", func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, polecat)).To(Succeed())
 
-			// Create reconciler with fake recorder
+			// Create mock git client factory
+			mockClient := &mockGitClient{}
+			mockFactory := func(repoDir, gitURL, sshKeyPath string) git.GitClient {
+				return mockClient
+			}
+
+			// Create reconciler with fake recorder and mock git factory
 			controllerReconciler := &RefineryReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				Recorder: record.NewFakeRecorder(10),
+				Client:           k8sClient,
+				Scheme:           k8sClient.Scheme(),
+				Recorder:         record.NewFakeRecorder(10),
+				GitClientFactory: mockFactory,
 			}
 
 			// Reconcile
@@ -274,6 +319,7 @@ var _ = Describe("Refinery Controller", func() {
 			Expect(hasMergedCondition).To(BeTrue())
 
 			// Cleanup
+			Expect(k8sClient.Delete(ctx, rig)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, refinery)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, polecat)).To(Succeed())
 		})

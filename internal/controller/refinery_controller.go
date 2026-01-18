@@ -57,6 +57,9 @@ type RefineryReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+
+	// GitClientFactory creates git clients. If nil, uses git.DefaultGitClientFactory.
+	GitClientFactory git.GitClientFactory
 }
 
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=refineries,verbs=get;list;watch;create;update;patch;delete
@@ -235,11 +238,12 @@ func (r *RefineryReconciler) processMerge(
 
 	repoDir := filepath.Join(workDir, "repo")
 
-	// Create git client
-	gitClient := git.NewClient(repoDir, gitURL)
-	if sshKeyPath != "" {
-		gitClient = gitClient.WithSSHKey(sshKeyPath)
+	// Create git client using factory (allows test injection)
+	factory := r.GitClientFactory
+	if factory == nil {
+		factory = git.DefaultGitClientFactory
 	}
+	gitClient := factory(repoDir, gitURL, sshKeyPath)
 
 	// Clone the repository
 	log.Info("Cloning repository", "url", gitURL)
