@@ -20,6 +20,15 @@
 #   - TRIVY_SEVERITY: Override scan threshold (default: CRITICAL,HIGH)
 
 variables:
+  # DPR Registry (avoids Docker Hub rate limits)
+  DPR_REGISTRY: "dprusocplvjmp01.deepsky.lab:5000"
+
+  # CI Images from DPR
+  GO_IMAGE: "${DPR_REGISTRY}/ci-images/golang:1.24"
+  GO_LINT_IMAGE: "${DPR_REGISTRY}/ci-images/golangci-lint:v1.62-alpine"
+  KUBECTL_IMAGE: "${DPR_REGISTRY}/ci-images/kubectl:latest"
+  YAMLLINT_IMAGE: "${DPR_REGISTRY}/ci-images/yamllint:latest"
+
   GO_VERSION: "1.24"
   TEKTON_NAMESPACE: "olympus-ci"
   PIPELINE_NAME: "gastown-operator-ci"
@@ -35,7 +44,7 @@ stages:
 
 lint:go:
   stage: validate
-  image: golangci/golangci-lint:v1.62-alpine
+  image: ${GO_LINT_IMAGE}
   script:
     - golangci-lint run --timeout 5m ./...
   rules:
@@ -44,7 +53,7 @@ lint:go:
 
 lint:yaml:
   stage: validate
-  image: cytopia/yamllint:latest
+  image: ${YAMLLINT_IMAGE}
   script:
     - yamllint -d relaxed deploy/ config/
   allow_failure: true
@@ -53,7 +62,7 @@ lint:yaml:
 
 validate:manifests:
   stage: validate
-  image: golang:${GO_VERSION}
+  image: ${GO_IMAGE}
   script:
     - make manifests
     - |
@@ -67,7 +76,7 @@ validate:manifests:
 
 validate:generate:
   stage: validate
-  image: golang:${GO_VERSION}
+  image: ${GO_IMAGE}
   script:
     - make generate
     - |
@@ -85,7 +94,7 @@ validate:generate:
 
 trigger:tekton:
   stage: trigger
-  image: bitnami/kubectl:latest
+  image: ${KUBECTL_IMAGE}
   variables:
     IMAGE_TAG: ${CI_COMMIT_SHORT_SHA}
   before_script:
@@ -129,7 +138,7 @@ trigger:tekton:
 
 monitor:tekton:
   stage: monitor
-  image: bitnami/kubectl:latest
+  image: ${KUBECTL_IMAGE}
   needs:
     - job: trigger:tekton
       artifacts: true
@@ -187,7 +196,7 @@ monitor:tekton:
 
 deploy:dev:
   stage: .post
-  image: bitnami/kubectl:latest
+  image: ${KUBECTL_IMAGE}
   before_script:
     - mkdir -p ~/.kube
     - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
