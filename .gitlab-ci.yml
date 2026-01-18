@@ -23,6 +23,8 @@ variables:
   GO_VERSION: "1.24"
   TEKTON_NAMESPACE: "olympus-ci"
   PIPELINE_NAME: "labyrinth-ci"
+  # DPR mirror for Docker Hub images (avoids rate limits)
+  DPR: "dprusocplvjmp01.deepsky.lab:5000"
 
 stages:
   - validate
@@ -35,7 +37,7 @@ stages:
 
 lint:go:
   stage: validate
-  image: golangci/golangci-lint:v1.62-alpine
+  image: ${DPR}/golangci/golangci-lint:v1.62-alpine
   script:
     - golangci-lint run --timeout 5m ./...
   rules:
@@ -44,7 +46,7 @@ lint:go:
 
 lint:yaml:
   stage: validate
-  image: cytopia/yamllint:latest
+  image: ${DPR}/cytopia/yamllint:latest
   script:
     - yamllint -d relaxed deploy/ config/
   allow_failure: true
@@ -53,7 +55,7 @@ lint:yaml:
 
 validate:manifests:
   stage: validate
-  image: golang:${GO_VERSION}
+  image: ${DPR}/library/golang:${GO_VERSION}
   script:
     - make manifests
     - |
@@ -67,7 +69,7 @@ validate:manifests:
 
 validate:generate:
   stage: validate
-  image: golang:${GO_VERSION}
+  image: ${DPR}/library/golang:${GO_VERSION}
   script:
     - make generate
     - |
@@ -85,7 +87,7 @@ validate:generate:
 
 trigger:tekton:
   stage: trigger
-  image: bitnami/kubectl:latest
+  image: ${DPR}/bitnami/kubectl:latest
   variables:
     IMAGE_TAG: ${CI_COMMIT_SHORT_SHA}
   before_script:
@@ -129,7 +131,7 @@ trigger:tekton:
 
 monitor:tekton:
   stage: monitor
-  image: bitnami/kubectl:latest
+  image: ${DPR}/bitnami/kubectl:latest
   needs:
     - job: trigger:tekton
       artifacts: true
@@ -187,7 +189,7 @@ monitor:tekton:
 
 deploy:dev:
   stage: .post
-  image: bitnami/kubectl:latest
+  image: ${DPR}/bitnami/kubectl:latest
   before_script:
     - mkdir -p ~/.kube
     - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
