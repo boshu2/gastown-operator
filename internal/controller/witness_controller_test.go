@@ -31,6 +31,18 @@ import (
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 )
 
+// mockGTClient is a mock implementation of the GT client for testing.
+type mockGTClient struct {
+	mailSendFunc func(ctx context.Context, address, subject, message string) error
+}
+
+func (m *mockGTClient) MailSend(ctx context.Context, address, subject, message string) error {
+	if m.mailSendFunc != nil {
+		return m.mailSendFunc(ctx, address, subject, message)
+	}
+	return nil
+}
+
 var _ = Describe("Witness Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-witness"
@@ -230,6 +242,52 @@ var _ = Describe("Witness Controller", func() {
 			summary := r.calculateSummary(polecats, stuckThreshold)
 			Expect(summary.Total).To(Equal(int32(1)))
 			Expect(summary.Failed).To(Equal(int32(1)))
+		})
+	})
+
+	Context("When escalating issues", func() {
+		It("should send mail to mayor when escalation target is mayor", func() {
+			r := &WitnessReconciler{
+				Scheme:   k8sClient.Scheme(),
+				Recorder: record.NewFakeRecorder(10),
+			}
+
+			mockMailSent := false
+			r.GTClient = &mockGTClient{
+				mailSendFunc: func(ctx context.Context, address, subject, message string) error {
+					mockMailSent = true
+					Expect(address).To(Equal("mayor"))
+					Expect(subject).To(ContainSubstring("Health Alert"))
+					Expect(message).To(ContainSubstring("Stuck"))
+					return nil
+				},
+			}
+
+			ctx := context.Background()
+			witness := &gastownv1alpha1.Witness{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-witness",
+					Namespace: "default",
+				},
+				Spec: gastownv1alpha1.WitnessSpec{
+					RigRef:             "test-rig",
+					EscalationTarget:   "mayor",
+				},
+				Status: gastownv1alpha1.WitnessStatus{
+					Phase: "Degraded",
+				},
+			}
+
+			summary := gastownv1alpha1.PolecatsSummary{
+				Total:     5,
+				Running:   3,
+				Succeeded: 1,
+				Failed:    0,
+				Stuck:     1,
+			}
+
+			r.escalateIssues(ctx, witness, summary)
+			Expect(mockMailSent).To(BeTrue())
 		})
 	})
 })
