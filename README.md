@@ -36,7 +36,7 @@ We provide **two build profiles** - use what fits your environment:
 | **Base Image** | `golang:alpine` / `distroless` | Red Hat UBI9 |
 | **Crypto** | Standard Go | FIPS-validated (BoringCrypto) |
 | **Security** | Standard PSS | Restricted SCC compliant |
-| **Image Tag** | `:latest`, `:v0.1.0` | `:latest-fips`, `:v0.1.0-fips` |
+| **Image Tag** | `:latest`, `:v0.1.2` | `:latest-fips`, `:v0.1.2-fips` |
 
 ### Community Edition (Vanilla K8s)
 
@@ -44,7 +44,7 @@ Lightweight, runs anywhere:
 
 ```bash
 # Standard Kubernetes
-kubectl apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.0/install.yaml
+kubectl apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.2/install.yaml
 ```
 
 ### Enterprise Edition (OpenShift + FIPS)
@@ -53,7 +53,7 @@ For regulated environments (FedRAMP, HIPAA, government):
 
 ```bash
 # OpenShift with FIPS
-oc apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.0/install-fips.yaml
+oc apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.2/install-fips.yaml
 ```
 
 **What makes it enterprise-ready:**
@@ -182,7 +182,7 @@ helm install gastown-operator gastown/gastown-operator \
 
 ```bash
 make install      # Install CRDs
-make deploy IMG=ghcr.io/boshu2/gastown-operator:v0.1.0
+make deploy IMG=ghcr.io/boshu2/gastown-operator:v0.1.2
 ```
 
 ## Requirements
@@ -200,7 +200,7 @@ make deploy IMG=ghcr.io/boshu2/gastown-operator:v0.1.0
 
 ## Status
 
-**v0.1.0** - Early release. Core CRDs and controllers working. Deployment proof coming soon.
+**v0.1.2** - E2E validated. Polecat pods successfully run Claude Code agents in OpenShift. Full lifecycle tested: CR creation → pod spawn → git clone → Claude execution → completion.
 
 Feedback welcome! See [steveyegge/gastown#668](https://github.com/steveyegge/gastown/issues/668) for discussion.
 
