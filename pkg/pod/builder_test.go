@@ -126,11 +126,14 @@ func TestBuilderBuild(t *testing.T) {
 		}
 
 		// Verify containers
-		if len(pod.Spec.Containers) != 1 {
-			t.Fatalf("expected 1 container, got %d", len(pod.Spec.Containers))
+		if len(pod.Spec.Containers) != 2 {
+			t.Fatalf("expected 2 containers, got %d", len(pod.Spec.Containers))
 		}
 		if pod.Spec.Containers[0].Name != ClaudeContainerName {
-			t.Error("expected claude container")
+			t.Error("expected first container to be claude")
+		}
+		if pod.Spec.Containers[1].Name != TelemetryContainerName {
+			t.Error("expected second container to be telemetry sidecar")
 		}
 
 		// Verify volumes
@@ -140,6 +143,7 @@ func TestBuilderBuild(t *testing.T) {
 			ClaudeCredsVolumeName: false,
 			TmpVolumeName:         false,
 			HomeVolumeName:        false,
+			MetricsVolumeName:     false,
 		}
 		for _, vol := range pod.Spec.Volumes {
 			if _, ok := expectedVolumes[vol.Name]; ok {
@@ -392,6 +396,96 @@ func TestBuildResources(t *testing.T) {
 	})
 }
 
+func TestTelemetrySidecar(t *testing.T) {
+	polecat := &gastownv1alpha1.Polecat{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-polecat",
+			Namespace: "default",
+		},
+		Spec: gastownv1alpha1.PolecatSpec{
+			Rig:    "test-rig",
+			BeadID: "test-bead",
+			Kubernetes: &gastownv1alpha1.KubernetesSpec{
+				GitRepository:        "git@github.com:org/repo.git",
+				GitBranch:            "main",
+				GitSecretRef:         gastownv1alpha1.SecretReference{Name: "git-secret"},
+				ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{Name: "claude-secret"},
+			},
+		},
+	}
+
+	builder := NewBuilder(polecat)
+	pod, err := builder.Build()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Run("telemetry sidecar container exists", func(t *testing.T) {
+		found := false
+		for _, container := range pod.Spec.Containers {
+			if container.Name == TelemetryContainerName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("telemetry sidecar container not found")
+		}
+	})
+
+	t.Run("telemetry sidecar has correct image", func(t *testing.T) {
+		telemetrySidecar := pod.Spec.Containers[1]
+		if telemetrySidecar.Image == "" {
+			t.Error("telemetry sidecar image is empty")
+		}
+	})
+
+	t.Run("telemetry sidecar has metrics volume mount", func(t *testing.T) {
+		telemetrySidecar := pod.Spec.Containers[1]
+		found := false
+		for _, volumeMount := range telemetrySidecar.VolumeMounts {
+			if volumeMount.Name == MetricsVolumeName && volumeMount.MountPath == MetricsMountPath {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("telemetry sidecar missing metrics volume mount")
+		}
+	})
+
+	t.Run("telemetry sidecar has environment variables", func(t *testing.T) {
+		telemetrySidecar := pod.Spec.Containers[1]
+		envMap := make(map[string]string)
+		for _, env := range telemetrySidecar.Env {
+			envMap[env.Name] = env.Value
+		}
+
+		if envMap["POLECAT_NAME"] != "test-polecat" {
+			t.Errorf("expected POLECAT_NAME=test-polecat, got %s", envMap["POLECAT_NAME"])
+		}
+		if envMap["POLECAT_RIG"] != "test-rig" {
+			t.Errorf("expected POLECAT_RIG=test-rig, got %s", envMap["POLECAT_RIG"])
+		}
+		if envMap["POLECAT_BEAD"] != "test-bead" {
+			t.Errorf("expected POLECAT_BEAD=test-bead, got %s", envMap["POLECAT_BEAD"])
+		}
+	})
+
+	t.Run("telemetry sidecar has resource limits", func(t *testing.T) {
+		telemetrySidecar := pod.Spec.Containers[1]
+		resources := telemetrySidecar.Resources
+
+		if resources.Requests == nil || len(resources.Requests) == 0 {
+			t.Error("telemetry sidecar missing resource requests")
+		}
+
+		if resources.Limits == nil || len(resources.Limits) == 0 {
+			t.Error("telemetry sidecar missing resource limits")
+		}
+	})
+}
+
 func TestGetGitImage(t *testing.T) {
 	t.Run("returns default image", func(t *testing.T) {
 		_ = os.Unsetenv(EnvGitImage)
@@ -428,6 +522,26 @@ func TestGetClaudeImage(t *testing.T) {
 		img := GetClaudeImage()
 		if img != "custom/claude:latest" {
 			t.Errorf("expected custom/claude:latest, got %s", img)
+		}
+	})
+}
+
+func TestGetTelemetryImage(t *testing.T) {
+	t.Run("returns default image", func(t *testing.T) {
+		_ = os.Unsetenv(EnvTelemetryImage)
+		img := GetTelemetryImage()
+		if img != DefaultTelemetryImage {
+			t.Errorf("expected %s, got %s", DefaultTelemetryImage, img)
+		}
+	})
+
+	t.Run("returns env var image", func(t *testing.T) {
+		_ = os.Setenv(EnvTelemetryImage, "custom/telemetry:latest")
+		defer func() { _ = os.Unsetenv(EnvTelemetryImage) }()
+
+		img := GetTelemetryImage()
+		if img != "custom/telemetry:latest" {
+			t.Errorf("expected custom/telemetry:latest, got %s", img)
 		}
 	})
 }
