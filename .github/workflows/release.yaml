@@ -1,0 +1,145 @@
+# Semantic Release Workflow
+#
+# Triggered on push to main branch.
+# Analyzes conventional commits and creates releases automatically.
+#
+# Flow:
+#   1. Push to main with conventional commits
+#   2. semantic-release analyzes commits
+#   3. Determines version bump (major/minor/patch)
+#   4. Updates VERSION file and Chart.yaml
+#   5. Generates/updates CHANGELOG.md
+#   6. Creates git tag and GitHub release
+#   7. Tag push triggers release-helm.yaml → Tekton
+#
+# Commit Convention:
+#   feat: → minor (0.1.0 → 0.2.0)
+#   fix:  → patch (0.1.0 → 0.1.1)
+#   feat!: or BREAKING CHANGE: → major (0.1.0 → 1.0.0)
+#   chore:/docs: → no release
+
+name: Semantic Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    # Skip if commit message contains [skip ci] or [skip release]
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, '[skip release]')"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          # Use a PAT for pushing back to repo (needed for protected branches)
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install semantic-release
+        run: |
+          npm install -g semantic-release \
+            @semantic-release/changelog \
+            @semantic-release/git \
+            @semantic-release/exec \
+            @semantic-release/github \
+            conventional-changelog-conventionalcommits
+
+      - name: Verify version-sync.sh exists
+        run: |
+          if [ ! -f scripts/version-sync.sh ]; then
+            echo "ERROR: scripts/version-sync.sh not found"
+            echo "This script is required for semantic-release"
+            exit 1
+          fi
+          chmod +x scripts/version-sync.sh
+
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
+        run: |
+          npx semantic-release
+
+      - name: Release Summary
+        if: success()
+        run: |
+          echo "========================================"
+          echo "  Semantic Release Complete"
+          echo "========================================"
+          echo ""
+          echo "If a new version was released:"
+          echo "  - VERSION file updated"
+          echo "  - Chart.yaml updated"
+          echo "  - CHANGELOG.md updated"
+          echo "  - Git tag created"
+          echo "  - GitHub release created"
+          echo ""
+          echo "The tag push will trigger release-helm.yaml"
+          echo "which publishes images and Helm chart."
+          echo "========================================"
+
+  # Notify on failure
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: release
+    if: failure()
+    steps:
+      - name: Create issue on failure
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Semantic Release Failed - ${new Date().toISOString().split('T')[0]}`;
+            const body = `
+            ## Semantic Release Failure
+
+            The semantic release workflow failed.
+
+            **Workflow Run:** [${context.runId}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+            **Commit:** ${context.sha}
+            **Branch:** ${context.ref}
+
+            Please check the workflow logs for details.
+            `;
+
+            // Check if issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'ci-failure'
+            });
+
+            const existingIssue = issues.data.find(issue => issue.title.includes('Semantic Release Failed'));
+            if (!existingIssue) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['ci-failure', 'automated']
+              });
+            }

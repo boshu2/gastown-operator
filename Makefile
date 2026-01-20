@@ -1,6 +1,8 @@
 # Image URL to use all building/pushing image targets
 IMG ?= gastown-operator
-VERSION ?= v0.1.0
+# VERSION is read from VERSION file (single source of truth)
+# Override with: make build VERSION=0.2.0
+VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.0.0")
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))

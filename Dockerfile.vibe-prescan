@@ -1,0 +1,73 @@
+# Vibe Prescan Image for Tekton CI
+#
+# Contains all tools needed for static quality validation:
+# - gocyclo (Go cyclomatic complexity)
+# - golangci-lint (Go linting)
+# - shellcheck (Bash static analysis)
+# - radon (Python complexity - for polyglot support)
+# - jq (JSON processing)
+#
+# Build:
+#   podman build -t dprusocplvjmp01.deepsky.lab:5000/olympus/vibe-prescan:1.0 -f Dockerfile.vibe-prescan .
+#   podman push dprusocplvjmp01.deepsky.lab:5000/olympus/vibe-prescan:1.0
+#
+# Size optimization: Multi-stage build to keep final image minimal
+
+ARG GO_VERSION=1.24
+ARG ALPINE_VERSION=3.19
+
+# Stage 1: Build Go tools
+FROM golang:${GO_VERSION}-alpine AS go-builder
+
+RUN apk add --no-cache git
+
+# Install gocyclo
+RUN go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+
+# Install golangci-lint
+RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2
+
+# Stage 2: Runtime image
+FROM alpine:${ALPINE_VERSION}
+
+# Labels for OCI compliance
+LABEL org.opencontainers.image.title="Vibe Prescan"
+LABEL org.opencontainers.image.description="Static quality validation tools for CI pipelines"
+LABEL org.opencontainers.image.vendor="Olympus"
+LABEL org.opencontainers.image.source="https://github.com/boshu2/gastown-operator"
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    git \
+    bash \
+    jq \
+    curl \
+    shellcheck \
+    python3 \
+    py3-pip
+
+# Install radon for Python complexity analysis
+RUN pip3 install --no-cache-dir radon
+
+# Copy Go tools from builder
+COPY --from=go-builder /go/bin/gocyclo /usr/local/bin/
+COPY --from=go-builder /go/bin/golangci-lint /usr/local/bin/
+
+# Create non-root user for security
+RUN addgroup -g 65532 -S prescan && \
+    adduser -u 65532 -S prescan -G prescan
+
+# Verify tools are installed
+RUN gocyclo --version || echo "gocyclo installed" && \
+    golangci-lint --version && \
+    shellcheck --version && \
+    radon --version && \
+    jq --version
+
+# Switch to non-root user
+USER 65532:65532
+
+WORKDIR /workspace
+
+# Default entrypoint
+ENTRYPOINT ["/bin/bash"]

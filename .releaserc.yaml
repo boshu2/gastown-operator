@@ -1,0 +1,131 @@
+# Semantic Release Configuration
+# https://semantic-release.gitbook.io/semantic-release/
+#
+# Automates versioning based on Conventional Commits:
+#   feat: → minor version bump (0.1.0 → 0.2.0)
+#   fix:  → patch version bump (0.1.0 → 0.1.1)
+#   feat!: or BREAKING CHANGE: → major version bump (0.1.0 → 1.0.0)
+#   chore:/docs:/style: → no release
+#
+# Workflow:
+#   1. Push to main with conventional commits
+#   2. semantic-release analyzes commits
+#   3. Determines version bump
+#   4. Updates VERSION file and Chart.yaml
+#   5. Generates/updates CHANGELOG.md
+#   6. Creates git tag (v0.2.0)
+#   7. Creates GitHub release with notes
+#
+# Prerequisites:
+#   - GITHUB_TOKEN with repo permissions
+#   - Conventional commit messages
+
+branches:
+  - main
+  - name: release/*
+    prerelease: rc
+
+# Plugins run in order
+plugins:
+  # Analyze commits to determine version bump
+  - - "@semantic-release/commit-analyzer"
+    - preset: conventionalcommits
+      releaseRules:
+        # Standard rules
+        - type: feat
+          release: minor
+        - type: fix
+          release: patch
+        - type: perf
+          release: patch
+        - type: revert
+          release: patch
+        # Breaking changes (via ! or BREAKING CHANGE footer)
+        - breaking: true
+          release: major
+        # Custom types
+        - type: refactor
+          release: patch
+        - type: security
+          release: patch
+        # No release for these
+        - type: docs
+          release: false
+        - type: style
+          release: false
+        - type: chore
+          release: false
+        - type: test
+          release: false
+        - type: ci
+          release: false
+
+  # Generate release notes from commits
+  - - "@semantic-release/release-notes-generator"
+    - preset: conventionalcommits
+      presetConfig:
+        types:
+          - type: feat
+            section: "Features"
+            hidden: false
+          - type: fix
+            section: "Bug Fixes"
+            hidden: false
+          - type: perf
+            section: "Performance"
+            hidden: false
+          - type: security
+            section: "Security"
+            hidden: false
+          - type: revert
+            section: "Reverts"
+            hidden: false
+          - type: refactor
+            section: "Refactoring"
+            hidden: false
+          - type: docs
+            section: "Documentation"
+            hidden: true
+          - type: style
+            section: "Styles"
+            hidden: true
+          - type: chore
+            section: "Chores"
+            hidden: true
+          - type: test
+            section: "Tests"
+            hidden: true
+          - type: ci
+            section: "CI/CD"
+            hidden: true
+
+  # Update CHANGELOG.md
+  - - "@semantic-release/changelog"
+    - changelogFile: CHANGELOG.md
+      changelogTitle: |
+        # Changelog
+
+        All notable changes to this project will be documented in this file.
+
+        The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+        and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+  # Update VERSION file and sync to Chart.yaml
+  - - "@semantic-release/exec"
+    - prepareCmd: |
+        echo "${nextRelease.version}" > VERSION
+        ./scripts/version-sync.sh "${nextRelease.version}"
+
+  # Commit the changes
+  - - "@semantic-release/git"
+    - assets:
+        - VERSION
+        - CHANGELOG.md
+        - helm/gastown-operator/Chart.yaml
+      message: "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+
+  # Create GitHub release
+  - - "@semantic-release/github"
+    - assets: []
+      successComment: false
+      failTitle: false

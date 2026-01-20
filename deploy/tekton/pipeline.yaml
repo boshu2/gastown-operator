@@ -3,13 +3,14 @@
 #
 # Stages:
 #   1. Clone - git-clone ClusterTask
-#   2. Parallel: go-test, govulncheck, gosec, gitleaks, trivy-fs, hadolint
+#   2. Parallel: go-test, govulncheck, gosec, gitleaks, trivy-fs, hadolint, vibe-prescan
 #   3. Build gt CLI (pre-build for Dockerfile)
 #   4. Build Image - kaniko-build ClusterTask
 #   5. Scan Image - trivy-image ClusterTask
 #   6. Generate SBOM - syft
 #   7. Sign Image - cosign
 #   8. Mirror to GHCR - skopeo-copy
+#   9. Athena knowledge persistence (finally block)
 #
 # Prerequisites:
 #   - olympus-ci namespace with ClusterTasks installed
@@ -95,6 +96,12 @@ spec:
       type: string
       default: "keyless"
       description: Cosign signing mode (keyless or key-based)
+
+    # Vibe quality gate parameters
+    - name: vibe-fail-on
+      type: string
+      default: "HIGH"
+      description: Vibe prescan severity threshold (CRITICAL, HIGH, MEDIUM)
 
   workspaces:
     - name: source
@@ -217,6 +224,22 @@ spec:
         - name: dockerfile-path
           value: "$(params.dockerfile)"
 
+    # 2g. Vibe prescan - Fast static quality validation
+    - name: vibe-prescan
+      taskRef:
+        name: gastown-operator-vibe-prescan
+      timeout: 10m
+      runAfter:
+        - clone
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: target
+          value: "all"
+        - name: fail-on
+          value: $(params.vibe-fail-on)
+
     # =========================================================================
     # Stage 3: Build gt CLI (pre-build for Dockerfile)
     # =========================================================================
@@ -250,6 +273,7 @@ spec:
         - gitleaks
         - scan-secrets
         - lint-dockerfile
+        - vibe-prescan
         - build-gt-cli
       workspaces:
         - name: source
@@ -356,9 +380,26 @@ spec:
           workspace: dockerconfig
 
   # ===========================================================================
-  # Finally: Summary Report
+  # Finally: Summary Report and Knowledge Persistence
   # ===========================================================================
   finally:
+    # Store pipeline results in Athena for knowledge persistence
+    - name: athena-persist
+      taskRef:
+        name: gastown-operator-athena-persist
+      timeout: 2m
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: version
+          value: $(params.image-tag)
+        - name: memory-type
+          value: "release"
+        - name: pipeline-status
+          value: "$(tasks.status)"
+
+    # Print pipeline summary
     - name: pipeline-summary
       params:
         - name: registry
@@ -394,10 +435,14 @@ spec:
               echo "  - gitleaks (secret detection)"
               echo "  - Trivy filesystem scan (secrets, misconfigs)"
               echo "  - Hadolint Dockerfile lint"
+              echo "  - Vibe prescan (quality gate)"
               echo "  - Trivy image vulnerability scan"
               echo ""
               echo "Supply chain security:"
               echo "  - SBOM generated (SPDX JSON)"
               echo "  - Image signed with Cosign"
+              echo ""
+              echo "Knowledge persistence:"
+              echo "  - Pipeline data stored in Athena"
               echo ""
               echo "========================================"

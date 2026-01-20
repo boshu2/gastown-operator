@@ -1,0 +1,208 @@
+# Vibe Prescan Task
+# Fast static quality validation for Go codebases
+#
+# Runs pattern-based checks before expensive build stages:
+#   P1:  Phantom modifications (git dirty state)
+#   P4:  TODO/FIXME markers
+#   P5:  Cyclomatic complexity
+#   P8:  Unchecked error returns
+#   P13: Undocumented error ignores
+#   P14: Error wrapping with %v
+#   P15: golangci-lint violations
+#
+# Prerequisites:
+#   - vibe-prescan image in DPR registry (see Dockerfile.vibe-prescan)
+#   - Or use golang image with tools installed at runtime
+#
+# Usage:
+#   kubectl apply -f deploy/tekton/tasks/vibe-prescan.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gastown-operator-vibe-prescan
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/part-of: olympus
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.50.0"
+    tekton.dev/categories: Quality
+    tekton.dev/tags: vibe,quality,static-analysis
+    tekton.dev/displayName: "Vibe Prescan Quality Gate"
+spec:
+  description: |
+    Run Vibe prescan for fast static quality validation.
+    Catches common issues early before expensive builds.
+
+  params:
+    - name: target
+      type: string
+      default: "all"
+      description: |
+        Scan target:
+        - "all": All Go files
+        - "recent": Only recently changed files
+        - "<dir>": Specific directory
+    - name: fail-on
+      type: string
+      default: "HIGH"
+      description: |
+        Severity threshold to fail the pipeline:
+        - "CRITICAL": Only fail on critical issues
+        - "HIGH": Fail on high or critical (recommended)
+        - "MEDIUM": Fail on medium, high, or critical
+    - name: complexity-threshold
+      type: string
+      default: "15"
+      description: Maximum allowed cyclomatic complexity per function
+    - name: golang-image
+      type: string
+      default: "dprusocplvjmp01.deepsky.lab:5000/projectquay/golang:1.24"
+      description: Go image for running checks (must have git)
+
+  results:
+    - name: critical-count
+      description: Number of CRITICAL findings
+    - name: high-count
+      description: Number of HIGH findings
+    - name: medium-count
+      description: Number of MEDIUM findings
+    - name: exit-code
+      description: Exit code from prescan (0=pass, 2=critical, 3=high, 4=medium)
+
+  workspaces:
+    - name: source
+      description: Workspace containing the Go source code
+
+  steps:
+    - name: install-tools
+      image: $(params.golang-image)
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/bash
+        set -e
+        echo "Installing quality tools..."
+
+        # Install gocyclo
+        go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+
+        # Install golangci-lint
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2
+
+        # Verify installations
+        echo "Tools installed:"
+        which gocyclo && gocyclo --version || echo "gocyclo: $(which gocyclo)"
+        which golangci-lint && golangci-lint --version
+
+    - name: prescan
+      image: $(params.golang-image)
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: PRESCAN_FAIL_ON
+          value: $(params.fail-on)
+        - name: PRESCAN_COMPLEXITY_THRESHOLD
+          value: $(params.complexity-threshold)
+        - name: PATH
+          value: "/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        - name: HOME
+          value: "/tekton/home"
+      script: |
+        #!/bin/bash
+        set -e
+
+        echo "========================================"
+        echo "  Vibe Prescan - Quality Gate"
+        echo "========================================"
+        echo "Target: $(params.target)"
+        echo "Fail on: $PRESCAN_FAIL_ON"
+        echo "Complexity threshold: $PRESCAN_COMPLEXITY_THRESHOLD"
+        echo ""
+
+        # Run the prescan script if it exists, otherwise run inline
+        if [[ -f "scripts/prescan.sh" ]]; then
+          chmod +x scripts/prescan.sh
+          ./scripts/prescan.sh $(params.target)
+          EXIT_CODE=$?
+        else
+          # Inline prescan logic
+          CRITICAL_COUNT=0
+          HIGH_COUNT=0
+          MEDIUM_COUNT=0
+
+          echo "[INFO] P5: Checking cyclomatic complexity..."
+          HIGH_COMPLEXITY=$(gocyclo -over "$PRESCAN_COMPLEXITY_THRESHOLD" . 2>/dev/null || true)
+          if [[ -n "$HIGH_COMPLEXITY" ]]; then
+            echo "$HIGH_COMPLEXITY" | while read -r line; do
+              echo "[HIGH] P5: High complexity: $line"
+              ((HIGH_COUNT++)) || true
+            done
+          else
+            echo "[PASS] P5: All functions below complexity threshold"
+          fi
+
+          echo ""
+          echo "[INFO] P14: Checking error wrapping..."
+          ERR_WRAP=$(grep -rn 'fmt\.Errorf.*%v.*err' --include="*.go" . 2>/dev/null || true)
+          if [[ -n "$ERR_WRAP" ]]; then
+            echo "$ERR_WRAP" | head -10 | while read -r line; do
+              echo "[HIGH] P14: Use %w for error wrapping: $line"
+              ((HIGH_COUNT++)) || true
+            done
+          else
+            echo "[PASS] P14: All error wrapping uses %w"
+          fi
+
+          echo ""
+          echo "[INFO] P15: Running golangci-lint..."
+          LINT_OUTPUT=$(golangci-lint run --timeout=5m 2>&1 || true)
+          if [[ -n "$LINT_OUTPUT" ]] && ! echo "$LINT_OUTPUT" | grep -q "congratulations"; then
+            echo "$LINT_OUTPUT" | head -20
+            ((HIGH_COUNT++)) || true
+          else
+            echo "[PASS] P15: golangci-lint passed"
+          fi
+
+          echo ""
+          echo "========================================"
+          echo "  Summary"
+          echo "========================================"
+          echo "CRITICAL: $CRITICAL_COUNT"
+          echo "HIGH:     $HIGH_COUNT"
+          echo "MEDIUM:   $MEDIUM_COUNT"
+
+          if [[ $CRITICAL_COUNT -gt 0 ]]; then
+            EXIT_CODE=2
+          elif [[ $HIGH_COUNT -gt 0 ]] && [[ "$PRESCAN_FAIL_ON" != "CRITICAL" ]]; then
+            EXIT_CODE=3
+          elif [[ $MEDIUM_COUNT -gt 0 ]] && [[ "$PRESCAN_FAIL_ON" == "MEDIUM" ]]; then
+            EXIT_CODE=4
+          else
+            EXIT_CODE=0
+          fi
+        fi
+
+        # Write results
+        echo -n "$CRITICAL_COUNT" > $(results.critical-count.path) 2>/dev/null || echo "0" > $(results.critical-count.path)
+        echo -n "$HIGH_COUNT" > $(results.high-count.path) 2>/dev/null || echo "0" > $(results.high-count.path)
+        echo -n "$MEDIUM_COUNT" > $(results.medium-count.path) 2>/dev/null || echo "0" > $(results.medium-count.path)
+        echo -n "$EXIT_CODE" > $(results.exit-code.path)
+
+        # Handle exit code
+        if [[ "$EXIT_CODE" -eq 2 ]]; then
+          echo ""
+          echo "[CRITICAL] Pipeline failing - CRITICAL findings detected"
+          exit 1
+        elif [[ "$EXIT_CODE" -eq 3 ]]; then
+          echo ""
+          echo "[HIGH] Pipeline failing - HIGH findings detected"
+          exit 1
+        elif [[ "$EXIT_CODE" -eq 4 ]]; then
+          echo ""
+          echo "[MEDIUM] Pipeline failing - MEDIUM findings detected"
+          exit 1
+        fi
+
+        echo ""
+        echo "[PASS] Vibe prescan completed successfully!"
+        exit 0

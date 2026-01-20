@@ -1,0 +1,209 @@
+# Athena Persist Task
+# Store pipeline data in Athena for knowledge persistence
+#
+# Stores:
+#   - Release metadata (version, artifacts, commit info)
+#   - Vibe scan results (findings count, patterns)
+#   - Pipeline execution status
+#
+# Prerequisites:
+#   - athena-credentials secret with api-key
+#   - Network access to Athena API
+#
+# Usage:
+#   kubectl apply -f deploy/tekton/tasks/athena-persist.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gastown-operator-athena-persist
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/part-of: olympus
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.50.0"
+    tekton.dev/categories: Knowledge
+    tekton.dev/tags: athena,memory,knowledge,persistence
+    tekton.dev/displayName: "Athena Knowledge Persistence"
+spec:
+  description: |
+    Store pipeline execution data in Athena for future reference.
+    Creates searchable memories from releases, scans, and pipeline runs.
+
+  params:
+    - name: version
+      type: string
+      description: Version being released/built
+    - name: memory-type
+      type: string
+      default: "release"
+      description: |
+        Type of memory to store:
+        - "release": Full release metadata
+        - "vibe": Vibe prescan results only
+        - "pipeline": Pipeline execution status
+    - name: pipeline-status
+      type: string
+      default: "success"
+      description: Pipeline status (success/failure)
+    - name: vibe-critical
+      type: string
+      default: "0"
+      description: Critical findings count from vibe prescan
+    - name: vibe-high
+      type: string
+      default: "0"
+      description: High findings count from vibe prescan
+    - name: vibe-medium
+      type: string
+      default: "0"
+      description: Medium findings count from vibe prescan
+    - name: athena-api-url
+      type: string
+      default: "https://athena.olympus.io/api"
+      description: Athena API endpoint
+    - name: athena-collection
+      type: string
+      default: "default"
+      description: Athena collection/tenant name
+
+  workspaces:
+    - name: source
+      description: Workspace with source code and scripts
+
+  steps:
+    - name: persist
+      image: dprusocplvjmp01.deepsky.lab:5000/library/alpine:3.19
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: ATHENA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: athena-credentials
+              key: api-key
+              optional: true
+        - name: ATHENA_API_URL
+          value: $(params.athena-api-url)
+        - name: ATHENA_COLLECTION
+          value: $(params.athena-collection)
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "========================================"
+        echo "  Athena Knowledge Persistence"
+        echo "========================================"
+        echo "Version: $(params.version)"
+        echo "Memory Type: $(params.memory-type)"
+        echo "API URL: $ATHENA_API_URL"
+        echo ""
+
+        # Check if API key is available
+        if [ -z "$ATHENA_API_KEY" ]; then
+          echo "[WARN] ATHENA_API_KEY not configured - skipping persistence"
+          echo "[INFO] To enable: create secret athena-credentials with api-key"
+          echo "[INFO] Pipeline will continue without knowledge persistence"
+          exit 0
+        fi
+
+        # Install dependencies
+        apk add --no-cache curl jq git > /dev/null 2>&1
+
+        # Get git info
+        GIT_SHA=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+        GIT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+        # Build content based on memory type
+        case "$(params.memory-type)" in
+          release)
+            CONTENT="Release v$(params.version) of gastown-operator completed.
+        Git SHA: $GIT_SHA
+        Branch: $GIT_BRANCH
+        Date: $BUILD_DATE
+        Repository: github.com/boshu2/gastown-operator
+        Pipeline Status: $(params.pipeline-status)
+
+        Artifacts:
+        - Container image: ghcr.io/boshu2/gastown-operator:v$(params.version)
+        - Helm chart: oci://ghcr.io/boshu2/gastown-operator:$(params.version)
+        - SBOM: attached to image
+
+        Vibe Prescan Results:
+        - CRITICAL: $(params.vibe-critical)
+        - HIGH: $(params.vibe-high)
+        - MEDIUM: $(params.vibe-medium)"
+            TAGS='["release", "gastown-operator", "v$(params.version)", "kubernetes", "operator", "tekton"]'
+            MEMORY_TYPE="episode"
+            CONFIDENCE="0.95"
+            ;;
+          vibe)
+            CONTENT="Vibe prescan completed for gastown-operator v$(params.version).
+        Date: $BUILD_DATE
+        Git SHA: $GIT_SHA
+
+        Findings:
+        - CRITICAL: $(params.vibe-critical)
+        - HIGH: $(params.vibe-high)
+        - MEDIUM: $(params.vibe-medium)
+
+        Patterns checked: P1, P4, P5, P8, P13, P14, P15"
+            TAGS='["vibe", "quality", "gastown-operator", "prescan"]'
+            MEMORY_TYPE="fact"
+            CONFIDENCE="0.85"
+            ;;
+          pipeline)
+            CONTENT="Pipeline gastown-operator-ci $(params.pipeline-status).
+        Date: $BUILD_DATE
+        Version: $(params.version)
+        Git SHA: $GIT_SHA
+
+        Stages: clone, security-scans, vibe-prescan, tests, build, scan, sbom, sign, mirror"
+            TAGS='["pipeline", "ci", "gastown-operator", "tekton", "$(params.pipeline-status)"]'
+            MEMORY_TYPE="episode"
+            CONFIDENCE="0.9"
+            ;;
+        esac
+
+        # Create JSON payload
+        PAYLOAD=$(cat << EOF
+        {
+          "memory_type": "$MEMORY_TYPE",
+          "content": $(echo "$CONTENT" | jq -Rs .),
+          "source": "tekton-pipeline",
+          "confidence": $CONFIDENCE,
+          "tags": $TAGS,
+          "collection": "$ATHENA_COLLECTION"
+        }
+        EOF
+        )
+
+        echo "[INFO] Storing memory in Athena..."
+        echo "[INFO] Type: $MEMORY_TYPE"
+
+        # Send to Athena
+        RESPONSE=$(curl -s -w "\n%{http_code}" \
+          -X POST "$ATHENA_API_URL/memory" \
+          -H "Authorization: Bearer $ATHENA_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD" 2>&1 || echo "error
+        000")
+
+        HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+        BODY=$(echo "$RESPONSE" | sed '$d')
+
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+          echo "[INFO] Memory stored successfully"
+          echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
+        elif [ "$HTTP_CODE" = "000" ]; then
+          echo "[WARN] Could not connect to Athena API"
+          echo "[INFO] Pipeline will continue - knowledge persistence skipped"
+        else
+          echo "[WARN] Failed to store memory (HTTP $HTTP_CODE)"
+          echo "$BODY"
+          echo "[INFO] Pipeline will continue - knowledge persistence is non-blocking"
+        fi
+
+        echo ""
+        echo "[INFO] Athena persistence task complete"
