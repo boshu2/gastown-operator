@@ -1,0 +1,48 @@
+name: Release Helm Chart
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  release-helm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Update Chart version
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          sed -i "s/^version:.*/version: ${VERSION}/" helm/gastown-operator/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" helm/gastown-operator/Chart.yaml
+          echo "Updated Chart.yaml:"
+          cat helm/gastown-operator/Chart.yaml
+
+      - name: Login to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Package and Push Helm Chart
+        run: |
+          helm package helm/gastown-operator
+          helm push gastown-operator-${{ steps.version.outputs.VERSION }}.tgz oci://ghcr.io/${{ github.repository_owner }}
+
+      - name: Logout from GHCR
+        run: helm registry logout ghcr.io

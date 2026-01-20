@@ -178,10 +178,18 @@ The operator is a **view layer** - `gt` CLI remains authoritative. Kubernetes ha
 ### Helm (Recommended)
 
 ```bash
-helm repo add gastown https://boshu2.github.io/gastown-operator
-helm install gastown-operator gastown/gastown-operator \
+# Install from GHCR (OCI registry)
+helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \
+  --version 0.1.0 \
   --namespace gastown-system \
   --create-namespace
+
+# With custom values (OpenShift + FIPS)
+helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \
+  --version 0.1.0 \
+  --namespace gastown-system \
+  --create-namespace \
+  -f helm/gastown-operator/values-fips.yaml
 ```
 
 ### From Source
