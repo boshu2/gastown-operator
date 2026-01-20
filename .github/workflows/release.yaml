@@ -1,7 +1,12 @@
-# Semantic Release Workflow
+# Semantic Release Workflow (Unified)
 #
 # Triggered on push to main branch.
-# Analyzes conventional commits and creates releases automatically.
+# Analyzes conventional commits and creates releases automatically,
+# then builds/pushes Docker images and Helm charts.
+#
+# Why unified? GitHub blocks workflows triggered by GITHUB_TOKEN from
+# triggering other workflows. By merging release + release-helm, we
+# use job dependencies instead of cross-workflow triggers.
 #
 # Flow:
 #   1. Push to main with conventional commits
@@ -10,7 +15,8 @@
 #   4. Updates VERSION file and Chart.yaml
 #   5. Generates/updates CHANGELOG.md
 #   6. Creates git tag and GitHub release
-#   7. Tag push triggers release-helm.yaml → Tekton
+#   7. Builds and pushes Docker images to GHCR
+#   8. Packages and pushes Helm chart to GHCR
 #
 # Commit Convention:
 #   feat: → minor (0.1.0 → 0.2.0)
@@ -30,16 +36,24 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
+  packages: write
 
 env:
   NODE_VERSION: '20'
+  GO_VERSION: '1.24'
 
 jobs:
+  # ==========================================================================
+  # Semantic Release - Analyze commits and create release
+  # ==========================================================================
   release:
     name: Semantic Release
     runs-on: ubuntu-latest
     # Skip if commit message contains [skip ci] or [skip release]
     if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, '[skip release]')"
+    outputs:
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
+      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
 
     steps:
       - name: Checkout
@@ -47,7 +61,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          # Use a PAT for pushing back to repo (needed for protected branches)
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
@@ -74,6 +87,7 @@ jobs:
           chmod +x scripts/version-sync.sh
 
       - name: Run semantic-release
+        id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_AUTHOR_NAME: github-actions[bot]
@@ -81,7 +95,21 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
         run: |
-          npx semantic-release
+          # Run semantic-release and capture output
+          OUTPUT=$(npx semantic-release 2>&1) || true
+          echo "$OUTPUT"
+
+          # Check if a release was published
+          if echo "$OUTPUT" | grep -q "Published release"; then
+            VERSION=$(cat VERSION)
+            echo "new_release_published=true" >> $GITHUB_OUTPUT
+            echo "new_release_version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Release published: v$VERSION"
+          else
+            echo "new_release_published=false" >> $GITHUB_OUTPUT
+            echo "new_release_version=" >> $GITHUB_OUTPUT
+            echo "No release published"
+          fi
 
       - name: Release Summary
         if: success()
@@ -90,33 +118,136 @@ jobs:
           echo "  Semantic Release Complete"
           echo "========================================"
           echo ""
-          echo "If a new version was released:"
-          echo "  - VERSION file updated"
-          echo "  - Chart.yaml updated"
-          echo "  - CHANGELOG.md updated"
-          echo "  - Git tag created"
-          echo "  - GitHub release created"
-          echo ""
-          echo "The tag push will trigger release-helm.yaml"
-          echo "which publishes images and Helm chart."
+          if [ "${{ steps.semantic.outputs.new_release_published }}" = "true" ]; then
+            echo "New release: v${{ steps.semantic.outputs.new_release_version }}"
+            echo ""
+            echo "  - VERSION file updated"
+            echo "  - Chart.yaml updated"
+            echo "  - CHANGELOG.md updated"
+            echo "  - Git tag created"
+            echo "  - GitHub release created"
+            echo ""
+            echo "Next: Building images and publishing Helm chart..."
+          else
+            echo "No new release was published."
+            echo "(Commits may not trigger a release, e.g., chore: or docs:)"
+          fi
           echo "========================================"
 
+  # ==========================================================================
+  # Build and Push Images
+  # ==========================================================================
+  release-images:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.new_release_published == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.release.outputs.new_release_version }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build gt CLI
+        run: |
+          cd /tmp
+          git clone --depth 1 https://github.com/steveyegge/gastown.git
+          cd gastown
+          CGO_ENABLED=0 go build -o ${{ github.workspace }}/gt ./cmd/gt
+
+      - name: Build and push (Community)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/gastown-operator:v${{ needs.release.outputs.new_release_version }}
+            ghcr.io/${{ github.repository_owner }}/gastown-operator:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ==========================================================================
+  # Publish Helm Chart
+  # ==========================================================================
+  release-helm:
+    name: Publish Helm Chart
+    runs-on: ubuntu-latest
+    needs: [release, release-images]
+    if: needs.release.outputs.new_release_published == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.release.outputs.new_release_version }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Login to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Package and Push Helm Chart
+        run: |
+          helm package helm/gastown-operator
+          helm push gastown-operator-${{ needs.release.outputs.new_release_version }}.tgz oci://ghcr.io/${{ github.repository_owner }}
+
+      - name: Logout from GHCR
+        run: helm registry logout ghcr.io
+
+      - name: Release Summary
+        run: |
+          echo "========================================"
+          echo "  Release v${{ needs.release.outputs.new_release_version }} Published!"
+          echo "========================================"
+          echo ""
+          echo "Artifacts:"
+          echo "  - Image: ghcr.io/${{ github.repository_owner }}/gastown-operator:v${{ needs.release.outputs.new_release_version }}"
+          echo "  - Helm:  oci://ghcr.io/${{ github.repository_owner }}/gastown-operator:${{ needs.release.outputs.new_release_version }}"
+          echo ""
+          echo "Install (Community):"
+          echo "  helm install gastown-operator oci://ghcr.io/${{ github.repository_owner }}/gastown-operator \\"
+          echo "    --version ${{ needs.release.outputs.new_release_version }} \\"
+          echo "    -f values-community.yaml"
+          echo ""
+          echo "========================================"
+
+  # ==========================================================================
   # Notify on failure
+  # ==========================================================================
   notify-failure:
     name: Notify on Failure
     runs-on: ubuntu-latest
-    needs: release
+    needs: [release, release-images, release-helm]
     if: failure()
     steps:
       - name: Create issue on failure
         uses: actions/github-script@v7
         with:
           script: |
-            const title = `Semantic Release Failed - ${new Date().toISOString().split('T')[0]}`;
+            const title = `Release Failed - ${new Date().toISOString().split('T')[0]}`;
             const body = `
-            ## Semantic Release Failure
+            ## Release Workflow Failure
 
-            The semantic release workflow failed.
+            The release workflow failed.
 
             **Workflow Run:** [${context.runId}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
             **Commit:** ${context.sha}
@@ -133,7 +264,7 @@ jobs:
               labels: 'ci-failure'
             });
 
-            const existingIssue = issues.data.find(issue => issue.title.includes('Semantic Release Failed'));
+            const existingIssue = issues.data.find(issue => issue.title.includes('Release Failed'));
             if (!existingIssue) {
               await github.rest.issues.create({
                 owner: context.repo.owner,
