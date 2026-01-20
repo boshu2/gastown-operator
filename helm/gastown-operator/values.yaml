@@ -1,7 +1,7 @@
-# Gas Town Operator Helm Values
+# Gas Town Operator - Community Edition
 # ==============================================================================
-# Default values for gastown-operator.
-# Override with --set or -f values-override.yaml for specific environments.
+# Default values for vanilla Kubernetes.
+# For OpenShift/FIPS environments, use: -f values-fips.yaml
 # ==============================================================================
 
 replicaCount: 1
@@ -26,9 +26,6 @@ gtConfig:
 # NOTE: hostPath limits deployment to single-node clusters where the path exists
 volumes:
   enabled: true
-  # Override for specific environment:
-  # - Dev (Mac): /Users/fullerbt/gt
-  # - OpenShift node: /home/core/gt or path where gt town is available
   hostPath: /home/core/gt
 
 serviceAccount:

@@ -1,111 +1,83 @@
+# Gas Town Operator - Enterprise Edition (FIPS)
 # ==============================================================================
-# gastown-operator values for Enterprise Edition (OpenShift + FIPS)
-# ==============================================================================
-# Usage:
-#   helm install gastown-operator ./helm/gastown-operator \
-#     -n gastown-system --create-namespace \
-#     -f helm/gastown-operator/values-fips.yaml
+# For OpenShift and regulated environments (FedRAMP, HIPAA, government).
+# Uses UBI9 base image with FIPS-validated BoringCrypto.
 #
-# Prerequisites:
-#   - OpenShift 4.13+ with FIPS mode enabled
-#   - No special SCC required (uses restricted by default)
+# Usage:
+#   helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \
+#     -f values-fips.yaml -n gastown-system --create-namespace
 # ==============================================================================
+
+replicaCount: 1
 
 image:
-  # Enterprise edition uses UBI9 base with FIPS crypto
   repository: ghcr.io/boshu2/gastown-operator
-  tag: "v0.1.1-fips"
   pullPolicy: IfNotPresent
+  tag: "latest-fips"  # Or specific version: v0.1.1-fips
 
-# For internal registry (DPR), uncomment:
-# image:
-#   repository: dprusocplvjmp01.deepsky.lab:5000/gastown-operator
-#   tag: "latest-fips"
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
 
-# Polecat pod default images (UBI9 for FIPS compliance)
-polecatImages:
-  git: "registry.access.redhat.com/ubi9/ubi-minimal:9.3"
-  claude: "registry.access.redhat.com/ubi9/nodejs-20:1"
+# Gas Town configuration
+gtConfig:
+  townRoot: /gt
+  gtBinary: /usr/local/bin/gt
 
-# Environment variables for FIPS image configuration
-# These override defaults in pkg/pod/builder.go
-extraEnv:
-  - name: GASTOWN_GIT_IMAGE
-    value: "registry.access.redhat.com/ubi9/ubi-minimal:9.3"
-  - name: GASTOWN_CLAUDE_IMAGE
-    value: "registry.access.redhat.com/ubi9/nodejs-20:1"
-
-# OpenShift restricted SCC compliant
-# No special permissions required - this is the default SCC
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 65532
-  runAsGroup: 65532
-  fsGroup: 65532
-  seccompProfile:
-    type: RuntimeDefault
-
-securityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  runAsNonRoot: true
-  runAsUser: 65532
-  runAsGroup: 65532
-  capabilities:
-    drop:
-      - ALL
-  seccompProfile:
-    type: RuntimeDefault
-
-# Resource defaults for enterprise workloads
-resources:
-  limits:
-    cpu: 1
-    memory: 512Mi
-  requests:
-    cpu: 200m
-    memory: 256Mi
-
-# Disable hostPath - not compatible with restricted SCC
-# Operator uses API/webhook communication
+# Volume configuration
 volumes:
-  enabled: false
+  enabled: true
+  hostPath: /home/core/gt
 
-# Service account with OpenShift annotations
 serviceAccount:
   create: true
-  annotations:
-    # For OpenShift OAuth proxy integration (optional)
-    # serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"gastown-operator"}}'
+  annotations: {}
+  name: ""
 
 rbac:
   create: true
 
-# Metrics with OpenShift service serving cert
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# OpenShift restricted SCC compliant
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Metrics configuration
 metrics:
   enabled: true
   port: 8443
   secure: true
-  # OpenShift will inject serving certs automatically
-  # when service has serving-cert-secret-name annotation
 
 # Health probes
 probes:
   healthPort: 8081
 
-# Leader election for HA
+# Leader election (for HA)
 leaderElection:
   enabled: true
-
-# OpenShift-specific annotations
-podAnnotations:
-  # FedRAMP compliance metadata
-  fedramp.gov/controls: "RA-5,SI-2,CM-14"
-
-# No node affinity by default
-nodeSelector: {}
-
-# Tolerate control plane nodes if needed for small clusters
-tolerations: []
-
-affinity: {}

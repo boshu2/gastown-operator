@@ -3,11 +3,11 @@ name: gastown-operator
 description: |
   Kubernetes operator for Gas Town multi-agent orchestration.
   Two editions available:
-  - Community: Vanilla Kubernetes (values-community.yaml)
+  - Community: Vanilla Kubernetes (default values.yaml)
   - Enterprise: OpenShift + FIPS (values-fips.yaml)
 type: application
-version: 0.3.2
-appVersion: "0.3.2"
+version: 0.3.3
+appVersion: "0.3.3"
 keywords:
   - gastown
   - operator
