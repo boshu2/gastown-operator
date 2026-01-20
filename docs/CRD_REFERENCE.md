@@ -65,7 +65,12 @@ A Polecat is an autonomous worker agent that executes beads issues. Polecats can
 | `desiredState` | string | Yes | `Idle` | Target state: `Idle`, `Working`, `Terminated` |
 | `beadID` | string | No | - | Bead ID to work on (triggers work when set) |
 | `executionMode` | string | No | `local` | Where to run: `local` (tmux) or `kubernetes` (Pod) |
+| `agent` | string | No | `opencode` | Agent type: `opencode`, `claude-code`, `aider`, `custom` |
+| `agentConfig` | object | No | - | Configuration for the coding agent |
 | `kubernetes` | object | No* | - | Kubernetes execution config (*required if `executionMode=kubernetes`) |
+| `resources` | ResourceRequirements | No | - | CPU/memory for the polecat pod |
+| `ttlSecondsAfterFinished` | int32 | No | - | How long a completed polecat persists |
+| `maxIdleSeconds` | int32 | No | - | Terminates polecat if idle for this duration |
 
 ### KubernetesSpec (for `executionMode: kubernetes`)
 
@@ -75,10 +80,25 @@ A Polecat is an autonomous worker agent that executes beads issues. Polecats can
 | `gitBranch` | string | No | `main` | Branch to checkout |
 | `workBranch` | string | No | `feature/<beadID>` | Branch name to create for work |
 | `gitSecretRef.name` | string | Yes | - | Secret containing SSH key for git |
-| `claudeCredsSecretRef.name` | string | Yes | - | Secret containing ~/.claude/ contents |
+| `claudeCredsSecretRef.name` | string | No* | - | Secret containing ~/.claude/ contents (*required unless `apiKeySecretRef` provided) |
+| `apiKeySecretRef` | SecretKeyRef | No* | - | Secret containing API key (*alternative to `claudeCredsSecretRef`) |
 | `image` | string | No | - | Override agent container image |
 | `resources` | ResourceRequirements | No | - | CPU/memory for agent container |
 | `activeDeadlineSeconds` | int64 | No | `3600` | Max runtime before Pod termination |
+
+### AgentConfig (for custom agent configuration)
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `provider` | string | No | `litellm` | LLM provider: `litellm`, `anthropic`, `openai`, `ollama` |
+| `model` | string | No | - | Model name/ID (e.g., "claude-sonnet-4", "devstral-123b") |
+| `modelProvider.endpoint` | string | No | - | API base URL (e.g., https://ai-gateway.example.com/v1) |
+| `modelProvider.apiKeySecretRef` | SecretKeyRef | No | - | Secret containing the API key |
+| `image` | string | No | - | Override container image for the agent |
+| `command` | []string | No | - | Override entrypoint command |
+| `args` | []string | No | - | Additional arguments to the agent command |
+| `configMapRef.name` | string | No | - | ConfigMap containing agent config (e.g., opencode.json) |
+| `env` | []EnvVar | No | - | Additional environment variables |
 
 ### Status
 
@@ -93,6 +113,9 @@ A Polecat is an autonomous worker agent that executes beads issues. Polecats can
 | `podName` | string | Pod name (kubernetes mode) |
 | `lastActivity` | timestamp | When polecat last showed activity |
 | `cleanupStatus` | string | `clean`, `has_uncommitted`, `has_unpushed`, `unknown` |
+| `agent` | string | Agent type currently running |
+| `agentImage` | string | Container image being used |
+| `agentModel` | string | LLM model being used |
 | `conditions` | []Condition | Standard Kubernetes conditions |
 
 ### State Transitions
@@ -120,7 +143,7 @@ A Polecat is an autonomous worker agent that executes beads issues. Polecats can
 
 ### Examples
 
-**Local execution (tmux):**
+**Local execution (tmux) with default opencode agent:**
 
 ```yaml
 apiVersion: gastown.gastown.io/v1alpha1
@@ -133,21 +156,53 @@ spec:
   desiredState: Working
   beadID: "gt-abc-123"
   executionMode: local
+  # agent: opencode  # default
 ```
 
-**Kubernetes execution (Pod):**
+**Kubernetes execution with opencode (default):**
 
 ```yaml
 apiVersion: gastown.gastown.io/v1alpha1
 kind: Polecat
 metadata:
-  name: test-worker
+  name: opencode-worker
   namespace: gastown-system
 spec:
   rig: myproject
   desiredState: Working
   beadID: "gt-abc-123"
   executionMode: kubernetes
+  agent: opencode
+  agentConfig:
+    provider: litellm
+    model: claude-sonnet-4
+    modelProvider:
+      endpoint: https://ai-gateway.example.com/v1
+      apiKeySecretRef:
+        name: litellm-api-key
+        key: api-key
+  kubernetes:
+    gitRepository: "git@github.com:myorg/myproject.git"
+    gitBranch: main
+    gitSecretRef:
+      name: git-creds
+    activeDeadlineSeconds: 3600
+```
+
+**Kubernetes execution with Claude Code:**
+
+```yaml
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: claude-worker
+  namespace: gastown-system
+spec:
+  rig: myproject
+  desiredState: Working
+  beadID: "gt-abc-123"
+  executionMode: kubernetes
+  agent: claude-code
   kubernetes:
     gitRepository: "git@github.com:myorg/myproject.git"
     gitBranch: main
@@ -164,6 +219,30 @@ spec:
       limits:
         cpu: "2"
         memory: "4Gi"
+```
+
+**Kubernetes execution with API key (headless):**
+
+```yaml
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: api-key-worker
+  namespace: gastown-system
+spec:
+  rig: myproject
+  desiredState: Working
+  beadID: "gt-abc-123"
+  executionMode: kubernetes
+  agent: claude-code
+  kubernetes:
+    gitRepository: "git@github.com:myorg/myproject.git"
+    gitBranch: main
+    gitSecretRef:
+      name: git-creds
+    apiKeySecretRef:
+      name: anthropic-api-key
+      key: api-key
 ```
 
 ---

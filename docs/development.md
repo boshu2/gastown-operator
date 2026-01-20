@@ -4,8 +4,8 @@ Setting up the Gas Town Operator for local development.
 
 ## Prerequisites
 
-- Go 1.22+
-- kubebuilder 3.x
+- Go 1.25+
+- kubebuilder v4
 - kubectl configured with cluster access
 - gt CLI installed
 - A Gas Town setup (`~/gt/` with at least one rig)

@@ -1,6 +1,19 @@
 # Gas Town Operator User Guide
 
-Run Claude Code agents as Kubernetes pods. Scale your AI agent army beyond the laptop.
+Run AI coding agents as Kubernetes pods. Scale your agent army beyond the laptop.
+
+## Supported Agents
+
+The operator supports multiple coding agents:
+
+| Agent | Description | Default |
+|-------|-------------|---------|
+| `opencode` | Open-source coding agent using LiteLLM | **Yes** |
+| `claude-code` | Anthropic's Claude Code CLI | No |
+| `aider` | AI pair programming in your terminal | No |
+| `custom` | Your own agent implementation | No |
+
+**Default is `opencode`** - an open-source agent that works with any LLM provider via LiteLLM.
 
 ## How It Works
 
@@ -23,32 +36,25 @@ Your Laptop                          Kubernetes Cluster
                                      └─────────────────────────────┘
 ```
 
-Pods authenticate using the same OAuth session you get from `claude /login`.
+Authentication varies by agent:
+- **opencode**: API key via LiteLLM endpoint
+- **claude-code**: OAuth session from `claude /login` or API key
 
 ## Prerequisites
 
 - OpenShift/Kubernetes 1.26+
 - `oc` or `kubectl` CLI
-- Claude Code installed locally (`npm install -g @anthropic-ai/claude-code`)
 - Git SSH key for repository access
 
-## Quick Start
+## Quick Start (OpenCode - Default)
 
-### 1. Export Claude Credentials
+The simplest setup uses opencode with LiteLLM:
 
-On macOS, credentials are stored in Keychain:
-
-```bash
-# Get your OAuth tokens
-security find-generic-password -s "Claude Code-credentials" -w
-```
-
-Create the Kubernetes secret:
+### 1. Create API Key Secret
 
 ```bash
-CREDS=$(security find-generic-password -s "Claude Code-credentials" -w)
-oc create secret generic claude-home -n gastown-workers \
-  --from-literal=.credentials.json="$CREDS"
+oc create secret generic litellm-api-key -n gastown-workers \
+  --from-literal=api-key="your-litellm-or-llm-provider-key"
 ```
 
 ### 2. Create Git SSH Secret
@@ -68,7 +74,7 @@ oc apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.2/
 oc get pods -n gastown-system
 ```
 
-### 4. Create a Polecat
+### 4. Create a Polecat (OpenCode)
 
 ```yaml
 apiVersion: gastown.gastown.io/v1alpha1
@@ -81,6 +87,68 @@ spec:
   beadID: issue-123
   desiredState: Working
   executionMode: kubernetes
+  agent: opencode  # default
+  agentConfig:
+    provider: litellm
+    model: claude-sonnet-4
+    modelProvider:
+      endpoint: https://ai-gateway.example.com/v1
+      apiKeySecretRef:
+        name: litellm-api-key
+        key: api-key
+  kubernetes:
+    gitRepository: "git@github.com:myorg/myrepo.git"
+    gitBranch: main
+    gitSecretRef:
+      name: git-ssh-key
+```
+
+---
+
+## Quick Start (Claude Code)
+
+For Claude Code, you need OAuth credentials or an API key.
+
+### Option A: OAuth Credentials
+
+On macOS, credentials are stored in Keychain:
+
+```bash
+# Get your OAuth tokens
+security find-generic-password -s "Claude Code-credentials" -w
+```
+
+Create the Kubernetes secret:
+
+```bash
+CREDS=$(security find-generic-password -s "Claude Code-credentials" -w)
+oc create secret generic claude-home -n gastown-workers \
+  --from-literal=.credentials.json="$CREDS"
+```
+
+### Option B: API Key (Headless)
+
+```bash
+oc create secret generic anthropic-api-key -n gastown-workers \
+  --from-literal=api-key="sk-ant-api03-..."
+```
+
+### Create a Polecat (Claude Code)
+
+With OAuth credentials:
+
+```yaml
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: my-worker
+  namespace: gastown-workers
+spec:
+  rig: my-project
+  beadID: issue-123
+  desiredState: Working
+  executionMode: kubernetes
+  agent: claude-code
   kubernetes:
     gitRepository: "git@github.com:myorg/myrepo.git"
     gitBranch: main
@@ -98,9 +166,35 @@ spec:
         memory: "4Gi"
 ```
 
+Or with API key (headless):
+
+```yaml
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: my-worker
+  namespace: gastown-workers
+spec:
+  rig: my-project
+  beadID: issue-123
+  desiredState: Working
+  executionMode: kubernetes
+  agent: claude-code
+  kubernetes:
+    gitRepository: "git@github.com:myorg/myrepo.git"
+    gitBranch: main
+    gitSecretRef:
+      name: git-ssh-key
+    apiKeySecretRef:
+      name: anthropic-api-key
+      key: api-key
+```
+
 ```bash
 oc apply -f polecat.yaml
 ```
+
+---
 
 ### 5. Watch It Work
 

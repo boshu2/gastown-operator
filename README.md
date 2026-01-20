@@ -8,6 +8,8 @@
 
 A Kubernetes operator that runs [Gas Town](https://github.com/steveyegge/gastown) polecats as pods. Scale your AI agent army beyond the laptop.
 
+Supports multiple coding agents: **opencode** (default), **claude-code**, **aider**, or **custom**.
+
 ```
     ╔═══════════════════════════════════════╗
     ║   GAS TOWN + KUBERNETES = SCALE       ║
@@ -99,18 +101,19 @@ make run-local
 
 # Create a Rig
 kubectl apply -f - <<EOF
-apiVersion: gastown.io/v1alpha1
+apiVersion: gastown.gastown.io/v1alpha1
 kind: Rig
 metadata:
   name: my-project
 spec:
   gitURL: "git@github.com:myorg/my-project.git"
   beadsPrefix: "proj"
+  localPath: "/home/user/workspaces/my-project"
 EOF
 
-# Spawn a Polecat
+# Spawn a Polecat (opencode - default)
 kubectl apply -f - <<EOF
-apiVersion: gastown.io/v1alpha1
+apiVersion: gastown.gastown.io/v1alpha1
 kind: Polecat
 metadata:
   name: furiosa
@@ -118,13 +121,21 @@ metadata:
 spec:
   rig: my-project
   beadID: proj-abc123
+  desiredState: Working
+  executionMode: kubernetes
+  # agent: opencode  # default
+  agentConfig:
+    provider: litellm
+    model: claude-sonnet-4
+    modelProvider:
+      apiKeySecretRef:
+        name: litellm-api-key
+        key: api-key
   kubernetes:
     gitRepository: "git@github.com:myorg/my-project.git"
     gitBranch: main
     gitSecretRef:
       name: git-ssh-key
-    claudeCredsSecretRef:
-      name: claude-api-key
 EOF
 
 # Watch it work
@@ -190,17 +201,18 @@ make deploy IMG=ghcr.io/boshu2/gastown-operator:v0.1.2
 - Kubernetes 1.26+ (OpenShift 4.13+ recommended)
 - `gt` CLI accessible to operator (for local mode)
 - Git SSH credentials (for polecat git operations)
-- Claude API credentials (for polecat AI operations)
+- LLM API credentials (LiteLLM, Anthropic, OpenAI, or Ollama)
 
 ## Related Projects
 
 - [Gas Town](https://github.com/steveyegge/gastown) - The multi-agent orchestration framework
+- [opencode](https://github.com/opencode-ai/opencode) - Open-source coding agent (default)
 - [gastown-gui](https://github.com/web3dev1337/gastown-gui) - Web UI dashboard (we're integrating!)
 - [Beads](https://github.com/steveyegge/beads) - Git-based issue tracking
 
 ## Status
 
-**v0.1.2** - E2E validated. Polecat pods successfully run Claude Code agents in OpenShift. Full lifecycle tested: CR creation → pod spawn → git clone → Claude execution → completion.
+**v0.1.2** - E2E validated. Polecat pods successfully run AI coding agents in OpenShift. Full lifecycle tested: CR creation → pod spawn → git clone → agent execution → completion. Supports opencode (default), claude-code, aider, and custom agents.
 
 Feedback welcome! See [steveyegge/gastown#668](https://github.com/steveyegge/gastown/issues/668) for discussion.
 

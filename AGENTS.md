@@ -113,7 +113,7 @@ kubectl logs -n gastown-system deployment/gastown-operator-controller-manager
 
 - controller-runtime v0.22.x
 - kubebuilder v4
-- Go 1.24+
+- Go 1.25+
 
 ## Related Documentation
 

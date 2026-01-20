@@ -71,7 +71,9 @@ The operator will:
 
 ## Create a Polecat
 
-Polecats are workers that execute beads issues.
+Polecats are workers that execute beads issues. Default agent is `opencode`.
+
+**Local mode (tmux):**
 
 ```yaml
 # worker-polecat.yaml
@@ -84,6 +86,37 @@ spec:
   rig: myproject
   desiredState: Working
   beadID: "mp-abc-123"
+  executionMode: local
+  # agent: opencode  # default
+```
+
+**Kubernetes mode (Pod):**
+
+```yaml
+# k8s-polecat.yaml
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: worker-1
+  namespace: default
+spec:
+  rig: myproject
+  desiredState: Working
+  beadID: "mp-abc-123"
+  executionMode: kubernetes
+  agent: opencode
+  agentConfig:
+    provider: litellm
+    model: claude-sonnet-4
+    modelProvider:
+      apiKeySecretRef:
+        name: litellm-api-key
+        key: api-key
+  kubernetes:
+    gitRepository: "git@github.com:myorg/myproject.git"
+    gitBranch: main
+    gitSecretRef:
+      name: git-creds
 ```
 
 ```bash
@@ -109,7 +142,8 @@ spec:
     - "mp-abc-123"
     - "mp-def-456"
     - "mp-ghi-789"
-  notifyOnComplete: true
+  rigRef: myproject
+  notifyOnComplete: "mayor"  # mail address for completion notification
 ```
 
 ```bash
@@ -118,6 +152,6 @@ kubectl apply -f wave-1-convoy.yaml
 
 ## Next Steps
 
-- [CRD Reference](./crds.md) - Full spec/status documentation
+- [CRD Reference](./CRD_REFERENCE.md) - Full spec/status documentation
 - [Architecture](./architecture.md) - How the operator works
 - [Development](./development.md) - Contributing and local setup
