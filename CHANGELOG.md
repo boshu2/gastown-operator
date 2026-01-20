@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [0.2.0](https://github.com/boshu2/gastown-operator/compare/v0.1.2...v0.2.0) (2026-01-20)
+
+### Features
+
+* **ci:** add comprehensive GitHub Actions E2E testing ([2f38427](https://github.com/boshu2/gastown-operator/commit/2f3842756878f0bad1ece9d5ee56b69d3e973829))
+* **ci:** add full automated CI/CD pipeline with Vibe + Athena ([5dda90d](https://github.com/boshu2/gastown-operator/commit/5dda90d19344bfd915e85ddba5ef7fed1f8165af))
+* **controllers:** remediate vibe assessment findings (P1 & P2) ([1a16a23](https://github.com/boshu2/gastown-operator/commit/1a16a231ec29c3b96975da836cc7f84165673964))
+* **docs:** remediate P3 vibe assessment findings ([0cf8939](https://github.com/boshu2/gastown-operator/commit/0cf8939b99df5abf9ee5f4f34dc03bc255bad571))
+* **go-cwl:** add /version endpoint to webhook server ([f492b49](https://github.com/boshu2/gastown-operator/commit/f492b491cc2837fc860ff386ff2ebe8954205b1d))
+* **helm:** add GHCR OCI publishing for helm chart ([753a81a](https://github.com/boshu2/gastown-operator/commit/753a81af803aeec89489aa84a7eff1a5cc723380))
+* **pod:** add API key auth as alternative to OAuth ([e44e02d](https://github.com/boshu2/gastown-operator/commit/e44e02d96f3635c96942ef22bfddc8512d38256e))
+* **release:** add comprehensive E2E validation gate for releases ([2e094fb](https://github.com/boshu2/gastown-operator/commit/2e094fbeb8b03a804014884d10c47a1f2fe9801a))
+* **tekton:** add comprehensive security scanning and supply chain tasks ([8700670](https://github.com/boshu2/gastown-operator/commit/87006709b8101756d20172f1778608fd0c10164e))
+* **tekton:** add dockerfile parameter for FIPS builds ([9d5a376](https://github.com/boshu2/gastown-operator/commit/9d5a3767f0d7a4afa6a703921eff02cf88086587))
+
+### Bug Fixes
+
+* **api:** use error wrapping in rig_webhook.go ([bf66fde](https://github.com/boshu2/gastown-operator/commit/bf66fdeea51e2b7f5988693f21d0821f5a0e362f))
+* change default agent from opencode to claude-code ([4727f8e](https://github.com/boshu2/gastown-operator/commit/4727f8e3ae3092379d106d8a302401fa0f986898))
+* **devcontainer:** quote command substitutions in post-install.sh ([a027dd5](https://github.com/boshu2/gastown-operator/commit/a027dd5c52472ac81cc43b3df34c7a2c67d1b034))
+* **git:** use pre-verified SSH known_hosts to prevent MITM attacks ([21d69d8](https://github.com/boshu2/gastown-operator/commit/21d69d805908851c4aab1c75ddfb46f7eae8a396))
+* **pod:** enable git push and improve prompt handling ([b5d7a65](https://github.com/boshu2/gastown-operator/commit/b5d7a658f128ae6e6edcc0ddf35be5383004257f))
+* **security:** add TestCommand validation to prevent command injection ([20a56f1](https://github.com/boshu2/gastown-operator/commit/20a56f197213c323364c333e3796cd75f0963241))
+
+### Refactoring
+
+* **release:** simplify GitHub Actions, keep real E2E in Tekton ([46cf6f9](https://github.com/boshu2/gastown-operator/commit/46cf6f9069d5fb4db890fd001a66411457603256))
+
 ## [0.1.1] - 2026-01-20
 
 ### Fixed
