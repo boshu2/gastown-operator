@@ -63,6 +63,8 @@ type MergeResult struct {
 // 7. Checkout target and merge (fast-forward)
 // 8. Push target
 // 9. Delete source branch if configured
+//
+//nolint:gocyclo // Sequential 9-step workflow; complexity from explicit error handling
 func (c *Client) MergeBranch(ctx context.Context, opts MergeOptions) (*MergeResult, error) {
 	result := &MergeResult{}
 

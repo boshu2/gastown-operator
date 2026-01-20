@@ -186,6 +186,7 @@ func runPolecatList(rig string) error {
 	return nil
 }
 
+//nolint:gocyclo // Complexity from exhaustive status field printing; linear and readable
 func runPolecatStatus(rig, name string) error {
 	config, err := KubeFlags.ToRESTConfig()
 	if err != nil {

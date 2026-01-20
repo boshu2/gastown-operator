@@ -187,6 +187,8 @@ func validateKubernetesSpec(k *KubernetesSpec) []string {
 }
 
 // validateResources validates that resource requests don't exceed limits.
+//
+//nolint:gocyclo // Complexity from parallel CPU/memory validation paths; extracting would reduce clarity
 func validateResources(resources *corev1.ResourceRequirements) ([]string, admission.Warnings) {
 	var errs []string
 	var warnings admission.Warnings
