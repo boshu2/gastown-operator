@@ -119,8 +119,9 @@ check_complexity() {
     if [[ -n "$high_complexity" ]]; then
         echo "$high_complexity" | while read -r line; do
             # Skip if nolint:gocyclo comment exists
+            # gocyclo output: "25 pkg FuncName path/file.go:line:col"
             local func_file
-            func_file=$(echo "$line" | awk '{print $NF}')
+            func_file=$(echo "$line" | awk '{print $NF}' | cut -d: -f1)
             if grep -q "nolint:gocyclo" "$func_file" 2>/dev/null; then
                 log_info "P5: Skipping (nolint): $line"
             else
