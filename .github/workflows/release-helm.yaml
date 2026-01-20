@@ -1,5 +1,13 @@
 name: Release Helm Chart
 
+# Triggered when a version tag is pushed
+# Prerequisites: Run `make release-validate` locally before tagging
+#
+# Real E2E testing happens in Tekton pipeline on OCP.
+# This workflow just validates the tag and publishes artifacts.
+#
+# Future: Add Kind-based E2E tests (see kagent for reference)
+
 on:
   push:
     tags:
@@ -11,15 +19,13 @@ permissions:
 
 env:
   GO_VERSION: '1.24'
-  KIND_VERSION: 'v0.20.0'
-  KUBECTL_VERSION: 'v1.29.0'
 
 jobs:
   # ==========================================================================
-  # Pre-Release Validation - REQUIRED before publishing
+  # Validate Release Tag
   # ==========================================================================
   validate-release:
-    name: Validate Release Tag
+    name: Validate Release
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
@@ -56,307 +62,40 @@ jobs:
 
           if [ "$CHART_VERSION" != "$VERSION" ]; then
             echo "ERROR: Chart.yaml version ($CHART_VERSION) does not match tag ($VERSION)"
+            echo ""
+            echo "Fix: Update helm/gastown-operator/Chart.yaml before tagging"
             exit 1
           fi
 
           if [ "$APP_VERSION" != "$VERSION" ]; then
             echo "ERROR: Chart.yaml appVersion ($APP_VERSION) does not match tag ($VERSION)"
+            echo ""
+            echo "Fix: Update helm/gastown-operator/Chart.yaml before tagging"
             exit 1
           fi
 
           echo "Version validation passed!"
 
-  # ==========================================================================
-  # E2E Tests - Community Edition
-  # ==========================================================================
-  e2e-community:
-    name: E2E Community Edition
-    runs-on: ubuntu-latest
-    needs: validate-release
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-        with:
-          version: v3.14.0
-
-      - name: Create Kind cluster
-        uses: helm/kind-action@v1.10.0
-        with:
-          cluster_name: gastown-community
-          kubectl_version: ${{ env.KUBECTL_VERSION }}
-
-      - name: Build gt CLI
+      - name: Reminder about local validation
         run: |
-          cd /tmp
-          git clone --depth 1 https://github.com/steveyegge/gastown.git
-          cd gastown
-          CGO_ENABLED=0 go build -o ${{ github.workspace }}/gt ./cmd/gt
-
-      - name: Build operator image
-        run: |
-          make docker-build IMG=ghcr.io/${{ github.repository_owner }}/gastown-operator:v${{ needs.validate-release.outputs.version }}
-
-      - name: Load image into Kind
-        run: |
-          kind load docker-image ghcr.io/${{ github.repository_owner }}/gastown-operator:v${{ needs.validate-release.outputs.version }} --name gastown-community
-
-      - name: Install CRDs
-        run: make install
-
-      - name: Create namespace
-        run: |
-          kubectl create namespace gastown-community
-          kubectl label namespace gastown-community pod-security.kubernetes.io/enforce=restricted
-
-      - name: Install Helm chart (Community)
-        run: |
-          helm install gastown-operator ./helm/gastown-operator \
-            --namespace gastown-community \
-            --set image.repository=ghcr.io/${{ github.repository_owner }}/gastown-operator \
-            --set image.tag=v${{ needs.validate-release.outputs.version }} \
-            --set image.pullPolicy=Never \
-            -f helm/gastown-operator/values-community.yaml \
-            --wait --timeout 5m
-
-      - name: Verify operator deployment
-        run: |
-          kubectl wait --for=condition=available deployment/gastown-operator -n gastown-community --timeout=120s
-          kubectl get pods -n gastown-community
-          kubectl get deployment -n gastown-community
-
-      - name: Verify CRDs installed
-        run: |
-          kubectl get crd polecats.gastown.gastown.io
-          kubectl get crd rigs.gastown.gastown.io
-          kubectl get crd convoys.gastown.gastown.io
-          kubectl get crd witnesses.gastown.gastown.io
-          kubectl get crd refineries.gastown.gastown.io
-          kubectl get crd beadstores.gastown.gastown.io
-
-      - name: Create test Rig
-        run: |
-          kubectl apply -f - <<EOF
-          apiVersion: gastown.gastown.io/v1alpha1
-          kind: Rig
-          metadata:
-            name: test-rig-community
-          spec:
-            gitURL: "https://github.com/test/repo.git"
-            beadsPrefix: "test"
-            localPath: "/tmp/test"
-          EOF
-
-      - name: Verify Rig status
-        run: |
-          sleep 5
-          kubectl get rig test-rig-community -o yaml
-          kubectl get rig test-rig-community -o jsonpath='{.status.conditions}' | jq .
-
-      - name: Create secrets for Polecat
-        run: |
-          kubectl create secret generic test-git-creds -n gastown-community \
-            --from-literal=ssh-privatekey=dummy-test-key
-          kubectl create secret generic test-claude-creds -n gastown-community \
-            --from-literal=api-key=dummy-test-key
-
-      - name: Create test Polecat
-        run: |
-          kubectl apply -f - <<EOF
-          apiVersion: gastown.gastown.io/v1alpha1
-          kind: Polecat
-          metadata:
-            name: test-polecat-community
-            namespace: gastown-community
-          spec:
-            rig: test-rig-community
-            desiredState: Working
-            executionMode: kubernetes
-            beadID: test-001
-            kubernetes:
-              gitRepository: "https://github.com/test/repo.git"
-              gitBranch: main
-              gitSecretRef:
-                name: test-git-creds
-              apiKeySecretRef:
-                name: test-claude-creds
-                key: api-key
-          EOF
-
-      - name: Verify Polecat creates Pod
-        run: |
-          echo "Waiting for Polecat pod to be created..."
-          sleep 10
-          kubectl get pods -n gastown-community -l gastown.io/polecat=test-polecat-community || true
-          kubectl get polecat test-polecat-community -n gastown-community -o yaml
-
-      - name: Verify operator is reconciling
-        run: |
-          echo "Checking operator logs for reconciliation..."
-          kubectl logs deployment/gastown-operator -n gastown-community --tail=100 | grep -E "(Reconciling|reconciled)" || echo "No reconciliation logs found"
-
-      - name: Check operator logs
-        if: always()
-        run: |
-          kubectl logs deployment/gastown-operator -n gastown-community --tail=100 || true
-
-      - name: Cleanup
-        if: always()
-        run: |
-          kubectl delete polecat test-polecat-community -n gastown-community --ignore-not-found
-          kubectl delete rig test-rig-community --ignore-not-found
-          helm uninstall gastown-operator -n gastown-community || true
+          echo "========================================"
+          echo "  Release Validation Reminder"
+          echo "========================================"
+          echo ""
+          echo "Before pushing this tag, you should have run:"
+          echo "  make release-validate"
+          echo ""
+          echo "This runs full E2E tests locally with Kind cluster."
+          echo "Real E2E testing on OCP happens via Tekton pipeline."
+          echo "========================================"
 
   # ==========================================================================
-  # E2E Tests - FIPS Edition
-  # ==========================================================================
-  e2e-fips:
-    name: E2E FIPS Edition
-    runs-on: ubuntu-latest
-    needs: validate-release
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-        with:
-          version: v3.14.0
-
-      - name: Create Kind cluster
-        uses: helm/kind-action@v1.10.0
-        with:
-          cluster_name: gastown-fips
-          kubectl_version: ${{ env.KUBECTL_VERSION }}
-
-      - name: Build gt CLI
-        run: |
-          cd /tmp
-          git clone --depth 1 https://github.com/steveyegge/gastown.git
-          cd gastown
-          CGO_ENABLED=0 go build -o ${{ github.workspace }}/gt ./cmd/gt
-
-      - name: Build FIPS operator image
-        run: |
-          # Use standard Dockerfile for CI (FIPS requires UBI which needs RH subscription)
-          # In production, FIPS image is built via Tekton with proper base images
-          make docker-build IMG=ghcr.io/${{ github.repository_owner }}/gastown-operator:v${{ needs.validate-release.outputs.version }}-fips
-
-      - name: Load image into Kind
-        run: |
-          kind load docker-image ghcr.io/${{ github.repository_owner }}/gastown-operator:v${{ needs.validate-release.outputs.version }}-fips --name gastown-fips
-
-      - name: Install CRDs
-        run: make install
-
-      - name: Create namespace
-        run: |
-          kubectl create namespace gastown-fips
-          kubectl label namespace gastown-fips pod-security.kubernetes.io/enforce=restricted
-
-      - name: Install Helm chart (FIPS values)
-        run: |
-          helm install gastown-operator ./helm/gastown-operator \
-            --namespace gastown-fips \
-            --set image.repository=ghcr.io/${{ github.repository_owner }}/gastown-operator \
-            --set image.tag=v${{ needs.validate-release.outputs.version }}-fips \
-            --set image.pullPolicy=Never \
-            -f helm/gastown-operator/values-fips.yaml \
-            --wait --timeout 5m
-
-      - name: Verify operator deployment
-        run: |
-          kubectl wait --for=condition=available deployment/gastown-operator -n gastown-fips --timeout=120s
-          kubectl get pods -n gastown-fips
-          kubectl get deployment -n gastown-fips
-
-      - name: Verify security context (FIPS config)
-        run: |
-          echo "Checking pod security context matches FIPS values..."
-          POD=$(kubectl get pod -n gastown-fips -l app.kubernetes.io/name=gastown-operator -o jsonpath='{.items[0].metadata.name}')
-          kubectl get pod $POD -n gastown-fips -o jsonpath='{.spec.securityContext}' | jq .
-
-          # Verify non-root
-          RUN_AS_NON_ROOT=$(kubectl get pod $POD -n gastown-fips -o jsonpath='{.spec.securityContext.runAsNonRoot}')
-          if [ "$RUN_AS_NON_ROOT" != "true" ]; then
-            echo "ERROR: runAsNonRoot should be true"
-            exit 1
-          fi
-
-          # Verify read-only filesystem
-          READ_ONLY=$(kubectl get pod $POD -n gastown-fips -o jsonpath='{.spec.containers[0].securityContext.readOnlyRootFilesystem}')
-          if [ "$READ_ONLY" != "true" ]; then
-            echo "ERROR: readOnlyRootFilesystem should be true"
-            exit 1
-          fi
-
-          echo "Security context validation passed!"
-
-      - name: Create test Rig
-        run: |
-          kubectl apply -f - <<EOF
-          apiVersion: gastown.gastown.io/v1alpha1
-          kind: Rig
-          metadata:
-            name: test-rig-fips
-          spec:
-            gitURL: "https://github.com/test/repo.git"
-            beadsPrefix: "fips"
-            localPath: "/tmp/test"
-          EOF
-
-      - name: Create test Convoy
-        run: |
-          kubectl apply -f - <<EOF
-          apiVersion: gastown.gastown.io/v1alpha1
-          kind: Convoy
-          metadata:
-            name: test-convoy-fips
-            namespace: gastown-fips
-          spec:
-            name: "FIPS Test Convoy"
-            rig: test-rig-fips
-            issueIDs:
-              - fips-001
-              - fips-002
-          EOF
-
-      - name: Verify Convoy status
-        run: |
-          sleep 5
-          kubectl get convoy test-convoy-fips -n gastown-fips -o yaml
-
-      - name: Check operator logs
-        if: always()
-        run: |
-          kubectl logs deployment/gastown-operator -n gastown-fips --tail=100 || true
-
-      - name: Cleanup
-        if: always()
-        run: |
-          kubectl delete convoy test-convoy-fips -n gastown-fips --ignore-not-found
-          kubectl delete rig test-rig-fips --ignore-not-found
-          helm uninstall gastown-operator -n gastown-fips || true
-
-  # ==========================================================================
-  # Build and Push Release Artifacts (only after E2E passes)
+  # Build and Push Images
   # ==========================================================================
   release-images:
     name: Build and Push Images
     runs-on: ubuntu-latest
-    needs: [validate-release, e2e-community, e2e-fips]
+    needs: validate-release
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -395,10 +134,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ==========================================================================
+  # Publish Helm Chart
+  # ==========================================================================
   release-helm:
     name: Publish Helm Chart
     runs-on: ubuntu-latest
-    needs: [validate-release, e2e-community, e2e-fips, release-images]
+    needs: [validate-release, release-images]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -428,14 +170,11 @@ jobs:
           echo ""
           echo "Artifacts:"
           echo "  - Image: ghcr.io/${{ github.repository_owner }}/gastown-operator:v${{ needs.validate-release.outputs.version }}"
-          echo "  - Helm: oci://ghcr.io/${{ github.repository_owner }}/gastown-operator:${{ needs.validate-release.outputs.version }}"
+          echo "  - Helm:  oci://ghcr.io/${{ github.repository_owner }}/gastown-operator:${{ needs.validate-release.outputs.version }}"
           echo ""
-          echo "Install:"
+          echo "Install (Community):"
           echo "  helm install gastown-operator oci://ghcr.io/${{ github.repository_owner }}/gastown-operator \\"
           echo "    --version ${{ needs.validate-release.outputs.version }} \\"
           echo "    -f values-community.yaml"
           echo ""
-          echo "E2E tests passed for:"
-          echo "  - Community Edition"
-          echo "  - FIPS Edition"
           echo "========================================"
