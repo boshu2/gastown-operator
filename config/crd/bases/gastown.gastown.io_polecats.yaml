@@ -517,6 +517,11 @@ spec:
               rig:
                 description: Rig is the name of the rig this polecat belongs to
                 type: string
+              taskDescription:
+                description: |-
+                  TaskDescription provides the full task details for the polecat to work on.
+                  Used when beads are not synced to the target repository.
+                type: string
               ttlSecondsAfterFinished:
                 description: TTLSecondsAfterFinished limits how long a completed polecat
                   persists

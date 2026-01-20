@@ -183,6 +183,11 @@ type PolecatSpec struct {
 	// +optional
 	BeadID string `json:"beadID,omitempty"`
 
+	// TaskDescription provides the full task details for the polecat to work on.
+	// Used when beads are not synced to the target repository.
+	// +optional
+	TaskDescription string `json:"taskDescription,omitempty"`
+
 	// ExecutionMode determines where the polecat runs
 	// +kubebuilder:default=local
 	// +optional

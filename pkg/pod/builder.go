@@ -229,7 +229,21 @@ if [ -f "%s/.credentials.json" ]; then
     echo "Claude credentials copied to $HOME/.claude/"
 fi
 
-# Install Claude Code CLI
+# Configure SSH for git operations
+mkdir -p "$HOME/.ssh"
+if [ -f "%s/ssh-privatekey" ]; then
+    cp "%s/ssh-privatekey" "$HOME/.ssh/id_rsa"
+    chmod 600 "$HOME/.ssh/id_rsa"
+    # Add GitHub to known hosts
+    ssh-keyscan -t rsa github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
+    echo "Git SSH key configured"
+fi
+
+# Configure git user for commits
+git config --global user.name "Gas Town Polecat"
+git config --global user.email "polecat@gastown.io"
+
+# Install Claude Code CLI and gh
 echo "Installing Claude Code CLI..."
 npm install -g @anthropic-ai/claude-code
 
@@ -239,11 +253,34 @@ claude --version || echo "Claude CLI installed"
 # Run Claude with dangerously-skip-permissions for headless mode
 echo "Starting Claude Code agent..."
 echo "Working on issue: $GT_ISSUE"
-PROMPT="You are a Gas Town polecat worker assigned to issue $GT_ISSUE. "
-PROMPT+="Read the repository CLAUDE.md and .beads/ directory to understand the task. "
-PROMPT+="Execute the work autonomously."
+
+# Build the prompt with task description if available
+if [ -n "$GT_TASK_DESCRIPTION" ]; then
+    echo "=== Task Description ==="
+    echo "$GT_TASK_DESCRIPTION"
+    echo "========================"
+    PROMPT="You are a Gas Town polecat worker. Your task:
+
+ISSUE: $GT_ISSUE
+TASK: $GT_TASK_DESCRIPTION
+
+INSTRUCTIONS:
+1. Implement the task described above
+2. After completing the work:
+   - git add the changed files
+   - git commit -m 'feat($GT_ISSUE): <description>'
+   - git push origin HEAD
+   - gh pr create --fill
+
+Stay focused on this specific task. Do not fix unrelated issues."
+else
+    PROMPT="You are a Gas Town polecat worker assigned to issue $GT_ISSUE. "
+    PROMPT="${PROMPT}Read the repository and implement the task. "
+    PROMPT="${PROMPT}After completing: git add, commit, push, and gh pr create --fill."
+fi
+
 exec claude --print --dangerously-skip-permissions "$PROMPT"
-`, ClaudeCredsMountPath, ClaudeCredsMountPath)
+`, ClaudeCredsMountPath, ClaudeCredsMountPath, GitCredsMountPath, GitCredsMountPath)
 
 	// Build environment variables
 	envVars := []corev1.EnvVar{
@@ -258,6 +295,10 @@ exec claude --print --dangerously-skip-permissions "$PROMPT"
 		{
 			Name:  "GT_RIG",
 			Value: b.polecat.Spec.Rig,
+		},
+		{
+			Name:  "GT_TASK_DESCRIPTION",
+			Value: b.polecat.Spec.TaskDescription,
 		},
 		{
 			Name:  "HOME",
@@ -285,6 +326,11 @@ exec claude --print --dangerously-skip-permissions "$PROMPT"
 		{
 			Name:      WorkspaceVolumeName,
 			MountPath: WorkspaceMountPath,
+		},
+		{
+			Name:      GitCredsVolumeName,
+			MountPath: GitCredsMountPath,
+			ReadOnly:  true,
 		},
 		{
 			Name:      TmpVolumeName,
