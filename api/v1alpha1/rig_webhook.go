@@ -177,7 +177,7 @@ func validateGitURL(gitURL string) error {
 	if strings.HasPrefix(gitURL, "https://") || strings.HasPrefix(gitURL, "http://") {
 		parsed, err := url.Parse(gitURL)
 		if err != nil {
-			return fmt.Errorf("invalid URL: %v", err)
+			return fmt.Errorf("invalid URL: %w", err)
 		}
 		if parsed.Host == "" {
 			return fmt.Errorf("URL must have a host")
