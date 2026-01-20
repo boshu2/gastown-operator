@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
+	"strings"
 )
 
 // MergeOptions configures the merge workflow.
@@ -156,8 +158,77 @@ func (c *Client) MergeBranch(ctx context.Context, opts MergeOptions) (*MergeResu
 	return result, nil
 }
 
-// runTests executes the test command in the repository.
+// allowedTestCommands defines patterns for safe test commands.
+// These patterns are intentionally restrictive to prevent command injection.
+var allowedTestCommands = []string{
+	// Standard build tools
+	`^make(\s+[a-zA-Z0-9_-]+)*$`,      // make, make test, make build
+	`^go\s+(test|build|vet)(\s|$)`,    // go test, go build, go vet (with flags)
+	`^npm\s+(test|run\s+test)(\s|$)`,  // npm test, npm run test
+	`^yarn\s+(test|run\s+test)(\s|$)`, // yarn test
+	`^pytest(\s|$)`,                   // pytest (with flags)
+	`^cargo\s+(test|build)(\s|$)`,     // cargo test, cargo build
+	`^mvn\s+(test|verify)(\s|$)`,      // mvn test, mvn verify
+	`^gradle\s+(test|build)(\s|$)`,    // gradle test
+	`^./gradlew\s+(test|build)(\s|$)`, // gradlew wrapper
+	`^./mvnw\s+(test|verify)(\s|$)`,   // maven wrapper
+	`^bazel\s+(test|build)(\s|$)`,     // bazel test
+}
+
+// ValidateTestCommand checks if a test command is safe to execute.
+// Returns an error if the command contains potentially dangerous patterns.
+func ValidateTestCommand(command string) error {
+	if command == "" {
+		return nil
+	}
+
+	// Trim whitespace
+	command = strings.TrimSpace(command)
+
+	// Check for dangerous patterns that could indicate command injection
+	dangerousPatterns := []string{
+		`;`,  // Command chaining
+		`&&`, // Command chaining
+		`||`, // Command chaining
+		`|`,  // Pipe
+		`$`,  // Variable expansion
+		"`",  // Command substitution
+		`$(`, // Command substitution
+		`>`,  // Output redirection
+		`<`,  // Input redirection
+		`\n`, // Newlines
+		`\r`, // Carriage returns
+		`'`,  // Single quotes (can escape)
+		`"`,  // Double quotes (can escape)
+	}
+
+	for _, pattern := range dangerousPatterns {
+		if strings.Contains(command, pattern) {
+			return fmt.Errorf("test command contains potentially dangerous character: %q", pattern)
+		}
+	}
+
+	// Check against allowlist of safe commands
+	for _, pattern := range allowedTestCommands {
+		matched, err := regexp.MatchString(pattern, command)
+		if err != nil {
+			continue
+		}
+		if matched {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("test command %q does not match any allowed pattern; allowed patterns include: make, go test, npm test, pytest, cargo test, mvn test, gradle test, bazel test", command)
+}
+
+// runTests executes the test command in the repository after validation.
 func (c *Client) runTests(ctx context.Context, command string) error {
+	// Validate command before execution to prevent command injection
+	if err := ValidateTestCommand(command); err != nil {
+		return fmt.Errorf("test command validation failed: %w", err)
+	}
+
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Dir = c.RepoDir
 	cmd.Env = os.Environ()
