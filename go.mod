@@ -3,8 +3,8 @@ module github.com/org/gastown-operator
 go 1.25.0
 
 require (
-	github.com/onsi/ginkgo/v2 v2.27.2
-	github.com/onsi/gomega v1.38.2
+	github.com/onsi/ginkgo/v2 v2.27.5
+	github.com/onsi/gomega v1.39.0
 	github.com/prometheus/client_golang v1.22.0
 	github.com/spf13/cobra v1.10.0
 	github.com/stretchr/testify v1.11.1
