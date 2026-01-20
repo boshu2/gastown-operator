@@ -169,7 +169,8 @@ check_undocumented_ignores() {
         local matches
         matches=$(grep -n -E '^\s*_\s*=' "$file" 2>/dev/null || true)
         if [[ -n "$matches" ]]; then
-            echo "$matches" | while read -r line; do
+            # Use process substitution to avoid subshell variable scoping
+            while IFS= read -r line; do
                 local line_num
                 line_num=$(echo "$line" | cut -d: -f1)
                 # Check if previous line has nolint comment
@@ -179,7 +180,7 @@ check_undocumented_ignores() {
                     log_medium "P13: Undocumented error ignore: $file:$line"
                     ((count++)) || true
                 fi
-            done
+            done <<< "$matches"
         fi
     done < <(get_files)
 
