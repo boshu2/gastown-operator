@@ -21,7 +21,28 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// PolecatDesiredState represents the desired lifecycle state
+// PolecatDesiredState represents the desired lifecycle state.
+//
+// NAMING CONVENTION: State vs Phase
+//
+// This codebase uses a deliberate naming convention to distinguish between
+// desired state (user intent) and observed phase (system reality):
+//
+//   - State: Used in spec fields (e.g., DesiredState) to represent what the
+//     user WANTS. This is the declarative target that the controller reconciles
+//     toward. Also used for internal component states (e.g., CircuitState).
+//
+//   - Phase: Used in status fields (e.g., Phase) to represent what the system
+//     HAS OBSERVED. This is the current reality as determined by the controller
+//     during reconciliation.
+//
+// Example: A Polecat may have spec.desiredState=Working but status.phase=Stuck
+// if the controller cannot achieve the desired state.
+//
+// This follows Kubernetes conventions where spec represents desired state
+// and status represents observed state. The State/Phase naming makes this
+// distinction explicit in type names.
+//
 // +kubebuilder:validation:Enum=Idle;Working;Terminated
 type PolecatDesiredState string
 

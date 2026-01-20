@@ -33,11 +33,14 @@ import (
 )
 
 const (
-	// WitnessConditionHealthy indicates the witness is successfully monitoring.
-	WitnessConditionHealthy = "Healthy"
+	// ConditionWitnessReady indicates the witness is successfully monitoring.
+	// Changed from "Healthy" to "Ready" for consistency with other controllers.
+	// See constants.go for the condition naming convention.
+	ConditionWitnessReady = ConditionReady
 
-	// WitnessConditionDegraded indicates monitoring issues.
-	WitnessConditionDegraded = "Degraded"
+	// ConditionWitnessDegraded indicates monitoring issues.
+	// "Degraded" is a standard Kubernetes condition type.
+	ConditionWitnessDegraded = ConditionDegraded
 
 	// Default intervals if not specified in spec.
 	// Uses RequeueDefault for health check frequency.
@@ -90,7 +93,7 @@ func (r *WitnessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	if err := r.List(ctx, polecatList, listOpts...); err != nil {
 		log.Error(err, "Failed to list Polecats")
-		r.setCondition(witness, WitnessConditionDegraded, metav1.ConditionTrue,
+		r.setCondition(witness, ConditionWitnessDegraded, metav1.ConditionTrue,
 			"ListFailed", "Failed to list Polecats")
 		return ctrl.Result{RequeueAfter: healthCheckInterval}, r.Status().Update(ctx, witness)
 	}
@@ -105,7 +108,7 @@ func (r *WitnessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// Set healthy condition
 	if summary.Stuck > 0 || summary.Failed > 0 {
-		r.setCondition(witness, WitnessConditionHealthy, metav1.ConditionFalse,
+		r.setCondition(witness, ConditionWitnessReady, metav1.ConditionFalse,
 			"IssuesDetected", "Stuck or failed polecats detected")
 
 		// Emit event for stuck polecats
@@ -114,7 +117,7 @@ func (r *WitnessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				"Detected polecats with no progress")
 		}
 	} else {
-		r.setCondition(witness, WitnessConditionHealthy, metav1.ConditionTrue,
+		r.setCondition(witness, ConditionWitnessReady, metav1.ConditionTrue,
 			"AllHealthy", "All polecats are healthy")
 	}
 

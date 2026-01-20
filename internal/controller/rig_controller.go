@@ -39,9 +39,15 @@ const (
 	// Uses RequeueDefault for normal sync operations.
 	RigSyncInterval = RequeueDefault
 
-	// Condition types
-	ConditionRigExists = "RigExists"
-	ConditionRigReady  = "Ready"
+	// Condition types for Rig.
+	// See constants.go for the condition naming convention (unprefixed values).
+
+	// ConditionRigExists indicates the rig's local path exists on the filesystem.
+	// This is a prerequisite for the rig to be Ready.
+	ConditionRigExists = "Exists"
+
+	// ConditionRigReady uses the standard Ready condition.
+	ConditionRigReady = ConditionReady
 )
 
 // RigReconciler reconciles a Rig object

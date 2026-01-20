@@ -40,8 +40,9 @@ const (
 	ConvoySyncInterval = RequeueDefault
 
 	// Condition types for Convoy
-	ConditionConvoyReady    = "Ready"
-	ConditionConvoyComplete = "Complete"
+	ConditionConvoyReady            = "Ready"
+	ConditionConvoyComplete         = "Complete"
+	ConditionConvoyNotificationSent = "NotificationSent"
 )
 
 // ConvoyReconciler reconciles a Convoy object
@@ -180,6 +181,7 @@ func (r *ConvoyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 // sendCompletionNotification sends a mail notification on convoy completion.
+// It sets the NotificationSent condition to reflect the delivery status.
 func (r *ConvoyReconciler) sendCompletionNotification(ctx context.Context, convoy *gastownv1alpha1.Convoy) {
 	log := logf.FromContext(ctx)
 
@@ -195,8 +197,12 @@ func (r *ConvoyReconciler) sendCompletionNotification(ctx context.Context, convo
 	if err := r.GTClient.MailSend(gtCtx, convoy.Spec.NotifyOnComplete, subject, message); err != nil {
 		log.Error(err, "Failed to send completion notification",
 			"address", convoy.Spec.NotifyOnComplete)
+		r.setCondition(convoy, ConditionConvoyNotificationSent, metav1.ConditionFalse, "SendFailed",
+			fmt.Sprintf("Failed to send notification to %s: %v", convoy.Spec.NotifyOnComplete, err))
 	} else {
 		log.Info("Sent completion notification", "address", convoy.Spec.NotifyOnComplete)
+		r.setCondition(convoy, ConditionConvoyNotificationSent, metav1.ConditionTrue, "Sent",
+			fmt.Sprintf("Notification sent to %s", convoy.Spec.NotifyOnComplete))
 	}
 }
 

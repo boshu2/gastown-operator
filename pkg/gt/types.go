@@ -15,8 +15,46 @@ limitations under the License.
 */
 
 // Package gt provides a wrapper around the Gas Town CLI tool.
-// The operator shells out to `gt` for all operations, keeping gt as the
-// source of truth and this operator as a K8s facade.
+//
+// # Design Decision: Shell Out vs Direct Implementation
+//
+// This package deliberately shells out to the `gt` CLI rather than implementing
+// Gas Town operations directly in Go. This architecture was chosen for several
+// reasons:
+//
+//  1. Single Source of Truth: The gt CLI is the authoritative implementation
+//     for all Gas Town operations (rig management, polecat lifecycle, convoy
+//     tracking). By shelling out, we ensure the operator behaves identically
+//     to human users running gt commands.
+//
+//  2. Reduced Duplication: Local execution mode requires gt CLI features
+//     (tmux sessions, worktrees, beads integration) that would be complex
+//     to reimplement. Shelling out reuses this proven code.
+//
+//  3. Easier Updates: When gt CLI adds features or fixes bugs, the operator
+//     automatically benefits without code changes.
+//
+//  4. Clear Boundaries: The operator is a "K8s facade" - it translates
+//     Kubernetes CRD operations into gt CLI commands. This separation
+//     makes both systems easier to test and maintain.
+//
+// # Performance Considerations
+//
+// Each CLI invocation has overhead (~30ms). For high-frequency operations,
+// consider batching or using the circuit breaker ([CircuitBreaker]) to fail
+// fast when gt CLI is unavailable. The [DefaultTimeout] prevents hung
+// processes from blocking reconciliation.
+//
+// # Types in This Package
+//
+// Types defined here mirror the JSON output of gt CLI commands. They are
+// used for unmarshaling responses, not for direct manipulation:
+//
+//   - [RigInfo], [RigStatus]: Rig list and status commands
+//   - [PolecatInfo], [PolecatStatus]: Polecat list and status commands
+//   - [ConvoyInfo], [ConvoyStatus]: Convoy list and status commands
+//   - [HookInfo]: Hook status commands
+//   - [BeadStatus]: Beads show commands
 package gt
 
 import "time"

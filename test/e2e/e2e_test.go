@@ -268,15 +268,135 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+		It("should create a Pod for a Polecat in kubernetes execution mode", func() {
+			polecatName := "test-k8s-polecat"
+			testNamespace := namespace // Use the operator's namespace for testing
+
+			By("creating prerequisite secrets for the Polecat")
+			// Create git credentials secret (dummy for testing)
+			gitSecretCmd := exec.Command("kubectl", "create", "secret", "generic",
+				"test-git-creds", "-n", testNamespace,
+				"--from-literal=ssh-privatekey=dummy-key-for-testing")
+			_, err := utils.Run(gitSecretCmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create git credentials secret")
+
+			// Create Claude API key secret
+			claudeSecretCmd := exec.Command("kubectl", "create", "secret", "generic",
+				"test-claude-creds", "-n", testNamespace,
+				"--from-literal=api-key=dummy-key-for-testing")
+			_, err = utils.Run(claudeSecretCmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create Claude credentials secret")
+
+			By("creating a Polecat with kubernetes execution mode")
+			polecatYAML := fmt.Sprintf(`
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  rig: test-rig
+  desiredState: Working
+  executionMode: kubernetes
+  beadID: test-1234
+  kubernetes:
+    gitRepository: git@github.com:test/repo.git
+    gitBranch: main
+    gitSecretRef:
+      name: test-git-creds
+    apiKeySecretRef:
+      name: test-claude-creds
+      key: api-key
+`, polecatName, testNamespace)
+
+			// Write YAML to temp file
+			polecatFile := filepath.Join("/tmp", "test-k8s-polecat.yaml")
+			err = os.WriteFile(polecatFile, []byte(polecatYAML), 0644)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := exec.Command("kubectl", "apply", "-f", polecatFile)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create Polecat")
+
+			By("verifying the controller creates a Pod for the Polecat")
+			verifyPodCreated := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pod",
+					fmt.Sprintf("polecat-%s", polecatName),
+					"-n", testNamespace,
+					"-o", "jsonpath={.metadata.name}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Pod should be created")
+				g.Expect(output).To(Equal(fmt.Sprintf("polecat-%s", polecatName)))
+			}
+			Eventually(verifyPodCreated, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying the Pod has correct labels")
+			verifyPodLabels := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pod",
+					fmt.Sprintf("polecat-%s", polecatName),
+					"-n", testNamespace,
+					"-o", "jsonpath={.metadata.labels}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("gastown.io/polecat"))
+				g.Expect(output).To(ContainSubstring("gastown.io/rig"))
+				g.Expect(output).To(ContainSubstring("gastown.io/bead"))
+			}
+			Eventually(verifyPodLabels, 30*time.Second).Should(Succeed())
+
+			By("verifying the Pod has init container and main container")
+			verifyPodContainers := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pod",
+					fmt.Sprintf("polecat-%s", polecatName),
+					"-n", testNamespace,
+					"-o", "jsonpath={.spec.initContainers[*].name},{.spec.containers[*].name}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("git-init"))
+				g.Expect(output).To(ContainSubstring("claude"))
+			}
+			Eventually(verifyPodContainers, 30*time.Second).Should(Succeed())
+
+			By("verifying the Polecat status reflects Pod creation")
+			verifyPolecatStatus := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "polecat",
+					polecatName, "-n", testNamespace,
+					"-o", "jsonpath={.status.podName}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal(fmt.Sprintf("polecat-%s", polecatName)))
+			}
+			Eventually(verifyPolecatStatus, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying the Polecat phase is Working")
+			verifyPolecatPhase := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "polecat",
+					polecatName, "-n", testNamespace,
+					"-o", "jsonpath={.status.phase}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("Working"))
+			}
+			Eventually(verifyPolecatPhase, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("cleaning up the test Polecat")
+			cmd = exec.Command("kubectl", "delete", "polecat", polecatName, "-n", testNamespace)
+			_, _ = utils.Run(cmd)
+
+			By("verifying the Pod is deleted with the Polecat (owner reference)")
+			verifyPodDeleted := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pod",
+					fmt.Sprintf("polecat-%s", polecatName),
+					"-n", testNamespace)
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred(), "Pod should be deleted")
+			}
+			Eventually(verifyPodDeleted, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("cleaning up test secrets")
+			_ = exec.Command("kubectl", "delete", "secret", "test-git-creds", "-n", testNamespace)
+			_ = exec.Command("kubectl", "delete", "secret", "test-claude-creds", "-n", testNamespace)
+		})
 	})
 })
 

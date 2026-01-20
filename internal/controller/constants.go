@@ -48,6 +48,48 @@ const (
 	GTClientTimeout = 60 * time.Second
 )
 
+// Standard Condition Types for Gas Town Controllers
+//
+// NAMING CONVENTION: Condition types use unprefixed names because the condition
+// is already scoped to its parent resource. This follows Kubernetes conventions:
+//
+//   - Pod has conditions like "Ready", "ContainersReady", "PodScheduled"
+//   - Deployment has "Available", "Progressing", "ReplicaFailure"
+//
+// We use the same pattern. A Polecat with condition type "Ready" is unambiguous
+// because you're looking at a Polecat's status.conditions.
+//
+// Standard condition types aligned with Kubernetes conventions:
+//   - Ready: The resource is fully operational and ready to serve its purpose
+//   - Progressing: An operation is in progress (e.g., merge, deployment)
+//   - Degraded: The resource is operational but in a degraded state
+//   - Available: A subset of Ready, indicates minimum viable operation
+//
+// Resource-specific condition types:
+//   - Complete: Work has finished (Convoy)
+//   - Working: Actively processing work (Polecat)
+//   - Exists: External resource exists in gt CLI (Rig)
+//   - Healthy: Monitoring is functioning (Witness)
+//   - NotificationSent: Completion notification delivered (Convoy)
+//
+// When adding new condition types:
+//  1. Prefer standard Kubernetes names when semantically appropriate
+//  2. Use unprefixed names (e.g., "Ready" not "PolecatReady")
+//  3. Document the meaning in the const definition
+const (
+	// ConditionReady indicates the resource is fully operational.
+	// This is the primary "health" condition for most resources.
+	ConditionReady = "Ready"
+
+	// ConditionDegraded indicates the resource is operational but impaired.
+	// Use when the resource can function but with reduced capability.
+	ConditionDegraded = "Degraded"
+
+	// ConditionProgressing indicates an operation is in progress.
+	// Set to True during transitions, False when stable.
+	ConditionProgressing = "Progressing"
+)
+
 // WithGTClientTimeout returns a context with the standard GT client timeout.
 // The returned cancel function MUST be called to release resources, typically via defer.
 // Example:
