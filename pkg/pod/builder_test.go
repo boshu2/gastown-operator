@@ -218,6 +218,7 @@ func TestBuilderBuild(t *testing.T) {
 	})
 }
 
+//nolint:gocyclo // Comprehensive security context test requires many assertions
 func TestBuildSecurityContext(t *testing.T) {
 	polecat := &gastownv1alpha1.Polecat{
 		ObjectMeta: metav1.ObjectMeta{
