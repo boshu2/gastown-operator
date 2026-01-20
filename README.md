@@ -180,13 +180,13 @@ The operator is a **view layer** - `gt` CLI remains authoritative. Kubernetes ha
 ```bash
 # Install from GHCR (OCI registry)
 helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \
-  --version 0.1.0 \
+  --version 0.1.1 \
   --namespace gastown-system \
   --create-namespace
 
 # With custom values (OpenShift + FIPS)
 helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \
-  --version 0.1.0 \
+  --version 0.1.1 \
   --namespace gastown-system \
   --create-namespace \
   -f helm/gastown-operator/values-fips.yaml

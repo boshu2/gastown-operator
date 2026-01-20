@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   name: gt
 spec:
-  version: v0.1.0
+  version: v0.1.1
   homepage: https://github.com/olympus-cloud/gastown-operator
   shortDescription: Manage Gas Town resources in Kubernetes
   description: |
@@ -27,27 +27,27 @@ spec:
       matchLabels:
         os: darwin
         arch: amd64
-    uri: https://github.com/olympus-cloud/gastown-operator/releases/download/v0.1.0/kubectl-gt-darwin-amd64.tar.gz
+    uri: https://github.com/olympus-cloud/gastown-operator/releases/download/v0.1.1/kubectl-gt-darwin-amd64.tar.gz
     sha256: "PLACEHOLDER_SHA256_DARWIN_AMD64"
     bin: kubectl-gt
   - selector:
       matchLabels:
         os: darwin
         arch: arm64
-    uri: https://github.com/olympus-cloud/gastown-operator/releases/download/v0.1.0/kubectl-gt-darwin-arm64.tar.gz
+    uri: https://github.com/olympus-cloud/gastown-operator/releases/download/v0.1.1/kubectl-gt-darwin-arm64.tar.gz
     sha256: "PLACEHOLDER_SHA256_DARWIN_ARM64"
     bin: kubectl-gt
   - selector:
       matchLabels:
         os: linux
         arch: amd64
-    uri: https://github.com/olympus-cloud/gastown-operator/releases/download/v0.1.0/kubectl-gt-linux-amd64.tar.gz
+    uri: https://github.com/olympus-cloud/gastown-operator/releases/download/v0.1.1/kubectl-gt-linux-amd64.tar.gz
     sha256: "PLACEHOLDER_SHA256_LINUX_AMD64"
     bin: kubectl-gt
   - selector:
       matchLabels:
         os: linux
         arch: arm64
-    uri: https://github.com/olympus-cloud/gastown-operator/releases/download/v0.1.0/kubectl-gt-linux-arm64.tar.gz
+    uri: https://github.com/olympus-cloud/gastown-operator/releases/download/v0.1.1/kubectl-gt-linux-arm64.tar.gz
     sha256: "PLACEHOLDER_SHA256_LINUX_ARM64"
     bin: kubectl-gt
