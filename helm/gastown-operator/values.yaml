@@ -9,7 +9,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/boshu2/gastown-operator
   pullPolicy: IfNotPresent
-  tag: ""  # Defaults to Chart.appVersion if empty
+  tag: ""  # Defaults to Chart.appVersion
 
 imagePullSecrets: []
 nameOverride: ""

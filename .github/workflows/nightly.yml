@@ -1,0 +1,255 @@
+# Nightly Builds - Comprehensive validation and fresh dependency testing
+#
+# Runs daily to catch:
+# - Dependency version drift
+# - Flaky tests
+# - Integration issues with latest Kubernetes
+# - Security vulnerabilities in new dependency versions
+
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # 4 AM UTC daily
+  workflow_dispatch:
+    inputs:
+      run-e2e:
+        description: 'Run E2E tests'
+        type: boolean
+        default: true
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  # ==========================================================================
+  # Fresh Build (no cache)
+  # ==========================================================================
+
+  fresh-build:
+    name: Fresh Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false  # No cache for nightly
+
+      - name: Update dependencies
+        run: |
+          go get -u ./...
+          go mod tidy
+
+      - name: Check for dependency updates
+        id: deps
+        run: |
+          if ! git diff --exit-code go.mod go.sum; then
+            echo "has-updates=true" >> $GITHUB_OUTPUT
+            echo "::warning::Dependencies have available updates"
+          else
+            echo "has-updates=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build
+        run: make build
+
+      - name: Run tests
+        run: make test
+
+      - name: Run lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+          args: --timeout=5m
+
+  # ==========================================================================
+  # Multi-Kubernetes Version Testing
+  # ==========================================================================
+
+  k8s-matrix:
+    name: K8s ${{ matrix.k8s-version }}
+    runs-on: ubuntu-latest
+    if: github.event.inputs.run-e2e != 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s-version:
+          - '1.29'
+          - '1.30'
+          - '1.31'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Create Kind cluster
+        run: |
+          kind create cluster --name test-${{ matrix.k8s-version }} \
+            --image kindest/node:v${{ matrix.k8s-version }}.0
+
+      - name: Run E2E tests
+        run: |
+          export KIND_CLUSTER=test-${{ matrix.k8s-version }}
+          make test-e2e
+        continue-on-error: true
+
+      - name: Cleanup
+        if: always()
+        run: kind delete cluster --name test-${{ matrix.k8s-version }}
+
+  # ==========================================================================
+  # Security Audit
+  # ==========================================================================
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck -json ./... > vulncheck.json || true
+          if jq -e '.[] | select(.osv != null)' vulncheck.json > /dev/null 2>&1; then
+            echo "::warning::Vulnerabilities found - see report"
+            jq '.[] | select(.osv != null) | .osv.id + ": " + .osv.summary' vulncheck.json
+          fi
+
+      - name: gosec
+        uses: securego/gosec@master
+        with:
+          args: '-fmt sarif -out gosec.sarif ./...'
+        continue-on-error: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gosec.sarif
+        continue-on-error: true
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+        continue-on-error: true
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+        continue-on-error: true
+
+  # ==========================================================================
+  # Image Vulnerability Scan
+  # ==========================================================================
+
+  image-scan:
+    name: Image Scan
+    runs-on: ubuntu-latest
+    needs: [fresh-build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build gt CLI
+        run: make build-gt
+
+      - name: Build image
+        run: |
+          docker build -t gastown-operator:nightly .
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: gastown-operator:nightly
+          format: sarif
+          output: trivy-image.sarif
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+        continue-on-error: true
+
+  # ==========================================================================
+  # Nightly Report
+  # ==========================================================================
+
+  report:
+    name: Nightly Report
+    runs-on: ubuntu-latest
+    needs: [fresh-build, k8s-matrix, security-audit, image-scan]
+    if: always()
+    steps:
+      - name: Generate report
+        run: |
+          echo "## Nightly Build Report - $(date -u +%Y-%m-%d)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Job Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Fresh Build | ${{ needs.fresh-build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| K8s Matrix | ${{ needs.k8s-matrix.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Audit | ${{ needs.security-audit.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image Scan | ${{ needs.image-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Create issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Nightly build failed - ${new Date().toISOString().split('T')[0]}`;
+            const body = `## Nightly Build Failure
+
+            The nightly build has failed. Please investigate.
+
+            **Run:** ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}
+
+            **Jobs:**
+            - Fresh Build: ${{ needs.fresh-build.result }}
+            - K8s Matrix: ${{ needs.k8s-matrix.result }}
+            - Security Audit: ${{ needs.security-audit.result }}
+            - Image Scan: ${{ needs.image-scan.result }}
+            `;
+
+            // Check if issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'nightly-failure'
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['nightly-failure', 'bug']
+              });
+            }

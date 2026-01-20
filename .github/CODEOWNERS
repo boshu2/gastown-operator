@@ -1,0 +1,24 @@
+# CODEOWNERS - Default reviewers for pull requests
+#
+# These users/teams will be automatically requested for review
+# when changes are made to files they own.
+#
+# Order matters - later rules override earlier ones.
+
+# Default: Require review from maintainers
+* @boshu2
+
+# API changes need extra scrutiny (breaking changes)
+/api/ @boshu2
+
+# Helm chart changes
+/helm/ @boshu2
+
+# CI/CD changes
+/.github/ @boshu2
+/.gitlab-ci.yml @boshu2
+/deploy/tekton/ @boshu2
+
+# Security-sensitive files
+/scripts/prescan.sh @boshu2
+/.gitleaks.toml @boshu2

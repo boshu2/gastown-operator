@@ -2,13 +2,17 @@
 # Kubernetes operator for Gas Town multi-agent orchestration
 #
 # This is the PRIMARY CI/CD - GitLab/Tekton does all compute.
-# GitHub is a read-only storefront that receives code + releases after Tekton passes.
+# GitHub is a read-only storefront that receives code + releases ONLY after tests pass.
 #
 # Flow:
-#   1. MR merged to main → validate stage runs
-#   2. semantic-release determines version (if any)
-#   3. Tekton pipeline triggered with version tag
-#   4. After Tekton passes: sync code, tag, and release to GitHub
+#   1. validate - lint, manifests, generated code checks
+#   2. version  - semantic-release determines version (if any)
+#   3. build    - Tekton builds image → INTERNAL registry only
+#   4. test     - E2E tests (upgrade + fresh install in test namespaces)
+#   5. push     - ONLY after tests pass: push image + helm to GHCR
+#   6. publish  - sync code, tag, and release to GitHub
+#
+# CRITICAL: Nothing is published to GHCR/GitHub until E2E tests pass!
 #
 # Required CI/CD Variables (set in GitLab project settings):
 #   - KUBE_CONFIG: Base64-encoded kubeconfig for olympus-ci namespace
@@ -43,6 +47,8 @@ stages:
   - validate
   - version
   - build
+  - test
+  - push
   - publish
 
 # =============================================================================
@@ -233,13 +239,13 @@ monitor:tekton:
         if [ "${STATUS}" = "True" ]; then
           echo ""
           echo "========================================"
-          echo "  Pipeline SUCCEEDED"
+          echo "  Tekton Pipeline SUCCEEDED"
           echo "========================================"
           echo ""
-          echo "Artifacts ready:"
-          echo "  - Image: ${REGISTRY_URL}/gastown-operator:${VERSION}"
-          echo "  - Image: ghcr.io/boshu2/gastown-operator:${VERSION}"
-          echo "  - Helm:  oci://ghcr.io/boshu2/gastown-operator:${VERSION}"
+          echo "Image built and pushed to internal registry:"
+          echo "  - ${REGISTRY_URL}/gastown-operator:${VERSION}"
+          echo ""
+          echo "Next steps: E2E tests → GHCR push → GitHub release"
           exit 0
         elif [ "${STATUS}" = "False" ]; then
           echo ""
@@ -262,7 +268,99 @@ monitor:tekton:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 # =============================================================================
-# Stage: Publish (GitHub Sync)
+# Stage: Push (GHCR - only after E2E tests pass)
+# =============================================================================
+
+# Push image from internal registry to GHCR
+push:ghcr:
+  stage: push
+  image: ${DPR_REGISTRY}/ci-images/skopeo:latest
+  needs:
+    - job: semantic-release
+      artifacts: true
+    - job: test:e2e
+  before_script:
+    - mkdir -p ~/.docker
+    # Setup GHCR credentials from CI variable
+    - |
+      echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"$(echo -n 'boshu2:${GITHUB_TOKEN}' | base64)\"}}}" > ~/.docker/config.json
+  script:
+    - |
+      if [ "${RELEASE_PUBLISHED}" != "true" ]; then
+        echo "No release to push"
+        exit 0
+      fi
+
+      echo "========================================"
+      echo "  Pushing Image to GHCR"
+      echo "========================================"
+      echo "  Source: ${REGISTRY_URL}/gastown-operator:${VERSION}"
+      echo "  Target: ghcr.io/boshu2/gastown-operator:${VERSION}"
+      echo "========================================"
+
+      # Copy image from internal registry to GHCR
+      skopeo copy \
+        --src-tls-verify=false \
+        docker://${REGISTRY_URL}/gastown-operator:${VERSION} \
+        docker://ghcr.io/boshu2/gastown-operator:${VERSION}
+
+      # Also tag as latest
+      skopeo copy \
+        --src-tls-verify=false \
+        docker://${REGISTRY_URL}/gastown-operator:${VERSION} \
+        docker://ghcr.io/boshu2/gastown-operator:latest
+
+      echo ""
+      echo "Image pushed successfully:"
+      echo "  - ghcr.io/boshu2/gastown-operator:${VERSION}"
+      echo "  - ghcr.io/boshu2/gastown-operator:latest"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Push Helm chart to GHCR OCI registry
+push:helm:
+  stage: push
+  image: ${DPR_REGISTRY}/alpine/helm:3.14.0
+  needs:
+    - job: semantic-release
+      artifacts: true
+    - job: push:ghcr
+  script:
+    - |
+      if [ "${RELEASE_PUBLISHED}" != "true" ]; then
+        echo "No release to push"
+        exit 0
+      fi
+
+      echo "========================================"
+      echo "  Pushing Helm Chart to GHCR"
+      echo "========================================"
+      echo "  Version: ${VERSION}"
+      echo "  Target: oci://ghcr.io/boshu2/charts"
+      echo "========================================"
+
+      # Login to GHCR
+      echo "${GITHUB_TOKEN}" | helm registry login ghcr.io -u boshu2 --password-stdin
+
+      # Update Chart.yaml with version
+      sed -i "s/^version:.*/version: ${VERSION}/" helm/gastown-operator/Chart.yaml
+      sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" helm/gastown-operator/Chart.yaml
+
+      # Package and push
+      helm package helm/gastown-operator --destination /tmp/
+      helm push /tmp/gastown-operator-${VERSION}.tgz oci://ghcr.io/boshu2/charts
+
+      echo ""
+      echo "Helm chart pushed successfully:"
+      echo "  oci://ghcr.io/boshu2/charts/gastown-operator:${VERSION}"
+      echo ""
+      echo "Install with:"
+      echo "  helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator --version ${VERSION}"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# =============================================================================
+# Stage: Publish (GitHub Sync - only after GHCR push)
 # =============================================================================
 
 sync:github:
@@ -271,7 +369,7 @@ sync:github:
   needs:
     - job: semantic-release
       artifacts: true
-    - job: monitor:tekton
+    - job: push:helm
   before_script:
     - apk add --no-cache curl jq openssh-client
     - mkdir -p ~/.ssh
@@ -318,7 +416,7 @@ sync:github:
 
       **Helm Chart:**
       \`\`\`bash
-      helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \\
+      helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \\
         --version ${VERSION} \\
         -n gastown-system --create-namespace
       \`\`\`
@@ -328,7 +426,7 @@ sync:github:
       | Artifact | Location |
       |----------|----------|
       | Image | \`ghcr.io/boshu2/gastown-operator:${VERSION}\` |
-      | Helm | \`oci://ghcr.io/boshu2/gastown-operator:${VERSION}\` |
+      | Helm | \`oci://ghcr.io/boshu2/charts/gastown-operator:${VERSION}\` |
 
       ---
       *This release was automatically created by GitLab CI after Tekton pipeline passed.*
@@ -356,12 +454,12 @@ sync:github:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 # =============================================================================
-# Automated Test Jobs (run after Tekton passes)
+# Stage: Test (E2E validation before publishing)
 # =============================================================================
 
-# Deploy to test namespace for automated e2e validation
-deploy:test:
-  stage: .post
+# Test upgrade path: helm upgrade on existing deployment
+deploy:test-upgrade:
+  stage: test
   image: ${DPR_REGISTRY}/alpine/helm:3.14.0
   needs:
     - job: semantic-release
@@ -385,47 +483,116 @@ deploy:test:
       fi
 
       echo "========================================"
-      echo "  Deploying to Test Namespace"
+      echo "  Testing: Helm UPGRADE Path"
       echo "========================================"
       echo "  Version: ${VERSION}"
-      echo "  Namespace: gastown-test"
+      echo "  Namespace: gastown-test-upgrade"
       echo "========================================"
 
-      # Create test namespace with appropriate labels
-      kubectl create namespace gastown-test --dry-run=client -o yaml | kubectl apply -f -
-      kubectl label namespace gastown-test --overwrite \
+      # Create test namespace (idempotent)
+      kubectl create namespace gastown-test-upgrade --dry-run=client -o yaml | kubectl apply -f -
+      kubectl label namespace gastown-test-upgrade --overwrite \
         app.kubernetes.io/managed-by=gitlab-ci \
-        environment=test
+        environment=test-upgrade
 
-      # Install/upgrade using internal values in test namespace
-      helm upgrade --install gastown-operator-test ./helm/gastown-operator \
-        --namespace gastown-test \
+      # Upgrade (or install if first time) - tests the upgrade path
+      helm upgrade --install gastown-operator ./helm/gastown-operator \
+        --namespace gastown-test-upgrade \
         -f helm/gastown-operator/values.yaml \
         -f ${CI_PROJECT_DIR}/values-internal.yaml \
         --set image.tag="${VERSION}" \
-        --set fullnameOverride="gastown-operator-test" \
         --wait --timeout 5m
 
       echo ""
       echo "Waiting for operator to be ready..."
-      kubectl wait --for=condition=available deployment/gastown-operator-test \
-        -n gastown-test --timeout=120s
+      kubectl wait --for=condition=available deployment/gastown-operator \
+        -n gastown-test-upgrade --timeout=120s
 
       echo ""
-      kubectl get pods -n gastown-test
+      kubectl get pods -n gastown-test-upgrade
+      echo ""
+      echo "UPGRADE test deployment ready"
   environment:
-    name: test
+    name: test-upgrade
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-# Run e2e smoke tests against test deployment
+# Test fresh install: delete namespace and reinstall from scratch
+deploy:test-fresh:
+  stage: test
+  image: ${DPR_REGISTRY}/alpine/helm:3.14.0
+  needs:
+    - job: semantic-release
+      artifacts: true
+    - job: monitor:tekton
+  before_script:
+    - apk add --no-cache curl
+    - mkdir -p ~/.kube
+    - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
+    - chmod 600 ~/.kube/config
+    - |
+      if [ ! -f "${CI_PROJECT_DIR}/values-internal.yaml" ]; then
+        echo "ERROR: values-internal.yaml secure file not found"
+        exit 1
+      fi
+  script:
+    - |
+      if [ "${RELEASE_PUBLISHED}" != "true" ]; then
+        echo "No release to test"
+        exit 0
+      fi
+
+      echo "========================================"
+      echo "  Testing: FRESH Install Path"
+      echo "========================================"
+      echo "  Version: ${VERSION}"
+      echo "  Namespace: gastown-test-fresh"
+      echo "========================================"
+
+      # Delete namespace if exists (ensure clean slate)
+      echo "Cleaning up any existing deployment..."
+      kubectl delete namespace gastown-test-fresh --ignore-not-found --wait=true --timeout=60s || true
+
+      # Wait a moment for cleanup
+      sleep 5
+
+      # Create fresh namespace
+      kubectl create namespace gastown-test-fresh
+      kubectl label namespace gastown-test-fresh \
+        app.kubernetes.io/managed-by=gitlab-ci \
+        environment=test-fresh
+
+      # Fresh install
+      helm install gastown-operator ./helm/gastown-operator \
+        --namespace gastown-test-fresh \
+        -f helm/gastown-operator/values.yaml \
+        -f ${CI_PROJECT_DIR}/values-internal.yaml \
+        --set image.tag="${VERSION}" \
+        --wait --timeout 5m
+
+      echo ""
+      echo "Waiting for operator to be ready..."
+      kubectl wait --for=condition=available deployment/gastown-operator \
+        -n gastown-test-fresh --timeout=120s
+
+      echo ""
+      kubectl get pods -n gastown-test-fresh
+      echo ""
+      echo "FRESH install test deployment ready"
+  environment:
+    name: test-fresh
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Run e2e smoke tests against BOTH test deployments
 test:e2e:
-  stage: .post
+  stage: test
   image: ${DPR_REGISTRY}/ci-images/k8s:1.31.4
   needs:
     - job: semantic-release
       artifacts: true
-    - job: deploy:test
+    - job: deploy:test-upgrade
+    - job: deploy:test-fresh
   before_script:
     - mkdir -p ~/.kube
     - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
@@ -437,81 +604,107 @@ test:e2e:
         exit 0
       fi
 
-      echo "========================================"
-      echo "  E2E Smoke Tests"
-      echo "========================================"
-      echo "  Version: ${VERSION}"
-      echo "  Namespace: gastown-test"
-      echo "========================================"
+      # Run tests against both namespaces
+      TEST_NAMESPACES="gastown-test-upgrade gastown-test-fresh"
+      OVERALL_PASS=true
 
-      # Test 1: Verify operator is running
-      echo ""
-      echo "[1/4] Verifying operator pod is running..."
-      kubectl get pods -n gastown-test -l app.kubernetes.io/name=gastown-operator
-      POD_STATUS=$(kubectl get pods -n gastown-test -l app.kubernetes.io/name=gastown-operator -o jsonpath='{.items[0].status.phase}')
-      if [ "$POD_STATUS" != "Running" ]; then
-        echo "FAIL: Operator pod not running (status: $POD_STATUS)"
-        kubectl logs -n gastown-test -l app.kubernetes.io/name=gastown-operator --tail=50
-        exit 1
-      fi
-      echo "PASS: Operator is running"
+      for NS in $TEST_NAMESPACES; do
+        echo ""
+        echo "========================================"
+        echo "  E2E Smoke Tests: ${NS}"
+        echo "========================================"
+        echo "  Version: ${VERSION}"
+        echo "========================================"
 
-      # Test 2: Verify CRDs are installed
-      echo ""
-      echo "[2/4] Verifying CRDs are installed..."
-      EXPECTED_CRDS="polecats.gastown.gastown.io rigs.gastown.gastown.io convoys.gastown.gastown.io"
-      for crd in $EXPECTED_CRDS; do
-        if kubectl get crd "$crd" > /dev/null 2>&1; then
-          echo "  ✓ $crd"
-        else
-          echo "  ✗ $crd MISSING"
-          exit 1
+        # Test 1: Verify operator is running
+        echo ""
+        echo "[1/4] Verifying operator pod is running..."
+        kubectl get pods -n ${NS} -l app.kubernetes.io/name=gastown-operator
+        POD_STATUS=$(kubectl get pods -n ${NS} -l app.kubernetes.io/name=gastown-operator -o jsonpath='{.items[0].status.phase}')
+        if [ "$POD_STATUS" != "Running" ]; then
+          echo "FAIL: Operator pod not running (status: $POD_STATUS)"
+          kubectl logs -n ${NS} -l app.kubernetes.io/name=gastown-operator --tail=50
+          OVERALL_PASS=false
+          continue
         fi
-      done
-      echo "PASS: All CRDs installed"
+        echo "PASS: Operator is running"
 
-      # Test 3: Create a test Rig and verify reconciliation
-      echo ""
-      echo "[3/4] Testing Rig CR reconciliation..."
-      kubectl apply -f - <<EOF
+        # Test 2: Verify CRDs are installed
+        echo ""
+        echo "[2/4] Verifying CRDs are installed..."
+        EXPECTED_CRDS="polecats.gastown.gastown.io rigs.gastown.gastown.io convoys.gastown.gastown.io"
+        CRD_PASS=true
+        for crd in $EXPECTED_CRDS; do
+          if kubectl get crd "$crd" > /dev/null 2>&1; then
+            echo "  ✓ $crd"
+          else
+            echo "  ✗ $crd MISSING"
+            CRD_PASS=false
+          fi
+        done
+        if [ "$CRD_PASS" = "false" ]; then
+          echo "FAIL: CRDs missing"
+          OVERALL_PASS=false
+          continue
+        fi
+        echo "PASS: All CRDs installed"
+
+        # Test 3: Create a test Rig and verify reconciliation
+        echo ""
+        echo "[3/4] Testing Rig CR reconciliation..."
+        RIG_NAME="e2e-test-rig-$(echo $NS | md5sum | cut -c1-6)"
+        kubectl apply -f - <<EOF
       apiVersion: gastown.gastown.io/v1alpha1
       kind: Rig
       metadata:
-        name: e2e-test-rig
-        namespace: gastown-test
+        name: ${RIG_NAME}
+        namespace: ${NS}
       spec:
         gitURL: "https://github.com/test/repo.git"
         beadsPrefix: "e2e"
         localPath: "/tmp/e2e-test"
       EOF
 
-      echo "  Waiting for Rig to be processed..."
-      sleep 5
+        echo "  Waiting for Rig to be processed..."
+        sleep 5
 
-      RIG_STATUS=$(kubectl get rig e2e-test-rig -n gastown-test -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
-      echo "  Rig status: $RIG_STATUS"
+        RIG_STATUS=$(kubectl get rig ${RIG_NAME} -n ${NS} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
+        echo "  Rig status: $RIG_STATUS"
 
-      # Cleanup test Rig
-      kubectl delete rig e2e-test-rig -n gastown-test --ignore-not-found
-      echo "PASS: Rig reconciliation working"
+        # Cleanup test Rig
+        kubectl delete rig ${RIG_NAME} -n ${NS} --ignore-not-found
+        echo "PASS: Rig reconciliation working"
 
-      # Test 4: Check operator logs for errors
+        # Test 4: Check operator logs for errors
+        echo ""
+        echo "[4/4] Checking operator logs for errors..."
+        ERROR_COUNT=$(kubectl logs -n ${NS} -l app.kubernetes.io/name=gastown-operator --tail=100 2>/dev/null | grep -c "ERROR\|FATAL\|panic" || true)
+        if [ "$ERROR_COUNT" -gt 0 ]; then
+          echo "WARNING: Found $ERROR_COUNT error(s) in operator logs"
+          kubectl logs -n ${NS} -l app.kubernetes.io/name=gastown-operator --tail=100 | grep -E "ERROR|FATAL|panic" || true
+        else
+          echo "PASS: No errors in operator logs"
+        fi
+
+        echo ""
+        echo "  ✓ ${NS} tests PASSED"
+      done
+
       echo ""
-      echo "[4/4] Checking operator logs for errors..."
-      ERROR_COUNT=$(kubectl logs -n gastown-test -l app.kubernetes.io/name=gastown-operator --tail=100 2>/dev/null | grep -c "ERROR\|FATAL\|panic" || true)
-      if [ "$ERROR_COUNT" -gt 0 ]; then
-        echo "WARNING: Found $ERROR_COUNT error(s) in operator logs"
-        kubectl logs -n gastown-test -l app.kubernetes.io/name=gastown-operator --tail=100 | grep -E "ERROR|FATAL|panic" || true
+      echo "========================================"
+      if [ "$OVERALL_PASS" = "true" ]; then
+        echo "  ALL E2E Smoke Tests PASSED"
+        echo "========================================"
+        echo ""
+        echo "Version ${VERSION} validated in both upgrade and fresh install scenarios."
+        echo "Ready to publish to GHCR."
       else
-        echo "PASS: No errors in operator logs"
+        echo "  E2E Smoke Tests FAILED"
+        echo "========================================"
+        echo ""
+        echo "Version ${VERSION} failed validation. NOT publishing to GHCR."
+        exit 1
       fi
-
-      echo ""
-      echo "========================================"
-      echo "  E2E Smoke Tests PASSED"
-      echo "========================================"
-      echo ""
-      echo "Version ${VERSION} validated successfully"
   environment:
     name: test
   rules:
@@ -535,7 +728,7 @@ deploy:internal:
   needs:
     - job: semantic-release
       artifacts: true
-    - job: monitor:tekton
+    - job: test:e2e  # Only deploy after e2e tests pass
   before_script:
     - apk add --no-cache curl
     - mkdir -p ~/.kube
@@ -588,7 +781,7 @@ deploy:dev:
   needs:
     - job: semantic-release
       artifacts: true
-    - job: monitor:tekton
+    - job: push:ghcr  # Only available after GHCR push succeeds
   before_script:
     - mkdir -p ~/.kube
     - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config

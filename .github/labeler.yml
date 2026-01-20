@@ -1,0 +1,70 @@
+# Auto-labeling configuration for PRs
+# Used by .github/workflows/pr-checks.yml
+
+# API/CRD changes
+api:
+  - changed-files:
+      - any-glob-to-any-file: 'api/**'
+
+# Controller changes
+controller:
+  - changed-files:
+      - any-glob-to-any-file: 'internal/controller/**'
+
+# Helm chart changes
+helm:
+  - changed-files:
+      - any-glob-to-any-file: 'helm/**'
+
+# CI/CD changes
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+          - '.gitlab-ci.yml'
+          - 'deploy/tekton/**'
+          - 'Makefile'
+
+# Documentation changes
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.md'
+          - 'docs/**'
+
+# Test changes
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*_test.go'
+          - 'test/**'
+
+# Security-related files
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/security*.go'
+          - '.gitleaks.toml'
+          - 'scripts/prescan.sh'
+
+# Configuration changes
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'config/**'
+          - '*.yaml'
+          - '*.yml'
+
+# Dependencies
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'go.mod'
+          - 'go.sum'
+
+# Docker/Container changes
+docker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'Dockerfile*'
+          - '.dockerignore'

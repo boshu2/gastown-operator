@@ -181,14 +181,14 @@ The operator is a **view layer** - `gt` CLI remains authoritative. Kubernetes ha
 
 ```bash
 # Community Edition (vanilla Kubernetes)
-helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
   --version 0.3.2 \
   --namespace gastown-system \
   --create-namespace
 
 # Enterprise Edition (OpenShift + FIPS)
 # Download values-fips.yaml first, or use --set flags:
-helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
   --version 0.3.2 \
   --namespace gastown-system \
   --create-namespace \

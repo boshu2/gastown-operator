@@ -1,0 +1,28 @@
+# Dependency Review - Checks for vulnerable dependencies in PRs
+#
+# Blocks PRs that introduce dependencies with known vulnerabilities.
+# Runs only on PRs (not pushes) since it compares base vs head.
+
+name: Dependency Review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    name: Review Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: always
+          deny-licenses: GPL-3.0, AGPL-3.0

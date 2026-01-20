@@ -1,0 +1,48 @@
+# Stale Issue/PR Management
+#
+# Automatically marks and closes stale issues/PRs.
+# Keeps the backlog clean and encourages timely contributions.
+
+name: Stale
+
+on:
+  schedule:
+    - cron: '30 1 * * *'  # Daily at 1:30 AM
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    name: Mark Stale
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+          # Issue settings
+          stale-issue-message: |
+            This issue has been automatically marked as stale because it has not had
+            recent activity. It will be closed in 14 days if no further activity occurs.
+
+            If this issue is still relevant, please comment to keep it open.
+          stale-issue-label: 'stale'
+          days-before-issue-stale: 60
+          days-before-issue-close: 14
+          exempt-issue-labels: 'pinned,security,bug,enhancement'
+
+          # PR settings
+          stale-pr-message: |
+            This PR has been automatically marked as stale because it has not had
+            recent activity. It will be closed in 7 days if no further activity occurs.
+
+            Please rebase and update if you'd like to continue with this PR.
+          stale-pr-label: 'stale'
+          days-before-pr-stale: 30
+          days-before-pr-close: 7
+          exempt-pr-labels: 'pinned,security,wip'
+
+          # Don't close issues/PRs with these labels
+          exempt-all-milestones: true

@@ -116,7 +116,7 @@ Repository: github.com/boshu2/gastown-operator
 
 Artifacts:
 - Container image: ghcr.io/boshu2/gastown-operator:v$version
-- Helm chart: oci://ghcr.io/boshu2/gastown-operator:$version
+- Helm chart: oci://ghcr.io/boshu2/charts/gastown-operator:$version
 - SBOM: ghcr.io/boshu2/gastown-operator:v$version.sbom"
 
     local tags='["release", "gastown-operator", "v'"$version"'", "kubernetes", "operator"]'

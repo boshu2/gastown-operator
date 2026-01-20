@@ -9,9 +9,11 @@
 #   5. Scan Image - trivy-image ClusterTask
 #   6. Generate SBOM - syft
 #   7. Sign Image - cosign
-#   8. Mirror to GHCR - skopeo-copy
-#   9. Push Helm Chart - helm-push
-#   10. Athena knowledge persistence (finally block)
+#   8. Athena knowledge persistence (finally block)
+#
+# NOTE: GHCR push (image + helm) moved to GitLab CI to run AFTER e2e tests.
+# This ensures broken releases are never published to the public registry.
+# See .gitlab-ci.yml for the complete flow.
 #
 # Prerequisites:
 #   - olympus-ci namespace with ClusterTasks installed
@@ -358,48 +360,16 @@ spec:
           value: "$(workspaces.source.path)/sbom.spdx-json.json"
 
     # =========================================================================
-    # Stage 8: Mirror to GHCR (Public Registry)
+    # NOTE: GHCR push moved to GitLab CI (after e2e tests pass)
     # =========================================================================
-
-    - name: mirror-to-ghcr
-      taskRef:
-        name: gastown-operator-skopeo-copy
-      timeout: 10m
-      runAfter:
-        - sign-image
-      params:
-        - name: srcImageURL
-          value: "docker://$(params.registry)/gastown-operator:$(params.image-tag)"
-        - name: destImageURL
-          value: "docker://$(params.ghcr-registry)/gastown-operator:$(params.image-tag)"
-        - name: srcTLSverify
-          value: "false"
-        - name: destTLSverify
-          value: "true"
-      workspaces:
-        - name: dockerconfig
-          workspace: dockerconfig
-
+    # The mirror-to-ghcr and helm-push tasks have been removed from Tekton.
+    # Images stay in internal registry until e2e tests pass in GitLab CI.
+    # This prevents publishing broken releases to the public registry.
+    #
+    # Flow:
+    #   Tekton: build → sign → push to internal registry
+    #   GitLab: e2e tests → push:ghcr → push:helm → sync:github
     # =========================================================================
-    # Stage 9: Push Helm Chart to GHCR
-    # =========================================================================
-
-    - name: helm-push
-      taskRef:
-        name: gastown-operator-helm-push
-      timeout: 5m
-      runAfter:
-        - mirror-to-ghcr
-      params:
-        - name: version
-          value: $(params.image-tag)
-        - name: registry
-          value: $(params.ghcr-registry)
-      workspaces:
-        - name: source
-          workspace: source
-        - name: dockerconfig
-          workspace: dockerconfig
 
   # ===========================================================================
   # Finally: Summary Report and Knowledge Persistence
@@ -447,10 +417,8 @@ spec:
               echo "  Gas Town Operator CI Pipeline Complete"
               echo "========================================"
               echo ""
-              echo "Artifacts pushed:"
-              echo "  - Image: $(params.registry)/gastown-operator:$(params.image-tag)"
-              echo "  - Image: $(params.ghcr-registry)/gastown-operator:$(params.image-tag)"
-              echo "  - Helm:  oci://$(params.ghcr-registry)/gastown-operator:$(params.image-tag)"
+              echo "Image built and pushed to internal registry:"
+              echo "  - $(params.registry)/gastown-operator:$(params.image-tag)"
               echo ""
               echo "Security scans completed:"
               echo "  - govulncheck (Go dependency vulnerabilities)"
@@ -465,7 +433,10 @@ spec:
               echo "  - SBOM generated (SPDX JSON)"
               echo "  - Image signed with Cosign"
               echo ""
-              echo "Knowledge persistence:"
-              echo "  - Pipeline data stored in Athena"
+              echo "Next steps (handled by GitLab CI):"
+              echo "  1. E2E tests (upgrade + fresh install)"
+              echo "  2. Push to GHCR (after tests pass)"
+              echo "  3. Push Helm chart to GHCR"
+              echo "  4. Create GitHub release"
               echo ""
               echo "========================================"

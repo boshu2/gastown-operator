@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Discussions
+    url: https://github.com/boshu2/gastown-operator/discussions
+    about: Ask questions and discuss ideas
+  - name: Security Vulnerabilities
+    url: https://github.com/boshu2/gastown-operator/security/advisories/new
+    about: Report security vulnerabilities (do not use issues)

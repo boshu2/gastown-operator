@@ -127,7 +127,7 @@ spec:
 
         Artifacts:
         - Container image: ghcr.io/boshu2/gastown-operator:v$(params.version)
-        - Helm chart: oci://ghcr.io/boshu2/gastown-operator:$(params.version)
+        - Helm chart: oci://ghcr.io/boshu2/charts/gastown-operator:$(params.version)
         - SBOM: attached to image
 
         Vibe Prescan Results:

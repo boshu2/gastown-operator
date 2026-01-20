@@ -1,0 +1,338 @@
+# Release Pipeline - Triggered by tags or manual dispatch
+#
+# This workflow handles releases when GitLab is unavailable or for
+# community contributions that come through GitHub.
+#
+# Primary release flow is still GitLab/Tekton, but this provides
+# a GitHub-native alternative.
+#
+# Triggers:
+#   - Push of v* tag (e.g., v0.3.0)
+#   - Manual workflow dispatch
+#
+# Outputs:
+#   - Container image to GHCR
+#   - Helm chart to GHCR OCI
+#   - GitHub Release with changelog
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.3.1)'
+        required: true
+        type: string
+      skip-tests:
+        description: 'Skip test jobs (use only if CI already passed)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  GO_VERSION: '1.25'
+
+jobs:
+  # ==========================================================================
+  # Pre-flight
+  # ==========================================================================
+
+  preflight:
+    name: Pre-flight Checks
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+            TAG="v${VERSION}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+            VERSION="${TAG#v}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Releasing version: ${VERSION} (tag: ${TAG})"
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid version format: $VERSION"
+            exit 1
+          fi
+
+  # ==========================================================================
+  # Validation (skippable for hotfixes)
+  # ==========================================================================
+
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    needs: [preflight]
+    if: ${{ !inputs.skip-tests }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run tests
+        run: make test
+
+      - name: Run lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+          args: --timeout=5m
+
+  # ==========================================================================
+  # Build and Push Images
+  # ==========================================================================
+
+  build-images:
+    name: Build Images
+    runs-on: ubuntu-latest
+    needs: [preflight, validate]
+    if: always() && needs.preflight.result == 'success' && (needs.validate.result == 'success' || needs.validate.result == 'skipped')
+    permissions:
+      contents: read
+      packages: write
+      id-token: write  # For cosign keyless signing
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build gt CLI
+        run: make build-gt
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.preflight.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.preflight.outputs.version }}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ needs.preflight.outputs.version }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with Cosign (keyless)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}
+
+  # ==========================================================================
+  # Build and Push Helm Chart
+  # ==========================================================================
+
+  helm-release:
+    name: Helm Chart
+    runs-on: ubuntu-latest
+    needs: [preflight, build-images]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+      - name: Update Chart.yaml version
+        run: |
+          VERSION="${{ needs.preflight.outputs.version }}"
+          sed -i "s/^version:.*/version: ${VERSION}/" helm/gastown-operator/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" helm/gastown-operator/Chart.yaml
+
+      - name: Package Helm chart
+        run: |
+          helm package helm/gastown-operator --version ${{ needs.preflight.outputs.version }}
+
+      - name: Push to GHCR OCI
+        run: |
+          helm push gastown-operator-${{ needs.preflight.outputs.version }}.tgz oci://${{ env.REGISTRY }}/${{ github.repository_owner }}
+
+  # ==========================================================================
+  # Generate SBOM
+  # ==========================================================================
+
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    needs: [preflight, build-images]
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SBOM
+        run: |
+          syft ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.preflight.outputs.version }} \
+            -o spdx-json=sbom.spdx.json \
+            -o cyclonedx-json=sbom.cyclonedx.json
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: |
+            sbom.spdx.json
+            sbom.cyclonedx.json
+
+  # ==========================================================================
+  # Create GitHub Release
+  # ==========================================================================
+
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: [preflight, build-images, helm-release, sbom]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom
+
+      - name: Generate install manifests
+        run: |
+          make build-installer VERSION=${{ needs.preflight.outputs.version }} \
+            IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get commits since last tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [[ -n "$PREV_TAG" ]]; then
+            echo "## Changes since ${PREV_TAG}" > release-notes.md
+            git log --pretty=format:"- %s (%h)" ${PREV_TAG}..HEAD >> release-notes.md
+          else
+            echo "## Initial Release" > release-notes.md
+            echo "First release of gastown-operator." >> release-notes.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.preflight.outputs.tag }}
+          name: ${{ needs.preflight.outputs.tag }}
+          body_path: release-notes.md
+          files: |
+            dist/install.yaml
+            sbom.spdx.json
+            sbom.cyclonedx.json
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ==========================================================================
+  # Post-Release Verification
+  # ==========================================================================
+
+  verify:
+    name: Verify Release
+    runs-on: ubuntu-latest
+    needs: [preflight, github-release]
+    steps:
+      - name: Verify container image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.preflight.outputs.version }}
+          echo "Image verification passed"
+
+      - name: Verify Helm chart
+        run: |
+          helm show chart oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/gastown-operator \
+            --version ${{ needs.preflight.outputs.version }}
+          echo "Helm chart verification passed"
+
+      - name: Summary
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.preflight.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.preflight.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Helm:** \`oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/gastown-operator:${{ needs.preflight.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release:** https://github.com/${{ github.repository }}/releases/tag/${{ needs.preflight.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Installation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Helm" >> $GITHUB_STEP_SUMMARY
+          echo "helm install gastown-operator oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/gastown-operator \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --version ${{ needs.preflight.outputs.version }} \\" >> $GITHUB_STEP_SUMMARY
+          echo "  -n gastown-system --create-namespace" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# kubectl" >> $GITHUB_STEP_SUMMARY
+          echo "kubectl apply -f https://github.com/${{ github.repository }}/releases/download/${{ needs.preflight.outputs.tag }}/install.yaml" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

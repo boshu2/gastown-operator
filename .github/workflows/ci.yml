@@ -1,0 +1,247 @@
+# CI Pipeline - Runs on every PR and push to main
+#
+# Fast feedback loop for developers. Comprehensive validation
+# is done by GitLab/Tekton after merge.
+#
+# Jobs:
+#   - validate: go vet, generate, manifests
+#   - lint: golangci-lint
+#   - test: unit tests with envtest
+#   - prescan: vibe quality gate
+#   - security: govulncheck, gosec, gitleaks
+#   - build: ensure image builds (no push)
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: '1.25'
+  GOLANGCI_LINT_VERSION: 'v2.5.0'
+
+jobs:
+  # ==========================================================================
+  # Quick Validation (runs in parallel)
+  # ==========================================================================
+
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          if ! git diff --exit-code go.mod go.sum; then
+            echo "::error::go.mod/go.sum is not tidy. Run 'go mod tidy' and commit."
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Verify generated code
+        run: |
+          make generate
+          if ! git diff --exit-code api/; then
+            echo "::error::Generated code is out of date. Run 'make generate' and commit."
+            exit 1
+          fi
+
+      - name: Verify manifests
+        run: |
+          make manifests
+          if ! git diff --exit-code config/; then
+            echo "::error::Manifests are out of date. Run 'make manifests' and commit."
+            exit 1
+          fi
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          args: --timeout=5m
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: cover.out
+          fail_ci_if_error: false
+        continue-on-error: true
+
+  prescan:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git diff
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install gocyclo
+        run: go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+
+      - name: Run vibe prescan
+        id: prescan
+        env:
+          PRESCAN_FAIL_ON: HIGH
+        run: |
+          chmod +x ./scripts/prescan.sh
+          ./scripts/prescan.sh all
+
+  # ==========================================================================
+  # Security Scanning
+  # ==========================================================================
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: gosec
+        uses: securego/gosec@master
+        with:
+          args: '-severity high -quiet ./...'
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ==========================================================================
+  # Build Verification
+  # ==========================================================================
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [validate, lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build manager binary
+        run: make build
+
+      - name: Build gt CLI
+        run: make build-gt
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: gastown-operator:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ==========================================================================
+  # E2E Tests (only on main or labeled PRs)
+  # ==========================================================================
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'run-e2e')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Run E2E tests
+        run: make test-e2e
+
+  # ==========================================================================
+  # Summary
+  # ==========================================================================
+
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [validate, lint, test, prescan, security, build]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.validate.result }}" != "success" ]] || \
+             [[ "${{ needs.lint.result }}" != "success" ]] || \
+             [[ "${{ needs.test.result }}" != "success" ]] || \
+             [[ "${{ needs.prescan.result }}" != "success" ]] || \
+             [[ "${{ needs.security.result }}" != "success" ]] || \
+             [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "::error::One or more CI jobs failed"
+            exit 1
+          fi
+          echo "All CI checks passed!"

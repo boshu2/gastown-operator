@@ -1,0 +1,91 @@
+name: Bug Report
+description: Report a bug in gastown-operator
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of the bug.
+      placeholder: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Deploy the operator with...
+        2. Create a Rig CR with...
+        3. Observe...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Operator Version
+      description: What version of gastown-operator are you running?
+      placeholder: "v0.3.0"
+    validations:
+      required: true
+
+  - type: input
+    id: k8s-version
+    attributes:
+      label: Kubernetes Version
+      description: What version of Kubernetes? (`kubectl version`)
+      placeholder: "v1.30.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation Method
+      options:
+        - Helm
+        - kubectl apply (manifest)
+        - make deploy
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: |
+        Please paste relevant logs from the operator.
+        `kubectl logs -n gastown-system deployment/gastown-operator`
+      render: shell
+
+  - type: textarea
+    id: cr
+    attributes:
+      label: CR Manifest (if applicable)
+      description: The Rig/Polecat/Convoy CR that triggered the issue.
+      render: yaml
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context about the problem.
