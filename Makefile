@@ -106,6 +106,14 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 .PHONY: validate
 validate: vet lint ## Run all local validations (vet + lint). Run before push.
 
+.PHONY: release-validate
+release-validate: ## Run full release validation (Kind cluster, both Helm charts, E2E tests).
+	./scripts/release-validation.sh --local
+
+.PHONY: release-validate-skip-cleanup
+release-validate-skip-cleanup: ## Run release validation without cleanup (for debugging).
+	./scripts/release-validation.sh --local --skip-cleanup
+
 .PHONY: setup-hooks
 setup-hooks: ## Install git hooks for pre-push validation
 	@chmod +x .githooks/*
@@ -117,6 +125,24 @@ setup-hooks: ## Install git hooks for pre-push validation
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
+
+.PHONY: build-gt
+build-gt: ## Build gt CLI for Docker image (required before docker-build).
+	@echo "Building gt CLI from gastown..."
+	@rm -rf /tmp/gastown-build
+	@git clone --depth 1 https://github.com/steveyegge/gastown.git /tmp/gastown-build
+	@cd /tmp/gastown-build && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(PWD)/gt ./cmd/gt
+	@rm -rf /tmp/gastown-build
+	@echo "gt CLI built at ./gt"
+
+.PHONY: build-gt-fips
+build-gt-fips: ## Build gt CLI with FIPS-compliant crypto (for Dockerfile.fips).
+	@echo "Building gt CLI from daedalus (FIPS)..."
+	@rm -rf /tmp/gastown-build
+	@git clone --depth 1 https://git.deepskylab.io/olympus/daedalus.git /tmp/gastown-build
+	@cd /tmp/gastown-build && CGO_ENABLED=1 GOEXPERIMENT=boringcrypto go build -trimpath -ldflags="-s -w" -o $(PWD)/gt ./cmd/gt
+	@rm -rf /tmp/gastown-build
+	@echo "gt CLI (FIPS) built at ./gt"
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
@@ -134,7 +160,7 @@ build-local: manifests generate fmt vet ## Build local mode binary.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: ## Build community docker image (vanilla K8s).
+docker-build: build-gt ## Build community docker image (vanilla K8s).
 	$(CONTAINER_TOOL) build -t ${IMG}:${VERSION} -t ${IMG}:latest -f Dockerfile .
 
 .PHONY: docker-build-e2e
