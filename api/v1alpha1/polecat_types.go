@@ -166,6 +166,21 @@ type KubernetesSpec struct {
 	// +kubebuilder:default=3600
 	// +optional
 	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
+
+	// SSHKnownHostsConfigMapRef references a ConfigMap containing SSH known_hosts
+	// If provided, uses the 'known_hosts' key from this ConfigMap instead of pre-populated keys.
+	// Use this for private Git servers or to override the default host key verification.
+	// +optional
+	SSHKnownHostsConfigMapRef *corev1.LocalObjectReference `json:"sshKnownHostsConfigMapRef,omitempty"`
+
+	// SSHStrictHostKeyChecking controls SSH host key verification behavior.
+	// - "yes" (default): Only connect to hosts in known_hosts (most secure)
+	// - "accept-new": Accept and save new host keys, reject changed keys
+	// - "no": Disable verification (NOT RECOMMENDED - vulnerable to MITM)
+	// +kubebuilder:validation:Enum=yes;accept-new;no
+	// +kubebuilder:default=yes
+	// +optional
+	SSHStrictHostKeyChecking string `json:"sshStrictHostKeyChecking,omitempty"`
 }
 
 // PolecatSpec defines the desired state of Polecat

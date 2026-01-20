@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -33,8 +32,9 @@ import (
 )
 
 const (
-	// BeadsSyncInterval is how often we poll for beads changes
-	BeadsSyncInterval = 30 * time.Second
+	// BeadsSyncInterval is how often we poll for beads changes.
+	// Uses RequeueDefault for normal polling.
+	BeadsSyncInterval = RequeueDefault
 )
 
 // BeadsSyncReconciler watches for beads changes and updates CRDs accordingly.
@@ -89,8 +89,10 @@ func (r *BeadsSyncReconciler) syncPolecats(ctx context.Context) error {
 			continue
 		}
 
-		// Check bead status
-		beadStatus, err := r.GTClient.BeadStatus(ctx, polecat.Status.AssignedBead)
+		// Check bead status with timeout
+		gtCtx, cancel := WithGTClientTimeout(ctx)
+		beadStatus, err := r.GTClient.BeadStatus(gtCtx, polecat.Status.AssignedBead)
+		cancel()
 		if err != nil {
 			log.V(1).Info("Failed to get bead status",
 				"polecat", polecat.Name,
@@ -134,8 +136,10 @@ func (r *BeadsSyncReconciler) syncConvoys(ctx context.Context) error {
 			continue
 		}
 
-		// Check convoy status
-		status, err := r.GTClient.ConvoyStatus(ctx, convoy.Status.BeadsConvoyID)
+		// Check convoy status with timeout
+		gtCtx, cancel := WithGTClientTimeout(ctx)
+		status, err := r.GTClient.ConvoyStatus(gtCtx, convoy.Status.BeadsConvoyID)
+		cancel()
 		if err != nil {
 			log.V(1).Info("Failed to get convoy status",
 				"convoy", convoy.Name,

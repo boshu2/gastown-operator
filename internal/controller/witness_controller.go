@@ -40,7 +40,8 @@ const (
 	WitnessConditionDegraded = "Degraded"
 
 	// Default intervals if not specified in spec.
-	defaultHealthCheckInterval = 30 * time.Second
+	// Uses RequeueDefault for health check frequency.
+	defaultHealthCheckInterval = RequeueDefault
 	defaultStuckThreshold      = 15 * time.Minute
 )
 

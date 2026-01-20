@@ -19,8 +19,8 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -35,8 +35,9 @@ import (
 )
 
 const (
-	// ConvoySyncInterval is how often we re-sync with gt CLI
-	ConvoySyncInterval = 30 * time.Second
+	// ConvoySyncInterval is how often we re-sync with gt CLI.
+	// Uses RequeueDefault for normal sync operations.
+	ConvoySyncInterval = RequeueDefault
 
 	// Condition types for Convoy
 	ConditionConvoyReady    = "Ready"
@@ -78,7 +79,9 @@ func (r *ConvoyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// Ensure convoy exists in beads system
 	if convoy.Status.BeadsConvoyID == "" {
 		log.Info("Creating convoy in beads system")
-		id, err := r.GTClient.ConvoyCreate(ctx, convoy.Spec.Description, convoy.Spec.TrackedBeads)
+		gtCtx, cancel := WithGTClientTimeout(ctx)
+		id, err := r.GTClient.ConvoyCreate(gtCtx, convoy.Spec.Description, convoy.Spec.TrackedBeads)
+		cancel() // Release timeout context
 		if err != nil {
 			log.Error(err, "Failed to create convoy in beads")
 			r.setCondition(&convoy, ConditionConvoyReady, metav1.ConditionFalse, "CreateFailed",
@@ -90,7 +93,7 @@ func (r *ConvoyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 
 			timer.RecordResult(metrics.ResultRequeue)
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: RequeueDefault}, nil
 		}
 
 		convoy.Status.BeadsConvoyID = id
@@ -110,8 +113,10 @@ func (r *ConvoyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		log.Info("Convoy created", "beadsID", id)
 	}
 
-	// Sync status from gt CLI
-	status, err := r.GTClient.ConvoyStatus(ctx, convoy.Status.BeadsConvoyID)
+	// Sync status from gt CLI with timeout
+	gtCtx, cancel := WithGTClientTimeout(ctx)
+	defer cancel()
+	status, err := r.GTClient.ConvoyStatus(gtCtx, convoy.Status.BeadsConvoyID)
 	if err != nil {
 		log.Error(err, "Failed to get convoy status from gt CLI")
 		r.setCondition(&convoy, ConditionConvoyReady, metav1.ConditionFalse, "GTCLIError",
@@ -123,7 +128,7 @@ func (r *ConvoyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 
 		timer.RecordResult(metrics.ResultRequeue)
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: RequeueDefault}, nil
 	}
 
 	// Update status from gt CLI response
@@ -184,7 +189,10 @@ func (r *ConvoyReconciler) sendCompletionNotification(ctx context.Context, convo
 		len(convoy.Status.CompletedBeads),
 		convoy.Status.CompletedBeads)
 
-	if err := r.GTClient.MailSend(ctx, convoy.Spec.NotifyOnComplete, subject, message); err != nil {
+	// Use timeout for mail send to prevent blocking
+	gtCtx, cancel := WithGTClientTimeout(ctx)
+	defer cancel()
+	if err := r.GTClient.MailSend(gtCtx, convoy.Spec.NotifyOnComplete, subject, message); err != nil {
 		log.Error(err, "Failed to send completion notification",
 			"address", convoy.Spec.NotifyOnComplete)
 	} else {
@@ -192,26 +200,16 @@ func (r *ConvoyReconciler) sendCompletionNotification(ctx context.Context, convo
 	}
 }
 
-// setCondition sets or updates a condition on the Convoy.
+// setCondition sets or updates a condition on the Convoy using the standard meta.SetStatusCondition helper.
 func (r *ConvoyReconciler) setCondition(convoy *gastownv1alpha1.Convoy, condType string, status metav1.ConditionStatus, reason, message string) {
-	condition := metav1.Condition{
+	meta.SetStatusCondition(&convoy.Status.Conditions, metav1.Condition{
 		Type:               condType,
 		Status:             status,
 		ObservedGeneration: convoy.Generation,
-		LastTransitionTime: metav1.Now(),
 		Reason:             reason,
 		Message:            message,
-	}
-
-	for i, existing := range convoy.Status.Conditions {
-		if existing.Type == condType {
-			if existing.Status != status {
-				convoy.Status.Conditions[i] = condition
-			}
-			return
-		}
-	}
-	convoy.Status.Conditions = append(convoy.Status.Conditions, condition)
+		LastTransitionTime: metav1.Now(),
+	})
 }
 
 // SetupWithManager sets up the controller with the Manager.

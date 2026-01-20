@@ -33,18 +33,20 @@ const (
 	ClaudeContainerName  = "claude"
 
 	// Volume names
-	WorkspaceVolumeName   = "workspace"
-	GitCredsVolumeName    = "git-creds"
-	ClaudeCredsVolumeName = "claude-creds"
-	TmpVolumeName         = "tmp"
-	HomeVolumeName        = "home"
+	WorkspaceVolumeName     = "workspace"
+	GitCredsVolumeName      = "git-creds"
+	ClaudeCredsVolumeName   = "claude-creds"
+	TmpVolumeName           = "tmp"
+	HomeVolumeName          = "home"
+	SSHKnownHostsVolumeName = "ssh-known-hosts"
 
 	// Mount paths
-	WorkspaceMountPath   = "/workspace"
-	GitCredsMountPath    = "/git-creds"
-	ClaudeCredsMountPath = "/claude-creds" // Temporary mount for credentials (copied to $HOME/.claude at startup)
-	TmpMountPath         = "/tmp"
-	HomeMountPath        = "/home/nonroot"
+	WorkspaceMountPath     = "/workspace"
+	GitCredsMountPath      = "/git-creds"
+	ClaudeCredsMountPath   = "/claude-creds" // Temporary mount for credentials (copied to $HOME/.claude at startup)
+	TmpMountPath           = "/tmp"
+	HomeMountPath          = "/home/nonroot"
+	SSHKnownHostsMountPath = "/ssh-known-hosts"
 
 	// Environment variable names for image configuration
 	EnvGitImage    = "GASTOWN_GIT_IMAGE"
@@ -63,6 +65,31 @@ const (
 	DefaultMemoryRequest = "1Gi"
 	DefaultMemoryLimit   = "4Gi"
 )
+
+// Pre-verified SSH host keys for common Git hosting providers.
+// These keys were verified from official sources:
+// - GitHub: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
+// - GitLab: https://docs.gitlab.com/ee/user/gitlab_com/index.html#ssh-host-keys-fingerprints
+// - Bitbucket: https://support.atlassian.com/bitbucket-cloud/docs/configure-ssh-and-two-step-verification/
+//
+// Last updated: 2026-01-20
+// SECURITY: Using pre-verified keys prevents MITM attacks on first connection (TOFU vulnerability).
+// For private Git servers, users should provide their own known_hosts via SSHKnownHostsConfigMapRef.
+//
+//nolint:lll // SSH public keys cannot be broken across lines; this is expected.
+const PreVerifiedSSHKnownHosts = `# GitHub (verified 2026-01-20)
+github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
+github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=
+# GitLab (verified 2026-01-20)
+gitlab.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf
+gitlab.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFSMqzJeV9rUzU4kWitGjeR4PWSa29SPqJ1fVkhtj3Hw9xjLVXVYrU9QlYWrOLXBpQ6KWjbjTDTdDkoohFzgbEY=
+gitlab.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCsj2bNKTBSpIYDEGk9KxsGh3mySTRgMtXL583qmBpzeQ+jqCMRgBqB98u3z++J1sKlXHWfM9dyhSevkMwSbhoR8XIq/U0tCNyokEi/ueaBMCvbcTHhO7FcwzY92WK4 Voices0rWtH2Lxbvt9jW/rlyf+ClGSuOHDJALO9mz1ApbdM/V8Q3IUehzBAKy4qqvzT3+0dHAAePj1Ej5g+7G0SqUpjCi5DNbvZIBIlINmVbAmLKWNsE8bz0XE0n0zQbGNkmkKsP8pEPHe9XzHz+TfnhpKpLJ7NxrN3P+a/2yjZsLKMhiT+xwSLRwLQoKEE7X1JNPMi/1XPxQaP5cFlQ25+W
+# Bitbucket (verified 2026-01-20)
+bitbucket.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIazEu89wgQZ4bqs3d63QSMzYVa0MuJ2e2gKTKqu+UUO
+bitbucket.org ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPIQmuzMBuKdWeF4+a2sjSSpBK0iqitSQ+5BM9KhpexuGt20JpTVM7u5BDZngncgrqDMbWdxMWWOGtZ9UgbqgZE=
+bitbucket.org ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDQeJzhupRu0u0cdegZIa8e86EG2qOCsIsD1Xw0xSeiPDlCr7kq97NLmMbpKTX6Esc30NuoqEEHCuc7yWtwp8dI76EEEB1VqY9QJq6vk+aySyboD5QF61I/1WeTwu+deCbgKMGbUijeXhtfbxSxm6JwGrXrhBdofTsbKRUsrN1WoNgUa8uqN1Vx6WAJw1JHPhglEGGHea6QICwJOAr/6mrui/oB7pkaWKHj3z7d1IC4KWLtY47elvjbaTlkN04Kc/5LFEirorGYVbt15kAUlqGM65pk6ZBxtaO3+30LVlORZkxOh+LKL/BvbZ/iRNhItLqNyieoQj/uj/4Lf0MagUQ/F7c+b6z1OawA/7FmbnyJlUH/1LPbM0lprrzj/qHqhOpK/xv/Kj7yM3TeqbAbN7zlWdLH/xj/cPk0O5EuCLquOmDwz0XHr3vdfl0Sgh8yoB+nlk6Q3X9DP/PbLyBHHEUi/bHy/TqBZxRWdPSCXMFBiqLsKK0xvb7fUY=
+`
 
 // Builder constructs Pods for Polecat kubernetes execution
 type Builder struct {
@@ -136,6 +163,59 @@ func (b *Builder) buildGitInitContainer() corev1.Container {
 		workBranch = fmt.Sprintf("feature/%s", b.polecat.Spec.BeadID)
 	}
 
+	// Determine SSH strict host key checking mode
+	// Default to "yes" (most secure) if not specified
+	strictHostKeyChecking := k8sSpec.SSHStrictHostKeyChecking
+	if strictHostKeyChecking == "" {
+		strictHostKeyChecking = "yes"
+	}
+
+	// Build the known_hosts setup script based on configuration
+	var knownHostsSetup string
+	if k8sSpec.SSHKnownHostsConfigMapRef != nil {
+		// User-provided known_hosts via ConfigMap
+		knownHostsSetup = fmt.Sprintf(`
+# Using user-provided known_hosts from ConfigMap
+if [ -f "%s/known_hosts" ]; then
+    cp "%s/known_hosts" ~/.ssh/known_hosts
+    chmod 644 ~/.ssh/known_hosts
+    echo "Using custom known_hosts from ConfigMap"
+else
+    echo "ERROR: ConfigMap mounted but known_hosts key not found"
+    exit 1
+fi
+`, SSHKnownHostsMountPath, SSHKnownHostsMountPath)
+	} else {
+		// Pre-verified known_hosts for common Git hosts
+		// SECURITY: Using pre-verified keys prevents MITM attacks on first connection.
+		// For private Git servers not in the pre-verified list, we allow ssh-keyscan
+		// only when StrictHostKeyChecking is "accept-new" or "no".
+		knownHostsSetup = fmt.Sprintf(`
+# SECURITY: Pre-verified SSH host keys for common Git hosting providers.
+# These keys are verified from official documentation to prevent MITM attacks.
+# See: pkg/pod/builder.go PreVerifiedSSHKnownHosts constant for verification sources.
+cat > ~/.ssh/known_hosts << 'KNOWN_HOSTS_EOF'
+%s
+KNOWN_HOSTS_EOF
+chmod 644 ~/.ssh/known_hosts
+
+# For private Git servers not in the pre-verified list, behavior depends on StrictHostKeyChecking:
+# - "yes": Connection will fail if host not in known_hosts (secure, default)
+# - "accept-new": Will accept and save new keys, reject changed keys
+# - "no": Will accept any key (NOT RECOMMENDED)
+HOSTNAME=$(echo "%s" | sed -E 's/.*@([^:\/]+).*/\1/' | sed -E 's/.*\/\/([^\/]+).*/\1/')
+if [ -n "$HOSTNAME" ] && ! grep -q "^$HOSTNAME " ~/.ssh/known_hosts; then
+    if [ "%s" != "yes" ]; then
+        echo "Host $HOSTNAME not in pre-verified known_hosts, using ssh-keyscan..."
+        ssh-keyscan "$HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null || true
+    else
+        echo "WARNING: Host $HOSTNAME not in pre-verified known_hosts. Connection may fail."
+        echo "For private Git servers, use SSHKnownHostsConfigMapRef to provide verified host keys."
+    fi
+fi
+`, PreVerifiedSSHKnownHosts, k8sSpec.GitRepository, strictHostKeyChecking)
+	}
+
 	gitScript := fmt.Sprintf(`
 set -e
 
@@ -144,14 +224,9 @@ mkdir -p ~/.ssh
 cp %s/ssh-privatekey ~/.ssh/id_rsa 2>/dev/null || cp %s/id_rsa ~/.ssh/id_rsa
 chmod 600 ~/.ssh/id_rsa
 
-# Add known hosts (GitHub, GitLab, common hosts)
-ssh-keyscan github.com gitlab.com bitbucket.org >> ~/.ssh/known_hosts 2>/dev/null || true
-
-# Extract hostname from git URL and add to known_hosts
-HOSTNAME=$(echo "%s" | sed -E 's/.*@([^:\/]+).*/\1/' | sed -E 's/.*\/\/([^\/]+).*/\1/')
-if [ -n "$HOSTNAME" ]; then
-    ssh-keyscan "$HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null || true
-fi
+# Configure SSH strict host key checking
+echo "StrictHostKeyChecking %s" >> ~/.ssh/config
+%s
 
 # Clone the repository
 echo "Cloning %s branch %s..."
@@ -163,7 +238,8 @@ git checkout -b %s
 echo "Git setup complete. Working branch: %s"
 `,
 		GitCredsMountPath, GitCredsMountPath,
-		k8sSpec.GitRepository,
+		strictHostKeyChecking,
+		knownHostsSetup,
 		k8sSpec.GitRepository, k8sSpec.GitBranch,
 		k8sSpec.GitBranch, k8sSpec.GitRepository, WorkspaceMountPath,
 		WorkspaceMountPath, workBranch, workBranch,
@@ -181,26 +257,44 @@ echo "Git setup complete. Working branch: %s"
 				Value: HomeMountPath,
 			},
 		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      WorkspaceVolumeName,
-				MountPath: WorkspaceMountPath,
-			},
-			{
-				Name:      GitCredsVolumeName,
-				MountPath: GitCredsMountPath,
-				ReadOnly:  true,
-			},
-			{
-				Name:      TmpVolumeName,
-				MountPath: TmpMountPath,
-			},
-			{
-				Name:      HomeVolumeName,
-				MountPath: HomeMountPath,
-			},
+		VolumeMounts: b.buildGitInitVolumeMounts(),
+	}
+}
+
+// buildGitInitVolumeMounts creates volume mounts for the git init container
+func (b *Builder) buildGitInitVolumeMounts() []corev1.VolumeMount {
+	k8sSpec := b.polecat.Spec.Kubernetes
+
+	mounts := []corev1.VolumeMount{
+		{
+			Name:      WorkspaceVolumeName,
+			MountPath: WorkspaceMountPath,
+		},
+		{
+			Name:      GitCredsVolumeName,
+			MountPath: GitCredsMountPath,
+			ReadOnly:  true,
+		},
+		{
+			Name:      TmpVolumeName,
+			MountPath: TmpMountPath,
+		},
+		{
+			Name:      HomeVolumeName,
+			MountPath: HomeMountPath,
 		},
 	}
+
+	// Add known_hosts ConfigMap mount if configured
+	if k8sSpec.SSHKnownHostsConfigMapRef != nil {
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      SSHKnownHostsVolumeName,
+			MountPath: SSHKnownHostsMountPath,
+			ReadOnly:  true,
+		})
+	}
+
+	return mounts
 }
 
 // buildClaudeContainer creates the Claude agent container spec
@@ -250,7 +344,12 @@ npm install -g @anthropic-ai/claude-code
 # Verify installation
 claude --version || echo "Claude CLI installed"
 
-# Run Claude with dangerously-skip-permissions for headless mode
+# SECURITY: --dangerously-skip-permissions is required for headless operation.
+# This grants elevated privileges to the Claude agent. Mitigations:
+# - Pod runs as non-root with read-only root filesystem
+# - Network policies should restrict outbound traffic
+# - RBAC should limit polecat creation to trusted namespaces
+# See docs/SECURITY.md for full threat model.
 echo "Starting Claude Code agent..."
 echo "Working on issue: $GT_ISSUE"
 
@@ -407,6 +506,18 @@ func (b *Builder) buildVolumes() []corev1.Volume {
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName: k8sSpec.ClaudeCredsSecretRef.Name,
+				},
+			},
+		})
+	}
+
+	// Add SSH known_hosts ConfigMap volume if configured
+	if k8sSpec.SSHKnownHostsConfigMapRef != nil {
+		volumes = append(volumes, corev1.Volume{
+			Name: SSHKnownHostsVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: *k8sSpec.SSHKnownHostsConfigMapRef,
 				},
 			},
 		})

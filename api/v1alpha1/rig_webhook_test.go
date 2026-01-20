@@ -219,13 +219,66 @@ func TestValidateLocalPath(t *testing.T) {
 			name:    "path traversal attempt",
 			path:    "/home/../etc/passwd",
 			wantErr: true,
-			errMsg:  "path cannot contain '..'",
+			errMsg:  "path cannot contain parent directory references",
+		},
+		{
+			name:    "path traversal attempt - middle",
+			path:    "/home/user/../../../etc/shadow",
+			wantErr: true,
+			errMsg:  "path cannot contain parent directory references",
+		},
+		{
+			name:    "path traversal attempt - trailing",
+			path:    "/home/user/rig/..",
+			wantErr: true,
+			errMsg:  "path cannot contain parent directory references",
 		},
 		{
 			name:    "path too long",
-			path:    "/" + string(make([]byte, 260)),
+			path:    "/" + string(make([]byte, 4100)),
 			wantErr: true,
-			errMsg:  "path length exceeds 255 characters",
+			errMsg:  "path length exceeds 4096 characters",
+		},
+		{
+			name:    "null byte injection",
+			path:    "/home/user/rig\x00/etc/passwd",
+			wantErr: true,
+			errMsg:  "path cannot contain null bytes",
+		},
+		{
+			name:    "excessive slashes",
+			path:    "/home///user/rig",
+			wantErr: true,
+			errMsg:  "path cannot contain more than two consecutive slashes",
+		},
+		{
+			name:    "sensitive path - etc",
+			path:    "/etc/shadow",
+			wantErr: true,
+			errMsg:  "is in a sensitive directory",
+		},
+		{
+			name:    "sensitive path - proc",
+			path:    "/proc/self/environ",
+			wantErr: true,
+			errMsg:  "is in a sensitive directory",
+		},
+		{
+			name:    "sensitive path - root home",
+			path:    "/root/.ssh",
+			wantErr: true,
+			errMsg:  "is in a sensitive directory",
+		},
+		{
+			name:    "sensitive path - dev",
+			path:    "/dev/sda1",
+			wantErr: true,
+			errMsg:  "is in a sensitive directory",
+		},
+		{
+			name:    "valid path with double slash",
+			path:    "/home/user//rig",
+			wantErr: false, // double slash is OK, triple is not
 		},
 	}
 

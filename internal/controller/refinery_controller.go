@@ -46,9 +46,11 @@ const (
 	RefineryConditionProcessing = "Processing"
 
 	// Default requeue interval for idle refinery.
-	refineryIdleRequeueInterval = 30 * time.Second
+	// Uses RequeueDefault for normal idle monitoring.
+	refineryIdleRequeueInterval = RequeueDefault
 
 	// Requeue interval during active processing.
+	// Uses a shorter interval for active merge monitoring.
 	refineryProcessingRequeueInterval = 5 * time.Second
 )
 

@@ -19,8 +19,8 @@ package controller
 import (
 	"context"
 	"os"
-	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -35,8 +35,9 @@ import (
 )
 
 const (
-	// RigSyncInterval is how often we re-sync with gt CLI
-	RigSyncInterval = 30 * time.Second
+	// RigSyncInterval is how often we re-sync with gt CLI.
+	// Uses RequeueDefault for normal sync operations.
+	RigSyncInterval = RequeueDefault
 
 	// Condition types
 	ConditionRigExists = "RigExists"
@@ -82,14 +83,16 @@ func (r *RigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		}
 
 		timer.RecordResult(metrics.ResultRequeue)
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+		return ctrl.Result{RequeueAfter: RequeueLong}, nil
 	}
 
 	r.setCondition(&rig, ConditionRigExists, metav1.ConditionTrue, "PathExists",
 		"Rig path exists on filesystem")
 
-	// Query gt CLI for rig status
-	status, err := r.GTClient.RigStatus(ctx, rig.Name)
+	// Query gt CLI for rig status with timeout to prevent hung CLI from blocking
+	gtCtx, cancel := WithGTClientTimeout(ctx)
+	defer cancel()
+	status, err := r.GTClient.RigStatus(gtCtx, rig.Name)
 	if err != nil {
 		log.Error(err, "Failed to get rig status from gt CLI")
 		r.setCondition(&rig, ConditionRigReady, metav1.ConditionFalse, "GTCLIError",
@@ -104,9 +107,9 @@ func (r *RigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		timer.RecordResult(metrics.ResultRequeue)
 		// Retry sooner for transient errors
 		if gterrors.IsRetryable(err) {
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: RequeueRetryTransient}, nil
 		}
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+		return ctrl.Result{RequeueAfter: RequeueLong}, nil
 	}
 
 	// Update status from gt CLI response
@@ -141,27 +144,16 @@ func (r *RigReconciler) rigPathExists(path string) bool {
 	return info.IsDir()
 }
 
-// setCondition sets or updates a condition on the Rig.
+// setCondition sets or updates a condition on the Rig using the standard meta.SetStatusCondition helper.
 func (r *RigReconciler) setCondition(rig *gastownv1alpha1.Rig, condType string, status metav1.ConditionStatus, reason, message string) {
-	condition := metav1.Condition{
+	meta.SetStatusCondition(&rig.Status.Conditions, metav1.Condition{
 		Type:               condType,
 		Status:             status,
 		ObservedGeneration: rig.Generation,
-		LastTransitionTime: metav1.Now(),
 		Reason:             reason,
 		Message:            message,
-	}
-
-	// Find and update existing condition or append new one
-	for i, existing := range rig.Status.Conditions {
-		if existing.Type == condType {
-			if existing.Status != status {
-				rig.Status.Conditions[i] = condition
-			}
-			return
-		}
-	}
-	rig.Status.Conditions = append(rig.Status.Conditions, condition)
+		LastTransitionTime: metav1.Now(),
+	})
 }
 
 // SetupWithManager sets up the controller with the Manager.

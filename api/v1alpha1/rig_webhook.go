@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -220,7 +221,8 @@ func validateBeadsPrefix(prefix string) error {
 	return nil
 }
 
-// validateLocalPath checks that the local path is valid.
+// validateLocalPath checks that the local path is valid and safe.
+// SECURITY: Uses filepath.Clean() to normalize paths and prevent traversal attacks.
 func validateLocalPath(localPath string) error {
 	if localPath == "" {
 		return fmt.Errorf("localPath is required")
@@ -231,14 +233,51 @@ func validateLocalPath(localPath string) error {
 		return fmt.Errorf("must be an absolute path, got %q", localPath)
 	}
 
-	// Basic path sanitation - no parent directory traversal
-	if strings.Contains(localPath, "..") {
-		return fmt.Errorf("path cannot contain '..'")
+	// Path length check (before cleaning to prevent DoS via long paths)
+	if len(localPath) > 4096 {
+		return fmt.Errorf("path length exceeds 4096 characters")
 	}
 
-	// Path length check
-	if len(localPath) > 255 {
-		return fmt.Errorf("path length exceeds 255 characters")
+	// Clean the path to resolve any . or .. components
+	// filepath.Clean normalizes the path (e.g., "/a/../b" -> "/b")
+	cleanedPath := filepath.Clean(localPath)
+
+	// Verify the cleaned path is still absolute (wasn't just ".." which becomes ".")
+	if !strings.HasPrefix(cleanedPath, "/") {
+		return fmt.Errorf("cleaned path must be absolute, got %q", cleanedPath)
+	}
+
+	// Reject if the raw path contained ".." even after cleaning
+	// This catches attempts to traverse outside intended directories
+	if strings.Contains(localPath, "..") {
+		return fmt.Errorf("path cannot contain parent directory references (..)")
+	}
+
+	// Reject paths containing null bytes (can truncate strings in some languages)
+	if strings.Contains(localPath, "\x00") {
+		return fmt.Errorf("path cannot contain null bytes")
+	}
+
+	// Reject paths with excessive consecutive slashes (may indicate injection attempt)
+	if strings.Contains(localPath, "///") {
+		return fmt.Errorf("path cannot contain more than two consecutive slashes")
+	}
+
+	// Reject common sensitive paths that should never be used as rig paths
+	// These are paths that could lead to privilege escalation or data exposure
+	sensitivePrefixes := []string{
+		"/etc/",
+		"/var/run/",
+		"/proc/",
+		"/sys/",
+		"/dev/",
+		"/boot/",
+		"/root/",
+	}
+	for _, prefix := range sensitivePrefixes {
+		if strings.HasPrefix(cleanedPath, prefix) || cleanedPath == strings.TrimSuffix(prefix, "/") {
+			return fmt.Errorf("path %q is in a sensitive directory", cleanedPath)
+		}
 	}
 
 	return nil
