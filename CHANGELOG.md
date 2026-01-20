@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.3.1](https://github.com/boshu2/gastown-operator/compare/v0.3.0...v0.3.1) (2026-01-20)
+
+### Bug Fixes
+
+* **e2e:** correctly capture prescan exit code ([6768217](https://github.com/boshu2/gastown-operator/commit/6768217e95d52718e118d742e49c3ca1e91644a2))
+* **prescan:** correctly extract file path from gocyclo output ([ba73bf1](https://github.com/boshu2/gastown-operator/commit/ba73bf1d6577f08ce49b31498937f1cbe495242c))
+* **prescan:** prevent early exit from arithmetic evaluation ([e2abe2f](https://github.com/boshu2/gastown-operator/commit/e2abe2f43e5e096d8452734a6e6c39085d4349b4))
+* **prescan:** use here-string to avoid subshell variable scoping ([aed81a4](https://github.com/boshu2/gastown-operator/commit/aed81a4883bdc542d4a52a8f68c0e95e70562e1d))
+
 ## [0.3.0](https://github.com/boshu2/gastown-operator/compare/v0.2.0...v0.3.0) (2026-01-20)
 
 ### Features
