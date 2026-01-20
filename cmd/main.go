@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"net/http"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -37,6 +38,7 @@ import (
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	"github.com/org/gastown-operator/internal/controller"
+	"github.com/org/gastown-operator/pkg/version"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -123,6 +125,9 @@ func main() {
 		}
 
 		webhookServer = webhook.NewServer(webhookServerOptions)
+
+		// Register /version endpoint on the webhook server
+		webhookServer.Register("/version", http.HandlerFunc(version.Handler()))
 	} else {
 		setupLog.Info("Webhooks disabled via --disable-webhooks flag")
 	}
