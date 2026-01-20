@@ -116,6 +116,18 @@ release-validate: ## Run full release validation (Kind cluster, both Helm charts
 release-validate-skip-cleanup: ## Run release validation without cleanup (for debugging).
 	./scripts/release-validation.sh --local --skip-cleanup
 
+.PHONY: release-e2e
+release-e2e: ## Run full E2E release validation (dry-run, no actual release).
+	./scripts/e2e-release-validation.sh
+
+.PHONY: release-e2e-full
+release-e2e-full: ## Run E2E validation and create real GitHub release.
+	./scripts/e2e-release-validation.sh --release
+
+.PHONY: release-e2e-skip-kind
+release-e2e-skip-kind: ## Run E2E validation without Kind E2E (when CI already ran it).
+	./scripts/e2e-release-validation.sh --skip-kind
+
 .PHONY: setup-hooks
 setup-hooks: ## Install git hooks for pre-push validation
 	@chmod +x .githooks/*
