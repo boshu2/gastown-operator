@@ -48,9 +48,9 @@ GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-log_critical() { echo -e "${RED}[CRITICAL]${NC} $1"; ((CRITICAL_COUNT++)); }
-log_high() { echo -e "${RED}[HIGH]${NC} $1"; ((HIGH_COUNT++)); }
-log_medium() { echo -e "${YELLOW}[MEDIUM]${NC} $1"; ((MEDIUM_COUNT++)); }
+log_critical() { echo -e "${RED}[CRITICAL]${NC} $1"; ((CRITICAL_COUNT++)) || true; }
+log_high() { echo -e "${RED}[HIGH]${NC} $1"; ((HIGH_COUNT++)) || true; }
+log_medium() { echo -e "${YELLOW}[MEDIUM]${NC} $1"; ((MEDIUM_COUNT++)) || true; }
 log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
 log_pass() { echo -e "${GREEN}[PASS]${NC} $1"; }
 
