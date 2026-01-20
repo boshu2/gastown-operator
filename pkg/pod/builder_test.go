@@ -79,7 +79,7 @@ func TestBuilderBuild(t *testing.T) {
 					GitRepository:        "git@github.com:org/repo.git",
 					GitBranch:            "main",
 					GitSecretRef:         gastownv1alpha1.SecretReference{Name: "git-secret"},
-					ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{Name: "claude-secret"},
+					ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{Name: "claude-secret"},
 				},
 			},
 		}
@@ -167,7 +167,7 @@ func TestBuilderBuild(t *testing.T) {
 					GitBranch:            "main",
 					WorkBranch:           "custom-branch",
 					GitSecretRef:         gastownv1alpha1.SecretReference{Name: "git-secret"},
-					ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{Name: "claude-secret"},
+					ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{Name: "claude-secret"},
 				},
 			},
 		}
@@ -200,7 +200,7 @@ func TestBuilderBuild(t *testing.T) {
 					GitBranch:            "main",
 					Image:                "custom/image:v1",
 					GitSecretRef:         gastownv1alpha1.SecretReference{Name: "git-secret"},
-					ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{Name: "claude-secret"},
+					ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{Name: "claude-secret"},
 				},
 			},
 		}
@@ -231,7 +231,7 @@ func TestBuildSecurityContext(t *testing.T) {
 				GitRepository:        "git@github.com:org/repo.git",
 				GitBranch:            "main",
 				GitSecretRef:         gastownv1alpha1.SecretReference{Name: "git-secret"},
-				ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{Name: "claude-secret"},
+				ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{Name: "claude-secret"},
 			},
 		},
 	}
@@ -318,7 +318,7 @@ func TestBuildResources(t *testing.T) {
 					GitRepository:        "git@github.com:org/repo.git",
 					GitBranch:            "main",
 					GitSecretRef:         gastownv1alpha1.SecretReference{Name: "git-secret"},
-					ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{Name: "claude-secret"},
+					ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{Name: "claude-secret"},
 				},
 			},
 		}
@@ -367,7 +367,7 @@ func TestBuildResources(t *testing.T) {
 					GitBranch:            "main",
 					Resources:            customResources,
 					GitSecretRef:         gastownv1alpha1.SecretReference{Name: "git-secret"},
-					ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{Name: "claude-secret"},
+					ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{Name: "claude-secret"},
 				},
 			},
 		}
@@ -445,7 +445,7 @@ func TestContainerEnvironment(t *testing.T) {
 				GitRepository:        "git@github.com:org/repo.git",
 				GitBranch:            "main",
 				GitSecretRef:         gastownv1alpha1.SecretReference{Name: "git-secret"},
-				ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{Name: "claude-secret"},
+				ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{Name: "claude-secret"},
 			},
 		},
 	}
@@ -506,7 +506,7 @@ func TestClaudeCredsVolumeMount(t *testing.T) {
 				GitRepository:        "git@github.com:org/repo.git",
 				GitBranch:            "main",
 				GitSecretRef:         gastownv1alpha1.SecretReference{Name: "git-secret"},
-				ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{Name: "claude-secret"},
+				ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{Name: "claude-secret"},
 			},
 		},
 	}

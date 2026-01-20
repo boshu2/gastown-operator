@@ -171,9 +171,11 @@ func validateKubernetesSpec(k *KubernetesSpec) []string {
 		errs = append(errs, "spec.kubernetes.gitSecretRef.name: is required")
 	}
 
-	// ClaudeCredsSecretRef is required
-	if k.ClaudeCredsSecretRef.Name == "" {
-		errs = append(errs, "spec.kubernetes.claudeCredsSecretRef.name: is required")
+	// Either ClaudeCredsSecretRef or ApiKeySecretRef is required for authentication
+	hasOAuth := k.ClaudeCredsSecretRef != nil && k.ClaudeCredsSecretRef.Name != ""
+	hasAPIKey := k.ApiKeySecretRef != nil && k.ApiKeySecretRef.Name != ""
+	if !hasOAuth && !hasAPIKey {
+		errs = append(errs, "spec.kubernetes: either claudeCredsSecretRef or apiKeySecretRef is required")
 	}
 
 	// Validate ActiveDeadlineSeconds

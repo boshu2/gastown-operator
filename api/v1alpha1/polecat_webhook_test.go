@@ -62,7 +62,7 @@ func TestPolecatCustomValidator_ValidateCreate(t *testing.T) {
 						GitRepository:        "git@github.com:org/repo.git",
 						GitBranch:            "main",
 						GitSecretRef:         SecretReference{Name: "git-secret"},
-						ClaudeCredsSecretRef: SecretReference{Name: "claude-creds"},
+						ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
 					},
 				},
 			},
@@ -103,7 +103,7 @@ func TestPolecatCustomValidator_ValidateCreate(t *testing.T) {
 					ExecutionMode: ExecutionModeKubernetes,
 					Kubernetes: &KubernetesSpec{
 						GitRepository:        "git@github.com:org/repo.git",
-						ClaudeCredsSecretRef: SecretReference{Name: "claude-creds"},
+						ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
 					},
 				},
 			},
@@ -125,7 +125,7 @@ func TestPolecatCustomValidator_ValidateCreate(t *testing.T) {
 				},
 			},
 			wantErr:     true,
-			errContains: "spec.kubernetes.claudeCredsSecretRef.name: is required",
+			errContains: "spec.kubernetes: either claudeCredsSecretRef or apiKeySecretRef is required",
 		},
 		{
 			name: "high resource usage warning",
@@ -180,7 +180,7 @@ func TestPolecatCustomValidator_ValidateCreate(t *testing.T) {
 					Kubernetes: &KubernetesSpec{
 						GitRepository:         "git@github.com:org/repo.git",
 						GitSecretRef:          SecretReference{Name: "git-secret"},
-						ClaudeCredsSecretRef:  SecretReference{Name: "claude-creds"},
+						ClaudeCredsSecretRef:  &SecretReference{Name: "claude-creds"},
 						ActiveDeadlineSeconds: int64Ptr(14400), // 4 hours
 					},
 				},
@@ -276,7 +276,7 @@ func TestPolecatCustomValidator_ValidateUpdate(t *testing.T) {
 					Kubernetes: &KubernetesSpec{
 						GitRepository:        "git@github.com:org/repo.git",
 						GitSecretRef:         SecretReference{Name: "git-secret"},
-						ClaudeCredsSecretRef: SecretReference{Name: "claude-creds"},
+						ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
 					},
 				},
 			},
@@ -393,7 +393,7 @@ func TestPolecatCustomDefaulter_Default(t *testing.T) {
 					Kubernetes: &KubernetesSpec{
 						GitRepository:        "git@github.com:org/repo.git",
 						GitSecretRef:         SecretReference{Name: "git-secret"},
-						ClaudeCredsSecretRef: SecretReference{Name: "claude-creds"},
+						ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
 					},
 				},
 			},
@@ -429,7 +429,7 @@ func TestPolecatCustomDefaulter_Default(t *testing.T) {
 						GitRepository:        "git@github.com:org/repo.git",
 						GitBranch:            "develop",
 						GitSecretRef:         SecretReference{Name: "git-secret"},
-						ClaudeCredsSecretRef: SecretReference{Name: "claude-creds"},
+						ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
 					},
 				},
 			},
@@ -474,7 +474,7 @@ func TestValidateKubernetesSpec(t *testing.T) {
 			spec: &KubernetesSpec{
 				GitRepository:        "git@github.com:org/repo.git",
 				GitSecretRef:         SecretReference{Name: "git-secret"},
-				ClaudeCredsSecretRef: SecretReference{Name: "claude-creds"},
+				ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
 			},
 			wantErrs: 0,
 		},
@@ -482,7 +482,7 @@ func TestValidateKubernetesSpec(t *testing.T) {
 			name: "missing git repository",
 			spec: &KubernetesSpec{
 				GitSecretRef:         SecretReference{Name: "git-secret"},
-				ClaudeCredsSecretRef: SecretReference{Name: "claude-creds"},
+				ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
 			},
 			wantErrs:    1,
 			errContains: []string{"spec.kubernetes.gitRepository: is required"},
@@ -494,7 +494,7 @@ func TestValidateKubernetesSpec(t *testing.T) {
 			errContains: []string{
 				"spec.kubernetes.gitRepository: is required",
 				"spec.kubernetes.gitSecretRef.name: is required",
-				"spec.kubernetes.claudeCredsSecretRef.name: is required",
+				"spec.kubernetes: either claudeCredsSecretRef or apiKeySecretRef is required",
 			},
 		},
 		{
@@ -502,7 +502,7 @@ func TestValidateKubernetesSpec(t *testing.T) {
 			spec: &KubernetesSpec{
 				GitRepository:         "git@github.com:org/repo.git",
 				GitSecretRef:          SecretReference{Name: "git-secret"},
-				ClaudeCredsSecretRef:  SecretReference{Name: "claude-creds"},
+				ClaudeCredsSecretRef:  &SecretReference{Name: "claude-creds"},
 				ActiveDeadlineSeconds: int64Ptr(-1),
 			},
 			wantErrs:    1,

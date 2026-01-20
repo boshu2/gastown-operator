@@ -334,9 +334,25 @@ spec:
                       is terminated
                     format: int64
                     type: integer
+                  apiKeySecretRef:
+                    description: |-
+                      ApiKeySecretRef references a Secret containing the ANTHROPIC_API_KEY
+                      Alternative to ClaudeCredsSecretRef for headless API key authentication
+                    properties:
+                      key:
+                        description: Key is the key in the secret
+                        type: string
+                      name:
+                        description: Name is the name of the secret
+                        type: string
+                    required:
+                    - key
+                    - name
+                    type: object
                   claudeCredsSecretRef:
-                    description: ClaudeCredsSecretRef references a Secret containing
-                      ~/.claude/ contents
+                    description: |-
+                      ClaudeCredsSecretRef references a Secret containing ~/.claude/ contents
+                      Required unless ApiKeySecretRef is provided
                     properties:
                       name:
                         description: name is the name of the secret.
@@ -432,7 +448,6 @@ spec:
                     pattern: ^[a-zA-Z0-9._/-]+$
                     type: string
                 required:
-                - claudeCredsSecretRef
                 - gitRepository
                 - gitSecretRef
                 type: object

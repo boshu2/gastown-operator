@@ -245,6 +245,66 @@ PROMPT+="Execute the work autonomously."
 exec claude --print --dangerously-skip-permissions "$PROMPT"
 `, ClaudeCredsMountPath, ClaudeCredsMountPath)
 
+	// Build environment variables
+	envVars := []corev1.EnvVar{
+		{
+			Name:  "GT_ISSUE",
+			Value: b.polecat.Spec.BeadID,
+		},
+		{
+			Name:  "GT_POLECAT",
+			Value: b.polecat.Name,
+		},
+		{
+			Name:  "GT_RIG",
+			Value: b.polecat.Spec.Rig,
+		},
+		{
+			Name:  "HOME",
+			Value: HomeMountPath,
+		},
+	}
+
+	// Add API key from secret if configured
+	if k8sSpec.ApiKeySecretRef != nil {
+		envVars = append(envVars, corev1.EnvVar{
+			Name: "ANTHROPIC_API_KEY",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: k8sSpec.ApiKeySecretRef.Name,
+					},
+					Key: k8sSpec.ApiKeySecretRef.Key,
+				},
+			},
+		})
+	}
+
+	// Build volume mounts
+	volumeMounts := []corev1.VolumeMount{
+		{
+			Name:      WorkspaceVolumeName,
+			MountPath: WorkspaceMountPath,
+		},
+		{
+			Name:      TmpVolumeName,
+			MountPath: TmpMountPath,
+		},
+		{
+			Name:      HomeVolumeName,
+			MountPath: HomeMountPath,
+		},
+	}
+
+	// Add claude creds mount only if configured (for OAuth auth)
+	if k8sSpec.ClaudeCredsSecretRef != nil {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      ClaudeCredsVolumeName,
+			MountPath: ClaudeCredsMountPath,
+			ReadOnly:  true,
+		})
+	}
+
 	container := corev1.Container{
 		Name:            ClaudeContainerName,
 		Image:           image,
@@ -252,46 +312,9 @@ exec claude --print --dangerously-skip-permissions "$PROMPT"
 		Args:            []string{agentScript},
 		WorkingDir:      fmt.Sprintf("%s/repo", WorkspaceMountPath),
 		SecurityContext: b.buildSecurityContext(),
-		Env: []corev1.EnvVar{
-			// Claude credentials mounted at $HOME/.claude (standard Linux location)
-			// No CLAUDE_CONFIG_DIR needed - Claude uses default path
-			{
-				Name:  "GT_ISSUE",
-				Value: b.polecat.Spec.BeadID,
-			},
-			{
-				Name:  "GT_POLECAT",
-				Value: b.polecat.Name,
-			},
-			{
-				Name:  "GT_RIG",
-				Value: b.polecat.Spec.Rig,
-			},
-			{
-				Name:  "HOME",
-				Value: HomeMountPath,
-			},
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      WorkspaceVolumeName,
-				MountPath: WorkspaceMountPath,
-			},
-			{
-				Name:      ClaudeCredsVolumeName,
-				MountPath: ClaudeCredsMountPath,
-				ReadOnly:  true,
-			},
-			{
-				Name:      TmpVolumeName,
-				MountPath: TmpMountPath,
-			},
-			{
-				Name:      HomeVolumeName,
-				MountPath: HomeMountPath,
-			},
-		},
-		Resources: b.buildResources(),
+		Env:             envVars,
+		VolumeMounts:    volumeMounts,
+		Resources:       b.buildResources(),
 	}
 
 	return container
@@ -301,7 +324,7 @@ exec claude --print --dangerously-skip-permissions "$PROMPT"
 func (b *Builder) buildVolumes() []corev1.Volume {
 	k8sSpec := b.polecat.Spec.Kubernetes
 
-	return []corev1.Volume{
+	volumes := []corev1.Volume{
 		{
 			Name: WorkspaceVolumeName,
 			VolumeSource: corev1.VolumeSource{
@@ -318,14 +341,6 @@ func (b *Builder) buildVolumes() []corev1.Volume {
 			},
 		},
 		{
-			Name: ClaudeCredsVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: k8sSpec.ClaudeCredsSecretRef.Name,
-				},
-			},
-		},
-		{
 			Name: TmpVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
@@ -338,6 +353,20 @@ func (b *Builder) buildVolumes() []corev1.Volume {
 			},
 		},
 	}
+
+	// Add claude creds volume only if configured (for OAuth auth)
+	if k8sSpec.ClaudeCredsSecretRef != nil {
+		volumes = append(volumes, corev1.Volume{
+			Name: ClaudeCredsVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: k8sSpec.ClaudeCredsSecretRef.Name,
+				},
+			},
+		})
+	}
+
+	return volumes
 }
 
 // buildResources creates resource requirements

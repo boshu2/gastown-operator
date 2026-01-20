@@ -301,7 +301,16 @@ func (in *ConvoyStatus) DeepCopy() *ConvoyStatus {
 func (in *KubernetesSpec) DeepCopyInto(out *KubernetesSpec) {
 	*out = *in
 	out.GitSecretRef = in.GitSecretRef
-	out.ClaudeCredsSecretRef = in.ClaudeCredsSecretRef
+	if in.ClaudeCredsSecretRef != nil {
+		in, out := &in.ClaudeCredsSecretRef, &out.ClaudeCredsSecretRef
+		*out = new(SecretReference)
+		**out = **in
+	}
+	if in.ApiKeySecretRef != nil {
+		in, out := &in.ApiKeySecretRef, &out.ApiKeySecretRef
+		*out = new(SecretKeyRef)
+		**out = **in
+	}
 	if in.Resources != nil {
 		in, out := &in.Resources, &out.Resources
 		*out = new(corev1.ResourceRequirements)

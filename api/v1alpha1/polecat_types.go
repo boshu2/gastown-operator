@@ -145,8 +145,14 @@ type KubernetesSpec struct {
 	GitSecretRef SecretReference `json:"gitSecretRef"`
 
 	// ClaudeCredsSecretRef references a Secret containing ~/.claude/ contents
-	// +kubebuilder:validation:Required
-	ClaudeCredsSecretRef SecretReference `json:"claudeCredsSecretRef"`
+	// Required unless ApiKeySecretRef is provided
+	// +optional
+	ClaudeCredsSecretRef *SecretReference `json:"claudeCredsSecretRef,omitempty"`
+
+	// ApiKeySecretRef references a Secret containing the ANTHROPIC_API_KEY
+	// Alternative to ClaudeCredsSecretRef for headless API key authentication
+	// +optional
+	ApiKeySecretRef *SecretKeyRef `json:"apiKeySecretRef,omitempty"`
 
 	// Image overrides the default agent container image
 	// +optional

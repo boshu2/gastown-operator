@@ -406,7 +406,7 @@ var _ = Describe("Polecat Controller", func() {
 						GitSecretRef: gastownv1alpha1.SecretReference{
 							Name: "git-creds",
 						},
-						ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{
+						ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{
 							Name: "claude-creds",
 						},
 					},
@@ -960,7 +960,7 @@ var _ = Describe("Polecat Controller", func() {
 						GitSecretRef: gastownv1alpha1.SecretReference{
 							Name: "git-creds",
 						},
-						ClaudeCredsSecretRef: gastownv1alpha1.SecretReference{
+						ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{
 							Name: "claude-creds",
 						},
 					},
