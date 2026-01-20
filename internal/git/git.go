@@ -25,6 +25,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/org/gastown-operator/pkg/pod"
 )
 
 // Client provides git operations for a repository.
@@ -37,6 +39,9 @@ type Client struct {
 
 	// GitURL is the remote repository URL
 	GitURL string
+
+	// knownHostsPath is the path to a temporary known_hosts file (created on demand)
+	knownHostsPath string
 }
 
 // NewClient creates a new git client for the given repository directory.
@@ -53,6 +58,64 @@ func (c *Client) WithSSHKey(keyPath string) *Client {
 	return c
 }
 
+// ensureKnownHosts creates a temporary known_hosts file with pre-verified SSH host keys
+// for common Git hosting providers (GitHub, GitLab, Bitbucket).
+// This prevents MITM attacks by verifying host keys against known-good values.
+func (c *Client) ensureKnownHosts() (string, error) {
+	if c.knownHostsPath != "" {
+		// Already created
+		return c.knownHostsPath, nil
+	}
+
+	// Create a temporary file for known_hosts
+	tmpFile, err := os.CreateTemp("", "git-known-hosts-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create known_hosts temp file: %w", err)
+	}
+
+	// Write pre-verified host keys from the shared package
+	if _, err := tmpFile.WriteString(pod.PreVerifiedSSHKnownHosts); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
+		return "", fmt.Errorf("failed to write known_hosts: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		_ = os.Remove(tmpFile.Name())
+		return "", fmt.Errorf("failed to close known_hosts file: %w", err)
+	}
+
+	c.knownHostsPath = tmpFile.Name()
+	return c.knownHostsPath, nil
+}
+
+// Cleanup removes temporary files created by the client.
+// Should be called when the client is no longer needed.
+func (c *Client) Cleanup() {
+	if c.knownHostsPath != "" {
+		_ = os.Remove(c.knownHostsPath)
+		c.knownHostsPath = ""
+	}
+}
+
+// buildSSHCommand constructs a secure SSH command string with proper host key verification.
+// SECURITY: Uses pre-verified known_hosts to prevent MITM attacks.
+func (c *Client) buildSSHCommand() (string, error) {
+	if c.SSHKeyPath == "" {
+		return "", nil
+	}
+
+	knownHostsPath, err := c.ensureKnownHosts()
+	if err != nil {
+		return "", fmt.Errorf("failed to setup known_hosts: %w", err)
+	}
+
+	// Use StrictHostKeyChecking=yes with our pre-verified known_hosts file
+	// This rejects connections to hosts not in the known_hosts file
+	return fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=yes -o UserKnownHostsFile=%s",
+		c.SSHKeyPath, knownHostsPath), nil
+}
+
 // runGit executes a git command in the repository directory.
 func (c *Client) runGit(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
@@ -60,8 +123,10 @@ func (c *Client) runGit(ctx context.Context, args ...string) (string, error) {
 
 	// Set up SSH authentication if key is provided
 	if c.SSHKeyPath != "" {
-		sshCmd := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
-			c.SSHKeyPath)
+		sshCmd, err := c.buildSSHCommand()
+		if err != nil {
+			return "", fmt.Errorf("failed to configure SSH: %w", err)
+		}
 		cmd.Env = append(os.Environ(), "GIT_SSH_COMMAND="+sshCmd)
 	}
 
@@ -90,8 +155,10 @@ func (c *Client) Clone(ctx context.Context) error {
 
 	// Set up SSH authentication if key is provided
 	if c.SSHKeyPath != "" {
-		sshCmd := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
-			c.SSHKeyPath)
+		sshCmd, err := c.buildSSHCommand()
+		if err != nil {
+			return fmt.Errorf("failed to configure SSH: %w", err)
+		}
 		cmd.Env = append(os.Environ(), "GIT_SSH_COMMAND="+sshCmd)
 	}
 

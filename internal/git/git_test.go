@@ -53,6 +53,146 @@ func TestWithSSHKey(t *testing.T) {
 	}
 }
 
+func TestEnsureKnownHosts(t *testing.T) {
+	client := NewClient("/tmp/repo", "git@github.com:example/repo.git")
+	client = client.WithSSHKey("/path/to/key")
+	defer client.Cleanup()
+
+	// First call should create the file
+	path1, err := client.ensureKnownHosts()
+	if err != nil {
+		t.Fatalf("ensureKnownHosts failed: %v", err)
+	}
+
+	if path1 == "" {
+		t.Error("Expected non-empty known_hosts path")
+	}
+
+	// Verify file exists and contains expected content
+	content, err := os.ReadFile(path1)
+	if err != nil {
+		t.Fatalf("Failed to read known_hosts file: %v", err)
+	}
+
+	// Should contain GitHub host key
+	if !contains(string(content), "github.com") {
+		t.Error("known_hosts should contain github.com")
+	}
+
+	// Should contain GitLab host key
+	if !contains(string(content), "gitlab.com") {
+		t.Error("known_hosts should contain gitlab.com")
+	}
+
+	// Should contain Bitbucket host key
+	if !contains(string(content), "bitbucket.org") {
+		t.Error("known_hosts should contain bitbucket.org")
+	}
+
+	// Second call should return same path (cached)
+	path2, err := client.ensureKnownHosts()
+	if err != nil {
+		t.Fatalf("Second ensureKnownHosts call failed: %v", err)
+	}
+
+	if path1 != path2 {
+		t.Errorf("Expected cached path %s, got %s", path1, path2)
+	}
+}
+
+func TestBuildSSHCommand(t *testing.T) {
+	t.Run("without SSH key returns empty", func(t *testing.T) {
+		client := NewClient("/tmp/repo", "git@github.com:example/repo.git")
+
+		cmd, err := client.buildSSHCommand()
+		if err != nil {
+			t.Fatalf("buildSSHCommand failed: %v", err)
+		}
+
+		if cmd != "" {
+			t.Errorf("Expected empty command when no SSH key, got: %s", cmd)
+		}
+	})
+
+	t.Run("with SSH key builds secure command", func(t *testing.T) {
+		client := NewClient("/tmp/repo", "git@github.com:example/repo.git")
+		client = client.WithSSHKey("/path/to/key")
+		defer client.Cleanup()
+
+		cmd, err := client.buildSSHCommand()
+		if err != nil {
+			t.Fatalf("buildSSHCommand failed: %v", err)
+		}
+
+		// Should include the SSH key path
+		if !contains(cmd, "-i /path/to/key") {
+			t.Errorf("SSH command should include key path, got: %s", cmd)
+		}
+
+		// Should use StrictHostKeyChecking=yes (secure)
+		if !contains(cmd, "StrictHostKeyChecking=yes") {
+			t.Errorf("SSH command should use StrictHostKeyChecking=yes, got: %s", cmd)
+		}
+
+		// Should NOT use StrictHostKeyChecking=no (insecure)
+		if contains(cmd, "StrictHostKeyChecking=no") {
+			t.Errorf("SSH command should NOT use StrictHostKeyChecking=no, got: %s", cmd)
+		}
+
+		// Should specify a UserKnownHostsFile (not /dev/null)
+		if contains(cmd, "UserKnownHostsFile=/dev/null") {
+			t.Errorf("SSH command should NOT use UserKnownHostsFile=/dev/null, got: %s", cmd)
+		}
+
+		if !contains(cmd, "UserKnownHostsFile=") {
+			t.Errorf("SSH command should specify UserKnownHostsFile, got: %s", cmd)
+		}
+	})
+}
+
+func TestCleanup(t *testing.T) {
+	client := NewClient("/tmp/repo", "git@github.com:example/repo.git")
+	client = client.WithSSHKey("/path/to/key")
+
+	// Create known_hosts file
+	path, err := client.ensureKnownHosts()
+	if err != nil {
+		t.Fatalf("ensureKnownHosts failed: %v", err)
+	}
+
+	// Verify file exists
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("known_hosts file should exist: %v", err)
+	}
+
+	// Cleanup
+	client.Cleanup()
+
+	// File should be removed
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("known_hosts file should be removed after Cleanup")
+	}
+
+	// knownHostsPath should be reset
+	if client.knownHostsPath != "" {
+		t.Error("knownHostsPath should be empty after Cleanup")
+	}
+}
+
+// contains checks if s contains substr
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestClone(t *testing.T) {
 	skipIfNoGit(t)
 
