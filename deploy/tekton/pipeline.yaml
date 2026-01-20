@@ -53,6 +53,10 @@ spec:
       type: string
       default: "1.31.x"
       description: Kubernetes version for envtest (must match controller-runtime)
+    - name: dockerfile
+      type: string
+      default: "Dockerfile"
+      description: Path to Dockerfile (Dockerfile for community, Dockerfile.fips for enterprise)
 
   workspaces:
     - name: source
@@ -128,7 +132,7 @@ spec:
           workspace: source
       params:
         - name: dockerfile-path
-          value: "Dockerfile"
+          value: "$(params.dockerfile)"
 
     # =========================================================================
     # Stage 3: Build Image
@@ -151,7 +155,7 @@ spec:
         - name: IMAGE
           value: "$(params.registry)/gastown-operator:$(params.image-tag)"
         - name: DOCKERFILE
-          value: "Dockerfile"
+          value: "$(params.dockerfile)"
         - name: CONTEXT
           value: "."
         - name: BUILD_EXTRA_ARGS
