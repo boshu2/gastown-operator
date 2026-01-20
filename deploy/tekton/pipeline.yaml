@@ -10,7 +10,8 @@
 #   6. Generate SBOM - syft
 #   7. Sign Image - cosign
 #   8. Mirror to GHCR - skopeo-copy
-#   9. Athena knowledge persistence (finally block)
+#   9. Push Helm Chart - helm-push
+#   10. Athena knowledge persistence (finally block)
 #
 # Prerequisites:
 #   - olympus-ci namespace with ClusterTasks installed
@@ -379,6 +380,27 @@ spec:
         - name: dockerconfig
           workspace: dockerconfig
 
+    # =========================================================================
+    # Stage 9: Push Helm Chart to GHCR
+    # =========================================================================
+
+    - name: helm-push
+      taskRef:
+        name: gastown-operator-helm-push
+      timeout: 5m
+      runAfter:
+        - mirror-to-ghcr
+      params:
+        - name: version
+          value: $(params.image-tag)
+        - name: registry
+          value: $(params.ghcr-registry)
+      workspaces:
+        - name: source
+          workspace: source
+        - name: dockerconfig
+          workspace: dockerconfig
+
   # ===========================================================================
   # Finally: Summary Report and Knowledge Persistence
   # ===========================================================================
@@ -425,9 +447,10 @@ spec:
               echo "  Gas Town Operator CI Pipeline Complete"
               echo "========================================"
               echo ""
-              echo "Images pushed to:"
-              echo "  - $(params.registry)/gastown-operator:$(params.image-tag)"
-              echo "  - $(params.ghcr-registry)/gastown-operator:$(params.image-tag)"
+              echo "Artifacts pushed:"
+              echo "  - Image: $(params.registry)/gastown-operator:$(params.image-tag)"
+              echo "  - Image: $(params.ghcr-registry)/gastown-operator:$(params.image-tag)"
+              echo "  - Helm:  oci://$(params.ghcr-registry)/gastown-operator:$(params.image-tag)"
               echo ""
               echo "Security scans completed:"
               echo "  - govulncheck (Go dependency vulnerabilities)"

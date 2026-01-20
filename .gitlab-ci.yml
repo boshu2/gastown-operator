@@ -1,23 +1,23 @@
-# Labyrinth Operator CI Pipeline
+# Gastown Operator CI Pipeline
 # Kubernetes operator for Gas Town multi-agent orchestration
 #
-# This pipeline uses Tekton for actual builds. GitLab CI handles:
-#   - Triggering Tekton pipelines via webhook
-#   - Basic lint/validation that can run without cluster access
-#   - MR (merge request) checks
+# This is the PRIMARY CI/CD - GitLab/Tekton does all compute.
+# GitHub is a read-only storefront that receives code + releases after Tekton passes.
 #
-# Tekton pipeline location: deploy/tekton/
-# Manual trigger: oc create -f deploy/tekton/pipelinerun.yaml -n olympus-ci
+# Flow:
+#   1. MR merged to main → validate stage runs
+#   2. semantic-release determines version (if any)
+#   3. Tekton pipeline triggered with version tag
+#   4. After Tekton passes: sync code, tag, and release to GitHub
 #
 # Required CI/CD Variables (set in GitLab project settings):
 #   - KUBE_CONFIG: Base64-encoded kubeconfig for olympus-ci namespace
 #   - REGISTRY_URL: Container registry URL (e.g., registry.example.com)
-#   - REGISTRY_USER: Registry username
-#   - REGISTRY_PASSWORD: Registry password
+#   - GITHUB_TOKEN: PAT with repo scope (for creating releases)
+#   - GITHUB_DEPLOY_KEY: SSH deploy key (base64 encoded, for push)
 #
 # Optional Variables:
 #   - TEKTON_NAMESPACE: Override default (olympus-ci)
-#   - TRIVY_SEVERITY: Override scan threshold (default: CRITICAL,HIGH)
 
 variables:
   # DPR Registry (avoids Docker Hub rate limits)
@@ -28,6 +28,8 @@ variables:
   GO_LINT_IMAGE: "${DPR_REGISTRY}/ci-images/golangci-lint:v2.7.2"
   KUBECTL_IMAGE: "${DPR_REGISTRY}/ci-images/k8s:1.31.4"
   YAMLLINT_IMAGE: "${DPR_REGISTRY}/ci-images/yamllint:latest"
+  NODE_IMAGE: "${DPR_REGISTRY}/library/node:20-alpine"
+  ALPINE_GIT_IMAGE: "${DPR_REGISTRY}/library/alpine/git:latest"
 
   GO_VERSION: "1.24"
   TEKTON_NAMESPACE: "olympus-ci"
@@ -35,8 +37,9 @@ variables:
 
 stages:
   - validate
-  - trigger
-  - monitor
+  - version
+  - build
+  - publish
 
 # =============================================================================
 # Stage: Validate (runs in GitLab, no cluster access needed)
@@ -89,31 +92,88 @@ validate:generate:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 # =============================================================================
-# Stage: Trigger Tekton Pipeline
+# Stage: Version (semantic-release)
+# =============================================================================
+
+semantic-release:
+  stage: version
+  image: ${NODE_IMAGE}
+  before_script:
+    - apk add --no-cache git
+    - npm install -g semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/exec conventional-changelog-conventionalcommits
+  script:
+    - |
+      # Configure git for tagging
+      git config user.email "gitlab-ci@gastown.io"
+      git config user.name "GitLab CI"
+
+      # Run semantic-release and capture version
+      set +e
+      OUTPUT=$(npx semantic-release 2>&1)
+      EXIT_CODE=$?
+      set -e
+      echo "$OUTPUT"
+
+      # Extract version if released
+      if echo "$OUTPUT" | grep -q "Published release"; then
+        VERSION=$(cat VERSION 2>/dev/null || echo "")
+        if [ -n "$VERSION" ]; then
+          echo "VERSION=$VERSION" >> version.env
+          echo "RELEASE_TAG=v$VERSION" >> version.env
+          echo "RELEASE_PUBLISHED=true" >> version.env
+          echo "New release: v$VERSION"
+        fi
+      else
+        echo "RELEASE_PUBLISHED=false" >> version.env
+        echo "No release needed (commits don't trigger release)"
+      fi
+  artifacts:
+    reports:
+      dotenv: version.env
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+
+# =============================================================================
+# Stage: Build (Tekton Pipeline)
 # =============================================================================
 
 trigger:tekton:
-  stage: trigger
+  stage: build
   image: ${KUBECTL_IMAGE}
-  variables:
-    IMAGE_TAG: ${CI_COMMIT_SHORT_SHA}
+  needs:
+    - job: semantic-release
+      artifacts: true
   before_script:
     - mkdir -p ~/.kube
     - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
     - chmod 600 ~/.kube/config
   script:
     - |
-      echo "Triggering Tekton pipeline: ${PIPELINE_NAME}"
+      # Skip if no release was published
+      if [ "${RELEASE_PUBLISHED}" != "true" ]; then
+        echo "No new version, skipping Tekton build"
+        echo "To trigger a release, ensure commits follow conventional commits format:"
+        echo "  feat: → minor bump"
+        echo "  fix:  → patch bump"
+        echo "  feat!: or BREAKING CHANGE: → major bump"
+        exit 0
+      fi
+
+      echo "========================================"
+      echo "  Triggering Tekton Pipeline"
+      echo "========================================"
       echo "  Namespace: ${TEKTON_NAMESPACE}"
       echo "  Git URL: ${CI_REPOSITORY_URL}"
-      echo "  Git Revision: ${CI_COMMIT_SHA}"
-      echo "  Image Tag: ${IMAGE_TAG}"
+      echo "  Git Revision: ${RELEASE_TAG}"
+      echo "  Image Tag: ${VERSION}"
+      echo "========================================"
 
-      # Create PipelineRun from template
+      # Create PipelineRun from template with version tag
       cat deploy/tekton/pipelinerun.yaml | \
         sed "s|__GIT_URL__|${CI_REPOSITORY_URL}|g" | \
-        sed "s|__GIT_REVISION__|${CI_COMMIT_SHA}|g" | \
-        sed "s|__IMAGE_TAG__|${IMAGE_TAG}|g" | \
+        sed "s|__GIT_REVISION__|${RELEASE_TAG}|g" | \
+        sed "s|__IMAGE_TAG__|${VERSION}|g" | \
         sed "s|__REGISTRY__|${REGISTRY_URL}|g" | \
         kubectl create -f - -n ${TEKTON_NAMESPACE}
 
@@ -124,22 +184,19 @@ trigger:tekton:
         -o jsonpath='{.items[-1].metadata.name}')
 
       echo "Created PipelineRun: ${PIPELINERUN_NAME}"
-      echo "PIPELINERUN_NAME=${PIPELINERUN_NAME}" >> trigger.env
+      echo "PIPELINERUN_NAME=${PIPELINERUN_NAME}" >> tekton.env
   artifacts:
     reports:
-      dotenv: trigger.env
+      dotenv: tekton.env
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_COMMIT_TAG
-
-# =============================================================================
-# Stage: Monitor Tekton Pipeline
-# =============================================================================
 
 monitor:tekton:
-  stage: monitor
+  stage: build
   image: ${KUBECTL_IMAGE}
   needs:
+    - job: semantic-release
+      artifacts: true
     - job: trigger:tekton
       artifacts: true
   before_script:
@@ -148,6 +205,12 @@ monitor:tekton:
     - chmod 600 ~/.kube/config
   script:
     - |
+      # Skip if no release was published
+      if [ "${RELEASE_PUBLISHED}" != "true" ]; then
+        echo "No release triggered, nothing to monitor"
+        exit 0
+      fi
+
       echo "Monitoring PipelineRun: ${PIPELINERUN_NAME}"
 
       # Wait for completion (timeout: 30 minutes)
@@ -168,6 +231,11 @@ monitor:tekton:
           echo "========================================"
           echo "  Pipeline SUCCEEDED"
           echo "========================================"
+          echo ""
+          echo "Artifacts ready:"
+          echo "  - Image: ${REGISTRY_URL}/gastown-operator:${VERSION}"
+          echo "  - Image: ghcr.io/boshu2/gastown-operator:${VERSION}"
+          echo "  - Helm:  oci://ghcr.io/boshu2/gastown-operator:${VERSION}"
           exit 0
         elif [ "${STATUS}" = "False" ]; then
           echo ""
@@ -188,7 +256,100 @@ monitor:tekton:
       exit 1
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_COMMIT_TAG
+
+# =============================================================================
+# Stage: Publish (GitHub Sync)
+# =============================================================================
+
+sync:github:
+  stage: publish
+  image: ${ALPINE_GIT_IMAGE}
+  needs:
+    - job: semantic-release
+      artifacts: true
+    - job: monitor:tekton
+  before_script:
+    - apk add --no-cache curl jq openssh-client
+    - mkdir -p ~/.ssh
+    - echo "${GITHUB_DEPLOY_KEY}" | base64 -d > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+  script:
+    - |
+      # Skip if no release was published
+      if [ "${RELEASE_PUBLISHED}" != "true" ]; then
+        echo "No new version, skipping GitHub sync"
+        exit 0
+      fi
+
+      echo "========================================"
+      echo "  Syncing to GitHub"
+      echo "========================================"
+      echo "  Version: ${RELEASE_TAG}"
+      echo "========================================"
+
+      # Clone and push to GitHub (mirror mode)
+      git clone --mirror ${CI_REPOSITORY_URL} /tmp/repo.git
+      cd /tmp/repo.git
+      git remote add github git@github.com:boshu2/gastown-operator.git || true
+      git push github --mirror
+
+      echo "Code synced to https://github.com/boshu2/gastown-operator"
+
+      # Create GitHub Release
+      echo "Creating GitHub release ${RELEASE_TAG}..."
+
+      # Build release body
+      RELEASE_BODY=$(cat <<EOF
+      ## Release ${RELEASE_TAG}
+
+      Built and published by GitLab/Tekton pipeline.
+
+      ### Installation
+
+      **Container Image:**
+      \`\`\`bash
+      docker pull ghcr.io/boshu2/gastown-operator:${VERSION}
+      \`\`\`
+
+      **Helm Chart:**
+      \`\`\`bash
+      helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \\
+        --version ${VERSION} \\
+        -f values-community.yaml
+      \`\`\`
+
+      ### Artifacts
+
+      | Artifact | Location |
+      |----------|----------|
+      | Image | \`ghcr.io/boshu2/gastown-operator:${VERSION}\` |
+      | Helm | \`oci://ghcr.io/boshu2/gastown-operator:${VERSION}\` |
+
+      ---
+      *This release was automatically created by GitLab CI after Tekton pipeline passed.*
+      EOF
+      )
+
+      # Create release via GitHub API
+      curl -X POST \
+        -H "Authorization: token ${GITHUB_TOKEN}" \
+        -H "Accept: application/vnd.github.v3+json" \
+        https://api.github.com/repos/boshu2/gastown-operator/releases \
+        -d "$(jq -n \
+          --arg tag "${RELEASE_TAG}" \
+          --arg name "${RELEASE_TAG}" \
+          --arg body "${RELEASE_BODY}" \
+          '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')"
+
+      echo ""
+      echo "========================================"
+      echo "  GitHub Release Created"
+      echo "========================================"
+      echo "  https://github.com/boshu2/gastown-operator/releases/tag/${RELEASE_TAG}"
+      echo "========================================"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 # =============================================================================
 # Manual Jobs
@@ -197,41 +358,24 @@ monitor:tekton:
 deploy:dev:
   stage: .post
   image: ${KUBECTL_IMAGE}
+  needs:
+    - job: semantic-release
+      artifacts: true
+    - job: monitor:tekton
   before_script:
     - mkdir -p ~/.kube
     - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
   script:
     - |
+      if [ "${RELEASE_PUBLISHED}" != "true" ]; then
+        echo "No release to deploy"
+        exit 0
+      fi
+
       echo "Deploying to dev cluster..."
-      make deploy IMG=${REGISTRY_URL}/gastown-operator:${CI_COMMIT_SHORT_SHA}
+      make deploy IMG=${REGISTRY_URL}/gastown-operator:${VERSION}
   environment:
     name: development
   when: manual
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-# =============================================================================
-# GitHub Code Sync (after successful pipeline)
-# =============================================================================
-
-sync:github:
-  stage: .post
-  image: ${KUBECTL_IMAGE}
-  needs:
-    - job: monitor:tekton
-  before_script:
-    - apk add --no-cache git openssh-client
-    - mkdir -p ~/.ssh
-    - echo "${GITHUB_DEPLOY_KEY}" | base64 -d > ~/.ssh/id_ed25519
-    - chmod 600 ~/.ssh/id_ed25519
-    - ssh-keyscan github.com >> ~/.ssh/known_hosts
-  script:
-    - |
-      echo "Syncing code to GitHub..."
-      git clone --mirror ${CI_REPOSITORY_URL} /tmp/repo.git
-      cd /tmp/repo.git
-      git remote add github git@github.com:boshu2/gastown-operator.git
-      git push github --mirror
-      echo "Code synced to https://github.com/boshu2/gastown-operator"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

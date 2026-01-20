@@ -1,0 +1,104 @@
+# Helm Push Task
+# Packages and pushes Helm chart to OCI registry (GHCR)
+#
+# This task packages the Helm chart from source and pushes it to GHCR.
+# It runs after the image has been mirrored to GHCR.
+#
+# Usage:
+#   kubectl apply -f deploy/tekton/tasks/helm-push.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gastown-operator-helm-push
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/part-of: olympus
+spec:
+  description: Package and push Helm chart to OCI registry
+  params:
+    - name: chart-path
+      type: string
+      default: "helm/gastown-operator"
+      description: Path to Helm chart directory
+    - name: version
+      type: string
+      description: Version for the chart (e.g., 1.2.3)
+    - name: registry
+      type: string
+      default: "ghcr.io/boshu2"
+      description: OCI registry for Helm chart
+  workspaces:
+    - name: source
+      description: Source code with Helm chart
+    - name: dockerconfig
+      description: Docker config for registry auth
+  results:
+    - name: CHART_URL
+      description: Full OCI URL to the pushed chart
+  steps:
+    - name: package-and-push
+      # Use official Helm image
+      image: dprusocplvjmp01.deepsky.lab:5000/alpine/helm:3.14.0
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "=== Helm Package and Push ==="
+        echo "Chart path: $(params.chart-path)"
+        echo "Version: $(params.version)"
+        echo "Registry: $(params.registry)"
+        echo "============================="
+
+        # Find auth file for GHCR login
+        AUTH_FILE=""
+        if [ -f "$(workspaces.dockerconfig.path)/config.json" ]; then
+          AUTH_FILE="$(workspaces.dockerconfig.path)/config.json"
+        elif [ -f "$(workspaces.dockerconfig.path)/.dockerconfigjson" ]; then
+          AUTH_FILE="$(workspaces.dockerconfig.path)/.dockerconfigjson"
+        fi
+
+        # Login to GHCR using dockerconfig
+        if [ -n "$AUTH_FILE" ]; then
+          echo "Using auth from: $AUTH_FILE"
+          # Extract GHCR token from docker config
+          # The config has base64-encoded auth: username:password
+          GHCR_AUTH=$(cat "$AUTH_FILE" | grep -A5 '"ghcr.io"' | grep '"auth"' | head -1 | cut -d'"' -f4 || true)
+          if [ -n "$GHCR_AUTH" ]; then
+            GHCR_CREDS=$(echo "$GHCR_AUTH" | base64 -d 2>/dev/null || echo "")
+            if [ -n "$GHCR_CREDS" ]; then
+              GHCR_USER=$(echo "$GHCR_CREDS" | cut -d: -f1)
+              GHCR_PASS=$(echo "$GHCR_CREDS" | cut -d: -f2-)
+              echo "$GHCR_PASS" | helm registry login ghcr.io -u "$GHCR_USER" --password-stdin
+              echo "Logged in to ghcr.io"
+            fi
+          fi
+        else
+          echo "Warning: No auth file found - push may fail"
+        fi
+
+        # Package the chart with the specified version
+        echo "Packaging chart..."
+        helm package $(params.chart-path) --version $(params.version) --app-version v$(params.version)
+
+        # Push to OCI registry
+        CHART_PACKAGE="gastown-operator-$(params.version).tgz"
+        echo "Pushing $CHART_PACKAGE to oci://$(params.registry)..."
+        helm push "$CHART_PACKAGE" oci://$(params.registry)
+
+        # Write result
+        CHART_URL="oci://$(params.registry)/gastown-operator:$(params.version)"
+        echo -n "$CHART_URL" > $(results.CHART_URL.path)
+
+        echo ""
+        echo "=== Helm Chart Pushed ==="
+        echo "URL: $CHART_URL"
+        echo ""
+        echo "Install command:"
+        echo "  helm install gastown-operator $CHART_URL"
+        echo "========================="
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000

@@ -7,11 +7,9 @@
 replicaCount: 1
 
 image:
-  # DPR registry - image built by GitLab CI (Kaniko)
-  # DPR added to cluster allowedRegistries
-  repository: dprusocplvjmp01.deepsky.lab:5000/gastown-operator
+  repository: ghcr.io/boshu2/gastown-operator
   pullPolicy: IfNotPresent
-  tag: "latest"  # Override with specific SHA in production
+  tag: ""  # Defaults to Chart.appVersion if empty
 
 imagePullSecrets: []
 nameOverride: ""

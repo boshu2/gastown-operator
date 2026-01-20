@@ -7,17 +7,20 @@
 #   feat!: or BREAKING CHANGE: → major version bump (0.1.0 → 1.0.0)
 #   chore:/docs:/style: → no release
 #
-# Workflow:
-#   1. Push to main with conventional commits
+# Workflow (GitLab-primary):
+#   1. Push to main (GitLab) with conventional commits
 #   2. semantic-release analyzes commits
 #   3. Determines version bump
 #   4. Updates VERSION file and Chart.yaml
 #   5. Generates/updates CHANGELOG.md
 #   6. Creates git tag (v0.2.0)
-#   7. Creates GitHub release with notes
+#   7. Tekton builds/scans/pushes image + helm
+#   8. GitLab syncs to GitHub and creates GitHub release
+#
+# Note: GitHub release is created by GitLab CI sync:github job,
+# not by semantic-release directly (since we run in GitLab).
 #
 # Prerequisites:
-#   - GITHUB_TOKEN with repo permissions
 #   - Conventional commit messages
 
 branches:
@@ -116,7 +119,7 @@ plugins:
         echo "${nextRelease.version}" > VERSION
         ./scripts/version-sync.sh "${nextRelease.version}"
 
-  # Commit the changes
+  # Commit the changes and create tag
   - - "@semantic-release/git"
     - assets:
         - VERSION
@@ -124,8 +127,5 @@ plugins:
         - helm/gastown-operator/Chart.yaml
       message: "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
 
-  # Create GitHub release
-  - - "@semantic-release/github"
-    - assets: []
-      successComment: false
-      failTitle: false
+  # Note: GitHub release is created by GitLab CI sync:github job
+  # after Tekton pipeline passes (not here, since we run in GitLab)

@@ -1,26 +1,41 @@
-name: CI
+# Lightweight CI for Community PRs
+#
+# This workflow runs on pull requests from community contributors.
+# ALL builds, releases, and deployments are handled by GitLab/Tekton.
+#
+# GitHub is a read-only storefront - it receives code and releases
+# after everything passes in the GitLab/Tekton pipeline.
+#
+# What this workflow does:
+#   - Runs lint and unit tests on PRs (lightweight validation)
+#   - Helps contributors get quick feedback before full CI
+#
+# What this workflow does NOT do:
+#   - Build Docker images
+#   - Push to any registry
+#   - Create releases
+#   - Deploy anything
+#
+# Full CI/CD flow is documented in .gitlab-ci.yml
+
+name: PR Review
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
 permissions:
   contents: read
-  packages: write
 
 env:
   GO_VERSION: '1.24'
-  KIND_VERSION: 'v0.20.0'
-  KUBECTL_VERSION: 'v1.29.0'
 
 jobs:
   # ==========================================================================
-  # Unit Tests and Linting
+  # Lint and Unit Tests (PR validation)
   # ==========================================================================
-  test:
-    name: Unit Tests
+  lint-and-test:
+    name: Lint & Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -46,282 +61,7 @@ jobs:
         run: make test
 
   # ==========================================================================
-  # E2E Tests - Community Edition
-  # ==========================================================================
-  e2e-community:
-    name: E2E Community Edition
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-        with:
-          version: v3.14.0
-
-      - name: Create Kind cluster
-        uses: helm/kind-action@v1.10.0
-        with:
-          cluster_name: gastown-community
-          kubectl_version: ${{ env.KUBECTL_VERSION }}
-
-      - name: Build operator image
-        run: |
-          make docker-build IMG=ghcr.io/${{ github.repository_owner }}/gastown-operator:ci-${{ github.sha }}
-
-      - name: Load image into Kind
-        run: |
-          kind load docker-image ghcr.io/${{ github.repository_owner }}/gastown-operator:ci-${{ github.sha }} --name gastown-community
-
-      - name: Install CRDs
-        run: make install
-
-      - name: Create namespace
-        run: |
-          kubectl create namespace gastown-community
-          kubectl label namespace gastown-community pod-security.kubernetes.io/enforce=restricted
-
-      - name: Install Helm chart (Community)
-        run: |
-          helm install gastown-operator ./helm/gastown-operator \
-            --namespace gastown-community \
-            --set image.repository=ghcr.io/${{ github.repository_owner }}/gastown-operator \
-            --set image.tag=ci-${{ github.sha }} \
-            --set image.pullPolicy=Never \
-            -f helm/gastown-operator/values-community.yaml \
-            --wait --timeout 5m
-
-      - name: Verify operator deployment
-        run: |
-          kubectl wait --for=condition=available deployment/gastown-operator -n gastown-community --timeout=120s
-          kubectl get pods -n gastown-community
-          kubectl get deployment -n gastown-community
-
-      - name: Verify CRDs installed
-        run: |
-          kubectl get crd polecats.gastown.gastown.io
-          kubectl get crd rigs.gastown.gastown.io
-          kubectl get crd convoys.gastown.gastown.io
-          kubectl get crd witnesses.gastown.gastown.io
-          kubectl get crd refineries.gastown.gastown.io
-          kubectl get crd beadstores.gastown.gastown.io
-
-      - name: Create test Rig
-        run: |
-          kubectl apply -f - <<EOF
-          apiVersion: gastown.gastown.io/v1alpha1
-          kind: Rig
-          metadata:
-            name: test-rig-community
-          spec:
-            gitURL: "https://github.com/test/repo.git"
-            beadsPrefix: "test"
-            localPath: "/tmp/test"
-          EOF
-
-      - name: Verify Rig status
-        run: |
-          sleep 5
-          kubectl get rig test-rig-community -o yaml
-          kubectl get rig test-rig-community -o jsonpath='{.status.conditions}' | jq .
-
-      - name: Create test Polecat
-        run: |
-          # Create secrets first
-          kubectl create secret generic test-git-creds -n gastown-community \
-            --from-literal=ssh-privatekey=dummy-test-key
-          kubectl create secret generic test-claude-creds -n gastown-community \
-            --from-literal=api-key=dummy-test-key
-
-          kubectl apply -f - <<EOF
-          apiVersion: gastown.gastown.io/v1alpha1
-          kind: Polecat
-          metadata:
-            name: test-polecat-community
-            namespace: gastown-community
-          spec:
-            rig: test-rig-community
-            desiredState: Working
-            executionMode: kubernetes
-            beadID: test-001
-            kubernetes:
-              gitRepository: "https://github.com/test/repo.git"
-              gitBranch: main
-              gitSecretRef:
-                name: test-git-creds
-              apiKeySecretRef:
-                name: test-claude-creds
-                key: api-key
-          EOF
-
-      - name: Verify Polecat creates Pod
-        run: |
-          echo "Waiting for Polecat pod to be created..."
-          sleep 10
-          kubectl get pods -n gastown-community -l gastown.io/polecat=test-polecat-community
-          kubectl get polecat test-polecat-community -n gastown-community -o yaml
-
-      - name: Check operator logs
-        if: always()
-        run: |
-          kubectl logs deployment/gastown-operator -n gastown-community --tail=100 || true
-
-      - name: Cleanup
-        if: always()
-        run: |
-          kubectl delete polecat test-polecat-community -n gastown-community --ignore-not-found
-          kubectl delete rig test-rig-community --ignore-not-found
-          helm uninstall gastown-operator -n gastown-community || true
-
-  # ==========================================================================
-  # E2E Tests - FIPS Edition
-  # ==========================================================================
-  e2e-fips:
-    name: E2E FIPS Edition
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-        with:
-          version: v3.14.0
-
-      - name: Create Kind cluster
-        uses: helm/kind-action@v1.10.0
-        with:
-          cluster_name: gastown-fips
-          kubectl_version: ${{ env.KUBECTL_VERSION }}
-
-      - name: Build FIPS operator image
-        run: |
-          # Use standard Dockerfile for CI (FIPS requires UBI which needs RH subscription)
-          # In production, FIPS image is built via Tekton with proper base images
-          make docker-build IMG=ghcr.io/${{ github.repository_owner }}/gastown-operator:ci-fips-${{ github.sha }}
-
-      - name: Load image into Kind
-        run: |
-          kind load docker-image ghcr.io/${{ github.repository_owner }}/gastown-operator:ci-fips-${{ github.sha }} --name gastown-fips
-
-      - name: Install CRDs
-        run: make install
-
-      - name: Create namespace
-        run: |
-          kubectl create namespace gastown-fips
-          kubectl label namespace gastown-fips pod-security.kubernetes.io/enforce=restricted
-
-      - name: Install Helm chart (FIPS values)
-        run: |
-          helm install gastown-operator ./helm/gastown-operator \
-            --namespace gastown-fips \
-            --set image.repository=ghcr.io/${{ github.repository_owner }}/gastown-operator \
-            --set image.tag=ci-fips-${{ github.sha }} \
-            --set image.pullPolicy=Never \
-            -f helm/gastown-operator/values-fips.yaml \
-            --wait --timeout 5m
-
-      - name: Verify operator deployment
-        run: |
-          kubectl wait --for=condition=available deployment/gastown-operator -n gastown-fips --timeout=120s
-          kubectl get pods -n gastown-fips
-          kubectl get deployment -n gastown-fips
-
-      - name: Verify security context (FIPS config)
-        run: |
-          echo "Checking pod security context matches FIPS values..."
-          POD=$(kubectl get pod -n gastown-fips -l app.kubernetes.io/name=gastown-operator -o jsonpath='{.items[0].metadata.name}')
-          kubectl get pod $POD -n gastown-fips -o jsonpath='{.spec.securityContext}' | jq .
-
-          # Verify non-root
-          RUN_AS_NON_ROOT=$(kubectl get pod $POD -n gastown-fips -o jsonpath='{.spec.securityContext.runAsNonRoot}')
-          if [ "$RUN_AS_NON_ROOT" != "true" ]; then
-            echo "ERROR: runAsNonRoot should be true"
-            exit 1
-          fi
-
-          # Verify read-only filesystem
-          READ_ONLY=$(kubectl get pod $POD -n gastown-fips -o jsonpath='{.spec.containers[0].securityContext.readOnlyRootFilesystem}')
-          if [ "$READ_ONLY" != "true" ]; then
-            echo "ERROR: readOnlyRootFilesystem should be true"
-            exit 1
-          fi
-
-          echo "Security context validation passed!"
-
-      - name: Verify CRDs installed
-        run: |
-          kubectl get crd polecats.gastown.gastown.io
-          kubectl get crd rigs.gastown.gastown.io
-          kubectl get crd convoys.gastown.gastown.io
-
-      - name: Create test Rig
-        run: |
-          kubectl apply -f - <<EOF
-          apiVersion: gastown.gastown.io/v1alpha1
-          kind: Rig
-          metadata:
-            name: test-rig-fips
-          spec:
-            gitURL: "https://github.com/test/repo.git"
-            beadsPrefix: "fips"
-            localPath: "/tmp/test"
-          EOF
-
-      - name: Verify Rig status
-        run: |
-          sleep 5
-          kubectl get rig test-rig-fips -o yaml
-
-      - name: Create test Convoy
-        run: |
-          kubectl apply -f - <<EOF
-          apiVersion: gastown.gastown.io/v1alpha1
-          kind: Convoy
-          metadata:
-            name: test-convoy-fips
-            namespace: gastown-fips
-          spec:
-            name: "FIPS Test Convoy"
-            rig: test-rig-fips
-            issueIDs:
-              - fips-001
-              - fips-002
-          EOF
-
-      - name: Verify Convoy status
-        run: |
-          sleep 5
-          kubectl get convoy test-convoy-fips -n gastown-fips -o yaml
-
-      - name: Check operator logs
-        if: always()
-        run: |
-          kubectl logs deployment/gastown-operator -n gastown-fips --tail=100 || true
-
-      - name: Cleanup
-        if: always()
-        run: |
-          kubectl delete convoy test-convoy-fips -n gastown-fips --ignore-not-found
-          kubectl delete rig test-rig-fips --ignore-not-found
-          helm uninstall gastown-operator -n gastown-fips || true
-
-  # ==========================================================================
-  # Helm Chart Validation
+  # Helm Lint (chart validation)
   # ==========================================================================
   helm-lint:
     name: Helm Lint
@@ -341,56 +81,35 @@ jobs:
           helm lint ./helm/gastown-operator -f helm/gastown-operator/values-community.yaml
           helm lint ./helm/gastown-operator -f helm/gastown-operator/values-fips.yaml
 
-      - name: Validate Helm templates (Community)
-        run: |
-          helm template gastown-operator ./helm/gastown-operator \
-            -f helm/gastown-operator/values-community.yaml \
-            --debug > /tmp/community-manifest.yaml
-          kubectl apply --dry-run=client -f /tmp/community-manifest.yaml
-
-      - name: Validate Helm templates (FIPS)
-        run: |
-          helm template gastown-operator ./helm/gastown-operator \
-            -f helm/gastown-operator/values-fips.yaml \
-            --debug > /tmp/fips-manifest.yaml
-          kubectl apply --dry-run=client -f /tmp/fips-manifest.yaml
-
   # ==========================================================================
-  # Build and Push Images (on main branch only)
+  # Generated Code Check
   # ==========================================================================
-  build-push:
-    name: Build and Push Images
+  validate-generated:
+    name: Validate Generated Code
     runs-on: ubuntu-latest
-    needs: [e2e-community, e2e-fips, helm-lint]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          go-version: ${{ env.GO_VERSION }}
 
-      - name: Build and push (Community)
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/gastown-operator:latest
-            ghcr.io/${{ github.repository_owner }}/gastown-operator:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push Helm chart
+      - name: Check generated manifests
         run: |
-          helm package ./helm/gastown-operator
-          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-          helm push gastown-operator-*.tgz oci://ghcr.io/${{ github.repository_owner }}
+          make manifests
+          if ! git diff --exit-code config/; then
+            echo "ERROR: Generated manifests are out of date."
+            echo "Run 'make manifests' and commit the changes."
+            exit 1
+          fi
+
+      - name: Check generated code
+        run: |
+          make generate
+          if ! git diff --exit-code api/; then
+            echo "ERROR: Generated code is out of date."
+            echo "Run 'make generate' and commit the changes."
+            exit 1
+          fi
