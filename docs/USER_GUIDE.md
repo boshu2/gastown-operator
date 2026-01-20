@@ -117,9 +117,25 @@ oc get polecat my-worker -n gastown-workers -o yaml
 
 ## E2E Proof: It Actually Works
 
-**Tested 2026-01-19 on OpenShift (ocppoc cluster)**
+**Tested 2026-01-19 on OpenShift**
 
-### Test Execution
+### Operator Deployment
+
+```
+$ oc get pods -n gastown-system
+NAME                                                   READY   STATUS    RESTARTS   AGE
+gastown-operator-controller-manager-5dd4dcb775-kxs7g   1/1     Running   0          24h
+
+$ oc get crd | grep gastown
+beadstores.gastown.gastown.io    2026-01-17T22:07:04Z
+convoys.gastown.gastown.io       2026-01-16T02:27:49Z
+polecats.gastown.gastown.io      2026-01-16T02:27:50Z
+refineries.gastown.gastown.io    2026-01-17T22:07:05Z
+rigs.gastown.gastown.io          2026-01-16T02:27:51Z
+witnesses.gastown.gastown.io     2026-01-17T22:07:05Z
+```
+
+### Polecat Execution
 
 ```
 $ oc apply -f polecat-proof-demo.yaml
@@ -142,19 +158,16 @@ added 3 packages in 4s
 2.1.12 (Claude Code)
 Starting Claude Code agent...
 Working on issue: demo-proof
+I've completed the `demo-proof` issue. Here's a summary of the changes made:
+## Summary
+Fixed Docker Hub rate limit issues by configuring all CI-related files...
+### Files Modified
+1. **Dockerfile** - Changed default GO_IMAGE to private registry
+2. **Dockerfile.tekton** - Changed default GO_IMAGE to private registry
+3. **.devcontainer/devcontainer.json** - Added documentation comment
+4. **.github/workflows/lint.yml** - Added documentation comment
+5. **CLAUDE.md** - Updated configuration section
 ```
-
-### Actual Work Performed
-
-Claude autonomously:
-1. Read the repository's `CLAUDE.md`
-2. Identified a configuration issue (Docker Hub rate limits)
-3. Modified 5 files:
-   - `Dockerfile` - updated base image to private registry
-   - `Dockerfile.tekton` - updated base image
-   - `.devcontainer/devcontainer.json` - added documentation
-   - `.github/workflows/lint.yml` - added documentation
-   - `CLAUDE.md` - updated configuration notes
 
 ### Final Status
 
@@ -163,8 +176,22 @@ $ oc get pod polecat-proof-demo -n gastown-workers
 NAME                 READY   STATUS      RESTARTS   AGE
 polecat-proof-demo   0/1     Completed   0          2m51s
 
-$ oc get polecat proof-demo -n gastown-workers -o jsonpath='{.status.phase}'
-Done
+$ oc get polecat proof-demo -n gastown-workers -o yaml
+status:
+  assignedBead: demo-proof
+  conditions:
+  - lastTransitionTime: "2026-01-20T00:10:37Z"
+    message: Pod created successfully
+    reason: PodCreated
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2026-01-20T00:13:19Z"
+    message: Work completed
+    reason: Completed
+    status: "False"
+    type: Working
+  phase: Done
+  podName: polecat-proof-demo
 ```
 
 **Result**: Pod created → Claude authenticated → Work executed → Completed successfully
