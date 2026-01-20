@@ -1,0 +1,138 @@
+# Release Validation Task
+# Validates release tags and ensures version consistency
+#
+# Checks:
+# - Tag format matches vX.Y.Z (semver)
+# - Chart.yaml version matches tag (without v prefix)
+# - Chart.yaml appVersion matches tag (without v prefix)
+#
+# Usage:
+#   kubectl apply -f deploy/tekton/tasks/release-validate.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gastown-operator-release-validate
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/part-of: olympus
+spec:
+  description: Validate release tag format and version consistency
+  workspaces:
+    - name: source
+  params:
+    - name: release-tag
+      type: string
+      description: Release tag to validate (e.g., v0.1.1)
+    - name: chart-path
+      type: string
+      default: "helm/gastown-operator/Chart.yaml"
+      description: Path to Helm Chart.yaml
+  results:
+    - name: validation-status
+      description: Validation result (passed/failed)
+    - name: version
+      description: Extracted version number (without v prefix)
+  steps:
+    - name: validate-release
+      image: dprusocplvjmp01.deepsky.lab:5000/library/alpine:3.19
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "========================================"
+        echo "  Release Validation"
+        echo "========================================"
+        echo ""
+        echo "Release tag: $(params.release-tag)"
+        echo "Chart path: $(params.chart-path)"
+        echo ""
+
+        ERRORS=""
+
+        # ======================================
+        # 1. Validate tag format (vX.Y.Z)
+        # ======================================
+        echo "Checking tag format..."
+
+        TAG="$(params.release-tag)"
+        if echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+          echo "  ✓ Tag format valid: $TAG"
+          # Extract version without 'v' prefix
+          VERSION="${TAG#v}"
+          echo "$VERSION" > $(results.version.path)
+        else
+          echo "  ✗ Invalid tag format: $TAG"
+          echo "    Expected: vX.Y.Z (e.g., v0.1.1, v1.0.0-rc.1)"
+          ERRORS="$ERRORS\n- Invalid tag format"
+        fi
+
+        # ======================================
+        # 2. Check Chart.yaml exists
+        # ======================================
+        echo ""
+        echo "Checking Chart.yaml..."
+
+        CHART_PATH="$(workspaces.source.path)/$(params.chart-path)"
+        if [ ! -f "$CHART_PATH" ]; then
+          echo "  ✗ Chart.yaml not found at: $CHART_PATH"
+          ERRORS="$ERRORS\n- Chart.yaml not found"
+        else
+          echo "  ✓ Chart.yaml found"
+
+          # ======================================
+          # 3. Validate Chart.yaml version
+          # ======================================
+          echo ""
+          echo "Checking Chart.yaml version..."
+
+          CHART_VERSION=$(grep "^version:" "$CHART_PATH" | head -1 | awk '{print $2}' | tr -d '"')
+          if [ "$CHART_VERSION" = "$VERSION" ]; then
+            echo "  ✓ Chart version matches: $CHART_VERSION"
+          else
+            echo "  ✗ Chart version mismatch"
+            echo "    Expected: $VERSION"
+            echo "    Found: $CHART_VERSION"
+            ERRORS="$ERRORS\n- Chart version mismatch"
+          fi
+
+          # ======================================
+          # 4. Validate Chart.yaml appVersion
+          # ======================================
+          echo ""
+          echo "Checking Chart.yaml appVersion..."
+
+          APP_VERSION=$(grep "^appVersion:" "$CHART_PATH" | head -1 | awk '{print $2}' | tr -d '"')
+          if [ "$APP_VERSION" = "$VERSION" ]; then
+            echo "  ✓ App version matches: $APP_VERSION"
+          else
+            echo "  ✗ App version mismatch"
+            echo "    Expected: $VERSION"
+            echo "    Found: $APP_VERSION"
+            ERRORS="$ERRORS\n- App version mismatch"
+          fi
+        fi
+
+        # ======================================
+        # Summary
+        # ======================================
+        echo ""
+        echo "========================================"
+        if [ -z "$ERRORS" ]; then
+          echo "  Release validation PASSED"
+          echo "passed" > $(results.validation-status.path)
+          echo "========================================"
+          exit 0
+        else
+          echo "  Release validation FAILED"
+          echo "failed" > $(results.validation-status.path)
+          echo ""
+          echo "Errors:"
+          printf "$ERRORS\n"
+          echo "========================================"
+          echo ""
+          echo "FATAL: Release validation failed. Fix the errors above."
+          exit 1
+        fi

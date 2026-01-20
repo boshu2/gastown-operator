@@ -1,8 +1,10 @@
 # gastown-operator Dockerfile (Community Edition)
 # Multi-stage build for vanilla Kubernetes environments
 #
-# Lightweight build using Alpine and distroless images.
-# For FIPS/OpenShift environments, use Dockerfile.fips instead.
+# For Tekton CI: The build-gt-cli Task pre-builds the gt binary
+# and places it at ./gt in the build context before Kaniko runs.
+#
+# For local builds: Run `make build-gt` first to build the gt binary.
 #
 # Build args allow image override in CI:
 #   --build-arg GO_IMAGE=${REGISTRY}/golang:1.25-alpine
@@ -11,31 +13,7 @@ ARG GO_IMAGE=golang:1.25-alpine
 ARG RUNTIME_IMAGE=gcr.io/distroless/static:nonroot
 
 # ------------------------------------------------------------------------------
-# Stage 1: Build gt CLI from daedalus source
-# ------------------------------------------------------------------------------
-FROM ${GO_IMAGE} AS gt-builder
-
-# Install git and ca-certificates (Alpine, Debian, or RHEL)
-RUN if command -v apk > /dev/null; then \
-        apk add --no-cache git ca-certificates; \
-    elif command -v apt-get > /dev/null; then \
-        apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*; \
-    elif command -v dnf > /dev/null; then \
-        dnf install -y git ca-certificates && dnf clean all; \
-    elif command -v yum > /dev/null; then \
-        yum install -y git ca-certificates && yum clean all; \
-    else \
-        echo "No package manager found" && exit 1; \
-    fi
-WORKDIR /src
-
-# Clone and build gt CLI from upstream GitHub (public)
-RUN git clone https://github.com/steveyegge/gastown.git . && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -trimpath -ldflags="-s -w" -o /out/gt ./cmd/gt
-
-# ------------------------------------------------------------------------------
-# Stage 2: Build operator manager
+# Stage 1: Build operator manager
 # ------------------------------------------------------------------------------
 FROM ${GO_IMAGE} AS builder
 
@@ -66,14 +44,17 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /out/manager ./cmd/main.go
 
 # ------------------------------------------------------------------------------
-# Stage 3: Minimal distroless runtime image
+# Stage 2: Minimal distroless runtime image
 # ------------------------------------------------------------------------------
 FROM ${RUNTIME_IMAGE}
 
 WORKDIR /
 
-# Copy binaries
-COPY --from=gt-builder /out/gt /usr/local/bin/gt
+# Copy pre-built gt CLI from context (built by Tekton build-gt-cli Task)
+# For local builds: run `make build-gt` first
+COPY gt /usr/local/bin/gt
+
+# Copy operator manager
 COPY --from=builder /out/manager .
 
 USER 65532:65532

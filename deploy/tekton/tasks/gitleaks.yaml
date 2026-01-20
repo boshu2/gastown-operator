@@ -1,0 +1,119 @@
+# Secret Detection Task
+# Runs gitleaks to detect hardcoded secrets in source code
+#
+# Detects:
+# - API keys and tokens
+# - AWS credentials
+# - Private keys
+# - Passwords in config files
+# - Generic secrets
+#
+# Usage:
+#   kubectl apply -f deploy/tekton/tasks/gitleaks.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gastown-operator-gitleaks
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/part-of: olympus
+spec:
+  description: Detect hardcoded secrets using gitleaks
+  workspaces:
+    - name: source
+  params:
+    - name: gitleaks-image
+      type: string
+      default: "dprusocplvjmp01.deepsky.lab:5000/zricethezav/gitleaks:v8.21.2"
+      description: Gitleaks container image
+    - name: config-path
+      type: string
+      default: ""
+      description: Path to custom gitleaks config (optional)
+    - name: fail-on-secret
+      type: string
+      default: "true"
+      description: Whether to fail the task if secrets are found
+  results:
+    - name: scan-status
+      description: Scan result (passed/failed)
+    - name: secret-count
+      description: Number of secrets found
+  steps:
+    - name: gitleaks-scan
+      image: $(params.gitleaks-image)
+      workingDir: $(workspaces.source.path)
+      computeResources:
+        requests:
+          memory: 256Mi
+          cpu: 100m
+        limits:
+          memory: 512Mi
+          cpu: 500m
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "========================================"
+        echo "  Secret Detection (gitleaks)"
+        echo "========================================"
+        echo ""
+
+        # Build gitleaks arguments
+        GITLEAKS_ARGS="detect --source . --report-format json --report-path /tmp/gitleaks-report.json"
+
+        # Add custom config if specified
+        if [ -n "$(params.config-path)" ]; then
+          GITLEAKS_ARGS="$GITLEAKS_ARGS --config $(params.config-path)"
+          echo "Using custom config: $(params.config-path)"
+        fi
+
+        echo "Scanning for secrets..."
+        echo "----------------------------------------"
+
+        # Run gitleaks (returns non-zero on findings)
+        set +e
+        gitleaks $GITLEAKS_ARGS 2>&1 | tee /tmp/gitleaks-output.txt
+        SCAN_EXIT=$?
+        set -e
+
+        # Count secrets from report
+        if [ -f /tmp/gitleaks-report.json ]; then
+          SECRET_COUNT=$(cat /tmp/gitleaks-report.json | grep -c '"RuleID"' 2>/dev/null || echo "0")
+        else
+          SECRET_COUNT="0"
+        fi
+        echo "$SECRET_COUNT" > $(results.secret-count.path)
+
+        echo ""
+        echo "========================================"
+        if [ "$SCAN_EXIT" -eq 0 ]; then
+          echo "  No secrets detected"
+          echo "passed" > $(results.scan-status.path)
+          echo "========================================"
+          exit 0
+        else
+          echo "  Found $SECRET_COUNT potential secret(s)"
+          echo "failed" > $(results.scan-status.path)
+          echo "========================================"
+
+          # Print findings
+          if [ -f /tmp/gitleaks-report.json ] && [ "$SECRET_COUNT" -gt 0 ]; then
+            echo ""
+            echo "Secrets found:"
+            cat /tmp/gitleaks-report.json
+          fi
+
+          if [ "$(params.fail-on-secret)" = "true" ]; then
+            echo ""
+            echo "FATAL: Secrets detected in source code. Failing build."
+            echo "Please remove secrets and use environment variables or sealed secrets."
+            exit 1
+          else
+            echo ""
+            echo "WARNING: Secrets detected but fail-on-secret=false"
+            exit 0
+          fi
+        fi

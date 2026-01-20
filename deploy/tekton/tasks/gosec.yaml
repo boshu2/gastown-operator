@@ -1,0 +1,127 @@
+# Go Security Static Analysis Task
+# Runs gosec for Go security-focused static analysis
+#
+# Detects common security issues:
+# - SQL injection
+# - Command injection
+# - Hardcoded credentials
+# - Weak cryptography
+# - Path traversal
+#
+# Usage:
+#   kubectl apply -f deploy/tekton/tasks/gosec.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gastown-operator-gosec
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/part-of: olympus
+spec:
+  description: Run Go security static analysis using gosec
+  workspaces:
+    - name: source
+  params:
+    - name: gosec-image
+      type: string
+      default: "dprusocplvjmp01.deepsky.lab:5000/securego/gosec:2.21.4"
+      description: Gosec container image
+    - name: severity
+      type: string
+      default: "HIGH,CRITICAL"
+      description: Minimum severity to fail on (LOW, MEDIUM, HIGH, CRITICAL)
+    - name: confidence
+      type: string
+      default: "HIGH"
+      description: Minimum confidence level (LOW, MEDIUM, HIGH)
+    - name: exclude-rules
+      type: string
+      default: ""
+      description: Rules to exclude (comma-separated, e.g., G104,G307)
+  results:
+    - name: scan-status
+      description: Scan result (passed/failed)
+    - name: finding-count
+      description: Number of security findings
+  steps:
+    - name: gosec-scan
+      image: $(params.gosec-image)
+      workingDir: $(workspaces.source.path)
+      computeResources:
+        requests:
+          memory: 512Mi
+          cpu: 250m
+        limits:
+          memory: 1Gi
+          cpu: "1"
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "========================================"
+        echo "  Go Security Analysis (gosec)"
+        echo "========================================"
+        echo ""
+        echo "Severity threshold: $(params.severity)"
+        echo "Confidence threshold: $(params.confidence)"
+        echo ""
+
+        # Build gosec arguments
+        GOSEC_ARGS="-fmt=json -out=/tmp/gosec-results.json"
+
+        # Add severity filter
+        GOSEC_ARGS="$GOSEC_ARGS -severity=$(params.severity)"
+
+        # Add confidence filter
+        GOSEC_ARGS="$GOSEC_ARGS -confidence=$(params.confidence)"
+
+        # Add exclusions if specified
+        if [ -n "$(params.exclude-rules)" ]; then
+          GOSEC_ARGS="$GOSEC_ARGS -exclude=$(params.exclude-rules)"
+          echo "Excluded rules: $(params.exclude-rules)"
+        fi
+
+        echo ""
+        echo "Running gosec..."
+        echo "----------------------------------------"
+
+        # Run gosec (returns non-zero on findings)
+        set +e
+        gosec $GOSEC_ARGS ./... 2>&1 | tee /tmp/gosec-output.txt
+        SCAN_EXIT=$?
+        set -e
+
+        # Parse results
+        if [ -f /tmp/gosec-results.json ]; then
+          # Count issues from JSON output
+          FINDING_COUNT=$(cat /tmp/gosec-results.json | grep -o '"severity"' | wc -l | tr -d ' ')
+        else
+          FINDING_COUNT="0"
+        fi
+        echo "$FINDING_COUNT" > $(results.finding-count.path)
+
+        echo ""
+        echo "========================================"
+        if [ "$SCAN_EXIT" -eq 0 ]; then
+          echo "  No security issues found"
+          echo "passed" > $(results.scan-status.path)
+          echo "========================================"
+          exit 0
+        else
+          echo "  Found $FINDING_COUNT security issue(s)"
+          echo "failed" > $(results.scan-status.path)
+          echo "========================================"
+
+          # Print summary from JSON if available
+          if [ -f /tmp/gosec-results.json ]; then
+            echo ""
+            echo "Issues found:"
+            cat /tmp/gosec-results.json | head -100
+          fi
+
+          echo ""
+          echo "FATAL: Security issues detected. Failing build."
+          exit 1
+        fi

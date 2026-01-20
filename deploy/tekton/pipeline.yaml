@@ -1,11 +1,15 @@
 # Gas Town Operator CI Pipeline
-# Multi-stage pipeline with security scanning
+# Multi-stage pipeline with comprehensive security scanning
 #
 # Stages:
 #   1. Clone - git-clone ClusterTask
-#   2. Parallel: go-test, trivy-fs, hadolint
-#   3. Build Image - kaniko-build ClusterTask
-#   4. Scan Image - trivy-image ClusterTask
+#   2. Parallel: go-test, govulncheck, gosec, gitleaks, trivy-fs, hadolint
+#   3. Build gt CLI (pre-build for Dockerfile)
+#   4. Build Image - kaniko-build ClusterTask
+#   5. Scan Image - trivy-image ClusterTask
+#   6. Generate SBOM - syft
+#   7. Sign Image - cosign
+#   8. Mirror to GHCR - skopeo-copy
 #
 # Prerequisites:
 #   - olympus-ci namespace with ClusterTasks installed
@@ -28,9 +32,11 @@ metadata:
 spec:
   description: |
     CI pipeline for Gas Town Operator - Kubernetes operator for Gas Town multi-agent orchestration.
-    Includes security scanning: Trivy (secrets, vulns), Hadolint Dockerfile lint.
+    Includes comprehensive security scanning: govulncheck, gosec, gitleaks, Trivy, Hadolint.
+    Generates SBOM and signs images with Cosign.
 
   params:
+    # Git parameters
     - name: git-url
       type: string
       description: Git repository URL
@@ -38,25 +44,57 @@ spec:
       type: string
       default: "main"
       description: Git revision (branch, tag, or SHA)
+
+    # Image parameters
     - name: image-tag
       type: string
       default: "dev"
       description: Tag for the built image
-    - name: registry
-      type: string
-      description: Container registry URL
-    - name: trivy-fail-on
-      type: string
-      default: "CRITICAL,HIGH"
-      description: Trivy severity threshold
-    - name: envtest-k8s-version
-      type: string
-      default: "1.31.x"
-      description: Kubernetes version for envtest (must match controller-runtime)
     - name: dockerfile
       type: string
       default: "Dockerfile"
       description: Path to Dockerfile (Dockerfile for community, Dockerfile.fips for enterprise)
+
+    # Registry parameters (portable)
+    - name: registry
+      type: string
+      description: Primary container registry URL (internal)
+    - name: ghcr-registry
+      type: string
+      default: "ghcr.io/boshu2"
+      description: GHCR registry for public mirroring
+
+    # Gastown CLI parameters
+    - name: gastown-ref
+      type: string
+      default: "main"
+      description: Git ref for gastown CLI (tag/branch/SHA)
+
+    # Security parameters
+    - name: trivy-fail-on
+      type: string
+      default: "CRITICAL,HIGH"
+      description: Trivy severity threshold
+    - name: gosec-severity
+      type: string
+      default: "HIGH,CRITICAL"
+      description: Gosec severity threshold
+    - name: fail-on-vuln
+      type: string
+      default: "true"
+      description: Whether to fail on vulnerabilities
+
+    # Build parameters
+    - name: envtest-k8s-version
+      type: string
+      default: "1.31.x"
+      description: Kubernetes version for envtest (must match controller-runtime)
+
+    # Signing parameters
+    - name: cosign-signing-mode
+      type: string
+      default: "keyless"
+      description: Cosign signing mode (keyless or key-based)
 
   workspaces:
     - name: source
@@ -74,6 +112,7 @@ spec:
       taskRef:
         name: git-clone
         kind: ClusterTask
+      timeout: 5m
       workspaces:
         - name: output
           workspace: source
@@ -93,6 +132,7 @@ spec:
     - name: go-test
       taskRef:
         name: gastown-operator-go-test
+      timeout: 15m
       runAfter:
         - clone
       workspaces:
@@ -104,11 +144,53 @@ spec:
         - name: envtest-k8s-version
           value: $(params.envtest-k8s-version)
 
-    # 2b. Trivy filesystem scan - secrets and misconfigs
+    # 2b. Go vulnerability check
+    - name: govulncheck
+      taskRef:
+        name: gastown-operator-govulncheck
+      timeout: 10m
+      runAfter:
+        - clone
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: packages
+          value: "./..."
+        - name: fail-on-vuln
+          value: $(params.fail-on-vuln)
+
+    # 2c. Go security static analysis
+    - name: gosec
+      taskRef:
+        name: gastown-operator-gosec
+      timeout: 10m
+      runAfter:
+        - clone
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: severity
+          value: $(params.gosec-severity)
+
+    # 2d. Secret detection
+    - name: gitleaks
+      taskRef:
+        name: gastown-operator-gitleaks
+      timeout: 5m
+      runAfter:
+        - clone
+      workspaces:
+        - name: source
+          workspace: source
+
+    # 2e. Trivy filesystem scan - secrets and misconfigs
     - name: scan-secrets
       taskRef:
         name: jren-trivy-fs
         kind: ClusterTask
+      timeout: 10m
       runAfter:
         - clone
       workspaces:
@@ -120,11 +202,12 @@ spec:
         - name: severity
           value: "LOW,MEDIUM,HIGH,CRITICAL"
 
-    # 2c. Hadolint - Dockerfile best practices
+    # 2f. Hadolint - Dockerfile best practices
     - name: lint-dockerfile
       taskRef:
         name: jren-hadolint-scan
         kind: ClusterTask
+      timeout: 5m
       runAfter:
         - clone
       workspaces:
@@ -135,17 +218,39 @@ spec:
           value: "$(params.dockerfile)"
 
     # =========================================================================
-    # Stage 3: Build Image
+    # Stage 3: Build gt CLI (pre-build for Dockerfile)
+    # =========================================================================
+
+    - name: build-gt-cli
+      taskRef:
+        name: gastown-operator-build-gt-cli
+      timeout: 10m
+      runAfter:
+        - clone
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: gastown-ref
+          value: $(params.gastown-ref)
+
+    # =========================================================================
+    # Stage 4: Build Image
     # =========================================================================
 
     - name: build-operator
       taskRef:
         name: jren-kaniko-build
         kind: ClusterTask
+      timeout: 20m
       runAfter:
         - go-test
+        - govulncheck
+        - gosec
+        - gitleaks
         - scan-secrets
         - lint-dockerfile
+        - build-gt-cli
       workspaces:
         - name: source
           workspace: source
@@ -162,13 +267,14 @@ spec:
           value: "--build-arg=VERSION=$(params.image-tag) --build-arg=GO_IMAGE=$(params.registry)/projectquay/golang:1.24"
 
     # =========================================================================
-    # Stage 4: Image Security Scan
+    # Stage 5: Image Security Scan
     # =========================================================================
 
     - name: scan-image
       taskRef:
         name: jren-trivy-image
         kind: ClusterTask
+      timeout: 15m
       runAfter:
         - build-operator
       workspaces:
@@ -183,19 +289,64 @@ spec:
           value: "$(params.trivy-fail-on)"
 
     # =========================================================================
-    # Stage 5: Mirror to GHCR (Public Registry)
+    # Stage 6: Generate SBOM
+    # =========================================================================
+
+    - name: generate-sbom
+      taskRef:
+        name: gastown-operator-syft-sbom
+      timeout: 10m
+      runAfter:
+        - scan-image
+      workspaces:
+        - name: source
+          workspace: source
+        - name: dockerconfig
+          workspace: dockerconfig
+      params:
+        - name: image
+          value: "$(params.registry)/gastown-operator:$(params.image-tag)"
+        - name: output-format
+          value: "spdx-json"
+
+    # =========================================================================
+    # Stage 7: Sign Image
+    # =========================================================================
+
+    - name: sign-image
+      taskRef:
+        name: gastown-operator-cosign-sign
+      timeout: 5m
+      runAfter:
+        - generate-sbom
+      workspaces:
+        - name: source
+          workspace: source
+        - name: dockerconfig
+          workspace: dockerconfig
+      params:
+        - name: image
+          value: "$(params.registry)/gastown-operator:$(params.image-tag)"
+        - name: signing-mode
+          value: $(params.cosign-signing-mode)
+        - name: sbom-path
+          value: "$(workspaces.source.path)/sbom.spdx-json.json"
+
+    # =========================================================================
+    # Stage 8: Mirror to GHCR (Public Registry)
     # =========================================================================
 
     - name: mirror-to-ghcr
       taskRef:
         name: gastown-operator-skopeo-copy
+      timeout: 10m
       runAfter:
-        - scan-image
+        - sign-image
       params:
         - name: srcImageURL
           value: "docker://$(params.registry)/gastown-operator:$(params.image-tag)"
         - name: destImageURL
-          value: "docker://ghcr.io/boshu2/gastown-operator:$(params.image-tag)"
+          value: "docker://$(params.ghcr-registry)/gastown-operator:$(params.image-tag)"
         - name: srcTLSverify
           value: "false"
         - name: destTLSverify
@@ -212,11 +363,15 @@ spec:
       params:
         - name: registry
           value: $(params.registry)
+        - name: ghcr-registry
+          value: $(params.ghcr-registry)
         - name: image-tag
           value: $(params.image-tag)
       taskSpec:
         params:
           - name: registry
+            type: string
+          - name: ghcr-registry
             type: string
           - name: image-tag
             type: string
@@ -231,11 +386,18 @@ spec:
               echo ""
               echo "Images pushed to:"
               echo "  - $(params.registry)/gastown-operator:$(params.image-tag)"
-              echo "  - ghcr.io/boshu2/gastown-operator:$(params.image-tag)"
+              echo "  - $(params.ghcr-registry)/gastown-operator:$(params.image-tag)"
               echo ""
               echo "Security scans completed:"
+              echo "  - govulncheck (Go dependency vulnerabilities)"
+              echo "  - gosec (Go security static analysis)"
+              echo "  - gitleaks (secret detection)"
               echo "  - Trivy filesystem scan (secrets, misconfigs)"
               echo "  - Hadolint Dockerfile lint"
               echo "  - Trivy image vulnerability scan"
+              echo ""
+              echo "Supply chain security:"
+              echo "  - SBOM generated (SPDX JSON)"
+              echo "  - Image signed with Cosign"
               echo ""
               echo "========================================"

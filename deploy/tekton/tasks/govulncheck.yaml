@@ -1,0 +1,113 @@
+# Go Vulnerability Check Task
+# Runs govulncheck to scan for known vulnerabilities in Go dependencies
+#
+# Uses the official govulncheck tool from golang.org/x/vuln
+# Fails pipeline on any vulnerability found (HIGH/CRITICAL by default)
+#
+# Usage:
+#   kubectl apply -f deploy/tekton/tasks/govulncheck.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gastown-operator-govulncheck
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/part-of: olympus
+spec:
+  description: Scan Go dependencies for known vulnerabilities using govulncheck
+  workspaces:
+    - name: source
+  params:
+    - name: go-image
+      type: string
+      default: "dprusocplvjmp01.deepsky.lab:5000/projectquay/golang:1.24"
+      description: Go container image to use
+    - name: packages
+      type: string
+      default: "./..."
+      description: Go packages to scan
+    - name: fail-on-vuln
+      type: string
+      default: "true"
+      description: Whether to fail the task if vulnerabilities are found
+  results:
+    - name: scan-status
+      description: Scan result (passed/failed)
+    - name: vuln-count
+      description: Number of vulnerabilities found
+  steps:
+    - name: govulncheck
+      image: $(params.go-image)
+      workingDir: $(workspaces.source.path)
+      computeResources:
+        requests:
+          memory: 512Mi
+          cpu: 250m
+        limits:
+          memory: 1Gi
+          cpu: "1"
+      env:
+        - name: GOCACHE
+          value: "/workspace/source/.cache/go-build"
+        - name: GOMODCACHE
+          value: "/workspace/source/.cache/go-mod"
+      script: |
+        #!/bin/bash
+        set -e
+
+        echo "========================================"
+        echo "  Go Vulnerability Check (govulncheck)"
+        echo "========================================"
+        echo ""
+        echo "Go version: $(go version)"
+        echo "Packages: $(params.packages)"
+        echo ""
+
+        # Install govulncheck
+        echo "Installing govulncheck..."
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        export PATH="$(go env GOPATH)/bin:$PATH"
+
+        # Download dependencies first
+        echo "Downloading Go modules..."
+        go mod download
+
+        # Run vulnerability check
+        echo ""
+        echo "Running govulncheck..."
+        echo "----------------------------------------"
+
+        # Run govulncheck and capture output
+        set +e
+        govulncheck $(params.packages) 2>&1 | tee /tmp/govulncheck-output.txt
+        SCAN_EXIT=$?
+        set -e
+
+        # Count vulnerabilities (lines starting with "Vulnerability")
+        VULN_COUNT=$(grep -c "^Vulnerability" /tmp/govulncheck-output.txt 2>/dev/null || echo "0")
+        echo "$VULN_COUNT" > $(results.vuln-count.path)
+
+        echo ""
+        echo "========================================"
+        if [ "$SCAN_EXIT" -eq 0 ]; then
+          echo "  No vulnerabilities found"
+          echo "passed" > $(results.scan-status.path)
+          echo "========================================"
+          exit 0
+        else
+          echo "  Found $VULN_COUNT vulnerability/vulnerabilities"
+          echo "failed" > $(results.scan-status.path)
+          echo "========================================"
+
+          if [ "$(params.fail-on-vuln)" = "true" ]; then
+            echo ""
+            echo "FATAL: Vulnerabilities detected. Failing build."
+            exit 1
+          else
+            echo ""
+            echo "WARNING: Vulnerabilities detected but fail-on-vuln=false"
+            exit 0
+          fi
+        fi

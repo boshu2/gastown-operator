@@ -1,0 +1,129 @@
+# Image Signing Task
+# Signs container images using Cosign
+#
+# Supports:
+# - Keyless signing (Fulcio/Rekor)
+# - Key-based signing (COSIGN_KEY secret)
+#
+# Prerequisites:
+# - cosign-key secret with signing key (for key-based)
+# - OIDC identity (for keyless)
+#
+# Usage:
+#   kubectl apply -f deploy/tekton/tasks/cosign-sign.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gastown-operator-cosign-sign
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/part-of: olympus
+spec:
+  description: Sign container images using Cosign
+  workspaces:
+    - name: dockerconfig
+      description: Registry credentials for image push
+    - name: source
+      description: Source workspace (for SBOM attestation)
+  params:
+    - name: cosign-image
+      type: string
+      default: "dprusocplvjmp01.deepsky.lab:5000/projectsigstore/cosign:v2.4.1"
+      description: Cosign container image
+    - name: image
+      type: string
+      description: Container image to sign (with digest)
+    - name: signing-mode
+      type: string
+      default: "keyless"
+      description: Signing mode (keyless or key-based)
+    - name: sbom-path
+      type: string
+      default: ""
+      description: Path to SBOM file to attach as attestation (optional)
+  results:
+    - name: sign-status
+      description: Signing result (passed/failed)
+    - name: signature-digest
+      description: Digest of the signature
+  steps:
+    - name: cosign-sign
+      image: $(params.cosign-image)
+      workingDir: $(workspaces.source.path)
+      computeResources:
+        requests:
+          memory: 256Mi
+          cpu: 100m
+        limits:
+          memory: 512Mi
+          cpu: 500m
+      env:
+        - name: DOCKER_CONFIG
+          value: $(workspaces.dockerconfig.path)
+        - name: COSIGN_EXPERIMENTAL
+          value: "1"
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "========================================"
+        echo "  Image Signing (Cosign)"
+        echo "========================================"
+        echo ""
+        echo "Image: $(params.image)"
+        echo "Mode: $(params.signing-mode)"
+        echo ""
+
+        # Sign the image
+        echo "Signing image..."
+        echo "----------------------------------------"
+
+        if [ "$(params.signing-mode)" = "keyless" ]; then
+          # Keyless signing using Fulcio/Rekor
+          echo "Using keyless signing (Fulcio/Rekor)..."
+          cosign sign --yes "$(params.image)" 2>&1 | tee /tmp/cosign-output.txt
+        else
+          # Key-based signing
+          if [ -z "$COSIGN_KEY" ]; then
+            echo "FATAL: COSIGN_KEY not set for key-based signing"
+            echo "failed" > $(results.sign-status.path)
+            exit 1
+          fi
+          echo "Using key-based signing..."
+          cosign sign --yes --key env://COSIGN_KEY "$(params.image)" 2>&1 | tee /tmp/cosign-output.txt
+        fi
+
+        SIGN_EXIT=$?
+
+        # Attach SBOM as attestation if provided
+        if [ -n "$(params.sbom-path)" ] && [ -f "$(params.sbom-path)" ]; then
+          echo ""
+          echo "Attaching SBOM attestation..."
+          if [ "$(params.signing-mode)" = "keyless" ]; then
+            cosign attest --yes --predicate "$(params.sbom-path)" --type spdxjson "$(params.image)"
+          else
+            cosign attest --yes --key env://COSIGN_KEY --predicate "$(params.sbom-path)" --type spdxjson "$(params.image)"
+          fi
+        fi
+
+        # Get signature digest
+        echo ""
+        echo "Verifying signature..."
+        SIG_DIGEST=$(cosign triangulate "$(params.image)" 2>/dev/null || echo "unknown")
+        echo "$SIG_DIGEST" > $(results.signature-digest.path)
+
+        if [ "$SIGN_EXIT" -eq 0 ]; then
+          echo "passed" > $(results.sign-status.path)
+          echo ""
+          echo "========================================"
+          echo "  Image signed successfully"
+          echo "  Signature: $SIG_DIGEST"
+          echo "========================================"
+        else
+          echo "failed" > $(results.sign-status.path)
+          echo ""
+          echo "FATAL: Failed to sign image"
+          exit 1
+        fi

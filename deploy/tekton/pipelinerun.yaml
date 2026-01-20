@@ -43,21 +43,42 @@ spec:
       value: "__GIT_URL__"
     - name: git-revision
       value: "__GIT_REVISION__"
+
     # Build parameters
     - name: image-tag
       value: "__IMAGE_TAG__"
+
+    # Registry parameters
     - name: registry
       value: "__REGISTRY__"
-    # Security scanning
+    - name: ghcr-registry
+      value: "ghcr.io/boshu2"
+
+    # Gastown CLI - pin to specific version for reproducibility
+    - name: gastown-ref
+      value: "main"
+
+    # Security scanning thresholds
     - name: trivy-fail-on
       value: "CRITICAL,HIGH"
+    - name: gosec-severity
+      value: "HIGH,CRITICAL"
+    - name: fail-on-vuln
+      value: "true"
+
     # envtest version (must match controller-runtime v0.22.x)
     - name: envtest-k8s-version
       value: "1.31.x"
+
+    # Image signing
+    - name: cosign-signing-mode
+      value: "keyless"
+
   taskRunTemplate:
     serviceAccountName: pipeline
   timeouts:
-    pipeline: 30m0s
+    pipeline: 45m0s
+    tasks: 20m0s
   workspaces:
     # Source code workspace
     - name: source

@@ -1,0 +1,98 @@
+# SBOM Generation Task
+# Generates Software Bill of Materials using Syft
+#
+# Outputs:
+# - SPDX JSON format SBOM
+# - Attached to container image as attestation
+#
+# Usage:
+#   kubectl apply -f deploy/tekton/tasks/syft-sbom.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gastown-operator-syft-sbom
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/part-of: olympus
+spec:
+  description: Generate SBOM (Software Bill of Materials) using Syft
+  workspaces:
+    - name: source
+    - name: dockerconfig
+      description: Registry credentials for image access
+  params:
+    - name: syft-image
+      type: string
+      default: "dprusocplvjmp01.deepsky.lab:5000/anchore/syft:v1.18.1"
+      description: Syft container image
+    - name: image
+      type: string
+      description: Container image to generate SBOM for
+    - name: output-format
+      type: string
+      default: "spdx-json"
+      description: SBOM output format (spdx-json, cyclonedx-json, etc.)
+  results:
+    - name: sbom-path
+      description: Path to generated SBOM file
+    - name: package-count
+      description: Number of packages in SBOM
+  steps:
+    - name: generate-sbom
+      image: $(params.syft-image)
+      workingDir: $(workspaces.source.path)
+      computeResources:
+        requests:
+          memory: 512Mi
+          cpu: 250m
+        limits:
+          memory: 1Gi
+          cpu: "1"
+      env:
+        - name: DOCKER_CONFIG
+          value: $(workspaces.dockerconfig.path)
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "========================================"
+        echo "  SBOM Generation (Syft)"
+        echo "========================================"
+        echo ""
+        echo "Image: $(params.image)"
+        echo "Format: $(params.output-format)"
+        echo ""
+
+        SBOM_FILE="$(workspaces.source.path)/sbom.$(params.output-format).json"
+
+        # Generate SBOM
+        echo "Generating SBOM..."
+        echo "----------------------------------------"
+
+        syft "$(params.image)" \
+          --output "$(params.output-format)=$SBOM_FILE" \
+          2>&1 | tee /tmp/syft-output.txt
+
+        # Verify SBOM was created
+        if [ -f "$SBOM_FILE" ]; then
+          # Count packages
+          PACKAGE_COUNT=$(grep -c '"name"' "$SBOM_FILE" 2>/dev/null || echo "0")
+          echo "$PACKAGE_COUNT" > $(results.package-count.path)
+          echo "$SBOM_FILE" > $(results.sbom-path.path)
+
+          echo ""
+          echo "========================================"
+          echo "  SBOM generated successfully"
+          echo "  Packages found: $PACKAGE_COUNT"
+          echo "  Output: $SBOM_FILE"
+          echo "========================================"
+
+          # Show summary
+          ls -la "$SBOM_FILE"
+        else
+          echo ""
+          echo "FATAL: Failed to generate SBOM"
+          exit 1
+        fi

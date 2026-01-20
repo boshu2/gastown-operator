@@ -1,0 +1,129 @@
+# Build Gas Town CLI Task
+# Clones and builds the gt CLI binary from upstream source
+#
+# This task pre-builds the gt binary to avoid git clone in Dockerfile.
+# The binary is placed in the workspace for kaniko to COPY.
+#
+# Pin to specific tag for reproducible builds.
+#
+# Usage:
+#   kubectl apply -f deploy/tekton/tasks/build-gt-cli.yaml -n olympus-ci
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gastown-operator-build-gt-cli
+  labels:
+    app.kubernetes.io/component: task
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/part-of: olympus
+spec:
+  description: Build gt CLI binary from upstream gastown repository
+  workspaces:
+    - name: source
+  params:
+    - name: go-image
+      type: string
+      default: "dprusocplvjmp01.deepsky.lab:5000/projectquay/golang:1.24"
+      description: Go container image to use
+    - name: gastown-repo
+      type: string
+      default: "https://github.com/steveyegge/gastown.git"
+      description: Gastown repository URL
+    - name: gastown-ref
+      type: string
+      default: "main"
+      description: Git ref (tag, branch, or SHA) for gastown
+    - name: target-os
+      type: string
+      default: "linux"
+      description: Target OS for cross-compilation
+    - name: target-arch
+      type: string
+      default: "amd64"
+      description: Target architecture for cross-compilation
+  results:
+    - name: build-status
+      description: Build result (passed/failed)
+    - name: binary-path
+      description: Path to the built binary
+    - name: gastown-version
+      description: Version/commit of gastown used
+  steps:
+    - name: build-gt
+      image: $(params.go-image)
+      workingDir: $(workspaces.source.path)
+      computeResources:
+        requests:
+          memory: 512Mi
+          cpu: 250m
+        limits:
+          memory: 1Gi
+          cpu: "1"
+      env:
+        - name: GOCACHE
+          value: "/workspace/source/.cache/go-build"
+        - name: GOMODCACHE
+          value: "/workspace/source/.cache/go-mod"
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "========================================"
+        echo "  Build Gas Town CLI (gt)"
+        echo "========================================"
+        echo ""
+        echo "Go version: $(go version)"
+        echo "Repository: $(params.gastown-repo)"
+        echo "Ref: $(params.gastown-ref)"
+        echo "Target: $(params.target-os)/$(params.target-arch)"
+        echo ""
+
+        # Install git if not present (Alpine)
+        if ! command -v git > /dev/null 2>&1; then
+          echo "Installing git..."
+          apk add --no-cache git ca-certificates
+        fi
+
+        # Create build directory
+        BUILD_DIR="$(workspaces.source.path)/.gt-build"
+        mkdir -p "$BUILD_DIR"
+        cd "$BUILD_DIR"
+
+        # Clone gastown repository
+        echo "Cloning gastown repository..."
+        git clone --depth 1 --branch "$(params.gastown-ref)" "$(params.gastown-repo)" .
+
+        # Get version info
+        VERSION=$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD)
+        echo "$VERSION" > $(results.gastown-version.path)
+        echo "Building version: $VERSION"
+
+        # Build gt binary
+        echo ""
+        echo "Building gt binary..."
+        echo "----------------------------------------"
+
+        CGO_ENABLED=0 \
+        GOOS="$(params.target-os)" \
+        GOARCH="$(params.target-arch)" \
+        go build -trimpath -ldflags="-s -w -X main.Version=$VERSION" -o "$(workspaces.source.path)/gt" ./cmd/gt
+
+        # Verify binary
+        if [ -f "$(workspaces.source.path)/gt" ]; then
+          ls -la "$(workspaces.source.path)/gt"
+          echo ""
+          echo "passed" > $(results.build-status.path)
+          echo "$(workspaces.source.path)/gt" > $(results.binary-path.path)
+          echo "========================================"
+          echo "  gt binary built successfully"
+          echo "========================================"
+        else
+          echo "failed" > $(results.build-status.path)
+          echo "" > $(results.binary-path.path)
+          echo "FATAL: Failed to build gt binary"
+          exit 1
+        fi
+
+        # Cleanup build directory
+        rm -rf "$BUILD_DIR"
