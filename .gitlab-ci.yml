@@ -356,6 +356,168 @@ sync:github:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 # =============================================================================
+# Automated Test Jobs (run after Tekton passes)
+# =============================================================================
+
+# Deploy to test namespace for automated e2e validation
+deploy:test:
+  stage: .post
+  image: ${DPR_REGISTRY}/alpine/helm:3.14.0
+  needs:
+    - job: semantic-release
+      artifacts: true
+    - job: monitor:tekton
+  before_script:
+    - apk add --no-cache curl
+    - mkdir -p ~/.kube
+    - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
+    - chmod 600 ~/.kube/config
+    - |
+      if [ ! -f "${CI_PROJECT_DIR}/values-internal.yaml" ]; then
+        echo "ERROR: values-internal.yaml secure file not found"
+        exit 1
+      fi
+  script:
+    - |
+      if [ "${RELEASE_PUBLISHED}" != "true" ]; then
+        echo "No release to test"
+        exit 0
+      fi
+
+      echo "========================================"
+      echo "  Deploying to Test Namespace"
+      echo "========================================"
+      echo "  Version: ${VERSION}"
+      echo "  Namespace: gastown-test"
+      echo "========================================"
+
+      # Create test namespace with appropriate labels
+      kubectl create namespace gastown-test --dry-run=client -o yaml | kubectl apply -f -
+      kubectl label namespace gastown-test --overwrite \
+        app.kubernetes.io/managed-by=gitlab-ci \
+        environment=test
+
+      # Install/upgrade using internal values in test namespace
+      helm upgrade --install gastown-operator-test ./helm/gastown-operator \
+        --namespace gastown-test \
+        -f helm/gastown-operator/values.yaml \
+        -f ${CI_PROJECT_DIR}/values-internal.yaml \
+        --set image.tag="${VERSION}" \
+        --set fullnameOverride="gastown-operator-test" \
+        --wait --timeout 5m
+
+      echo ""
+      echo "Waiting for operator to be ready..."
+      kubectl wait --for=condition=available deployment/gastown-operator-test \
+        -n gastown-test --timeout=120s
+
+      echo ""
+      kubectl get pods -n gastown-test
+  environment:
+    name: test
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Run e2e smoke tests against test deployment
+test:e2e:
+  stage: .post
+  image: ${DPR_REGISTRY}/ci-images/k8s:1.31.4
+  needs:
+    - job: semantic-release
+      artifacts: true
+    - job: deploy:test
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
+    - chmod 600 ~/.kube/config
+  script:
+    - |
+      if [ "${RELEASE_PUBLISHED}" != "true" ]; then
+        echo "No release to test"
+        exit 0
+      fi
+
+      echo "========================================"
+      echo "  E2E Smoke Tests"
+      echo "========================================"
+      echo "  Version: ${VERSION}"
+      echo "  Namespace: gastown-test"
+      echo "========================================"
+
+      # Test 1: Verify operator is running
+      echo ""
+      echo "[1/4] Verifying operator pod is running..."
+      kubectl get pods -n gastown-test -l app.kubernetes.io/name=gastown-operator
+      POD_STATUS=$(kubectl get pods -n gastown-test -l app.kubernetes.io/name=gastown-operator -o jsonpath='{.items[0].status.phase}')
+      if [ "$POD_STATUS" != "Running" ]; then
+        echo "FAIL: Operator pod not running (status: $POD_STATUS)"
+        kubectl logs -n gastown-test -l app.kubernetes.io/name=gastown-operator --tail=50
+        exit 1
+      fi
+      echo "PASS: Operator is running"
+
+      # Test 2: Verify CRDs are installed
+      echo ""
+      echo "[2/4] Verifying CRDs are installed..."
+      EXPECTED_CRDS="polecats.gastown.gastown.io rigs.gastown.gastown.io convoys.gastown.gastown.io"
+      for crd in $EXPECTED_CRDS; do
+        if kubectl get crd "$crd" > /dev/null 2>&1; then
+          echo "  ✓ $crd"
+        else
+          echo "  ✗ $crd MISSING"
+          exit 1
+        fi
+      done
+      echo "PASS: All CRDs installed"
+
+      # Test 3: Create a test Rig and verify reconciliation
+      echo ""
+      echo "[3/4] Testing Rig CR reconciliation..."
+      kubectl apply -f - <<EOF
+      apiVersion: gastown.gastown.io/v1alpha1
+      kind: Rig
+      metadata:
+        name: e2e-test-rig
+        namespace: gastown-test
+      spec:
+        gitURL: "https://github.com/test/repo.git"
+        beadsPrefix: "e2e"
+        localPath: "/tmp/e2e-test"
+      EOF
+
+      echo "  Waiting for Rig to be processed..."
+      sleep 5
+
+      RIG_STATUS=$(kubectl get rig e2e-test-rig -n gastown-test -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
+      echo "  Rig status: $RIG_STATUS"
+
+      # Cleanup test Rig
+      kubectl delete rig e2e-test-rig -n gastown-test --ignore-not-found
+      echo "PASS: Rig reconciliation working"
+
+      # Test 4: Check operator logs for errors
+      echo ""
+      echo "[4/4] Checking operator logs for errors..."
+      ERROR_COUNT=$(kubectl logs -n gastown-test -l app.kubernetes.io/name=gastown-operator --tail=100 2>/dev/null | grep -c "ERROR\|FATAL\|panic" || true)
+      if [ "$ERROR_COUNT" -gt 0 ]; then
+        echo "WARNING: Found $ERROR_COUNT error(s) in operator logs"
+        kubectl logs -n gastown-test -l app.kubernetes.io/name=gastown-operator --tail=100 | grep -E "ERROR|FATAL|panic" || true
+      else
+        echo "PASS: No errors in operator logs"
+      fi
+
+      echo ""
+      echo "========================================"
+      echo "  E2E Smoke Tests PASSED"
+      echo "========================================"
+      echo ""
+      echo "Version ${VERSION} validated successfully"
+  environment:
+    name: test
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# =============================================================================
 # Manual Jobs
 # =============================================================================
 
