@@ -162,8 +162,8 @@ data:
 |-------|---------|-------|
 | `desiredState` | `Idle` | Initial state |
 | `executionMode` | `local` | Run via tmux |
-| `agent` | `opencode` | Coding agent type |
-| `agentConfig.provider` | `litellm` | LLM provider |
+| `agent` | `claude-code` | Coding agent type |
+| `agentConfig.provider` | `litellm` | LLM provider (for opencode) |
 | `kubernetes.gitBranch` | `main` | Base branch |
 | `kubernetes.activeDeadlineSeconds` | `3600` | 1 hour max runtime |
 

@@ -65,7 +65,7 @@ A Polecat is an autonomous worker agent that executes beads issues. Polecats can
 | `desiredState` | string | Yes | `Idle` | Target state: `Idle`, `Working`, `Terminated` |
 | `beadID` | string | No | - | Bead ID to work on (triggers work when set) |
 | `executionMode` | string | No | `local` | Where to run: `local` (tmux) or `kubernetes` (Pod) |
-| `agent` | string | No | `opencode` | Agent type: `opencode`, `claude-code`, `aider`, `custom` |
+| `agent` | string | No | `claude-code` | Agent type: `claude-code`, `opencode`, `aider`, `custom` |
 | `agentConfig` | object | No | - | Configuration for the coding agent |
 | `kubernetes` | object | No* | - | Kubernetes execution config (*required if `executionMode=kubernetes`) |
 | `resources` | ResourceRequirements | No | - | CPU/memory for the polecat pod |
@@ -143,7 +143,7 @@ A Polecat is an autonomous worker agent that executes beads issues. Polecats can
 
 ### Examples
 
-**Local execution (tmux) with default opencode agent:**
+**Local execution (tmux) with default agent:**
 
 ```yaml
 apiVersion: gastown.gastown.io/v1alpha1
@@ -156,40 +156,10 @@ spec:
   desiredState: Working
   beadID: "gt-abc-123"
   executionMode: local
-  # agent: opencode  # default
+  # agent: claude-code  # default
 ```
 
-**Kubernetes execution with opencode (default):**
-
-```yaml
-apiVersion: gastown.gastown.io/v1alpha1
-kind: Polecat
-metadata:
-  name: opencode-worker
-  namespace: gastown-system
-spec:
-  rig: myproject
-  desiredState: Working
-  beadID: "gt-abc-123"
-  executionMode: kubernetes
-  agent: opencode
-  agentConfig:
-    provider: litellm
-    model: claude-sonnet-4
-    modelProvider:
-      endpoint: https://ai-gateway.example.com/v1
-      apiKeySecretRef:
-        name: litellm-api-key
-        key: api-key
-  kubernetes:
-    gitRepository: "git@github.com:myorg/myproject.git"
-    gitBranch: main
-    gitSecretRef:
-      name: git-creds
-    activeDeadlineSeconds: 3600
-```
-
-**Kubernetes execution with Claude Code:**
+**Kubernetes execution with Claude Code (default):**
 
 ```yaml
 apiVersion: gastown.gastown.io/v1alpha1
@@ -243,6 +213,35 @@ spec:
     apiKeySecretRef:
       name: anthropic-api-key
       key: api-key
+```
+
+**Kubernetes execution with opencode (alternative agent):**
+
+```yaml
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: opencode-worker
+  namespace: gastown-system
+spec:
+  rig: myproject
+  desiredState: Working
+  beadID: "gt-abc-123"
+  executionMode: kubernetes
+  agent: opencode
+  agentConfig:
+    provider: litellm
+    model: claude-sonnet-4
+    modelProvider:
+      endpoint: https://ai-gateway.example.com/v1
+      apiKeySecretRef:
+        name: litellm-api-key
+        key: api-key
+  kubernetes:
+    gitRepository: "git@github.com:myorg/myproject.git"
+    gitBranch: main
+    gitSecretRef:
+      name: git-creds
 ```
 
 ---

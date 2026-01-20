@@ -111,7 +111,7 @@ spec:
   localPath: "/home/user/workspaces/my-project"
 EOF
 
-# Spawn a Polecat (opencode - default)
+# Spawn a Polecat (claude-code - default)
 kubectl apply -f - <<EOF
 apiVersion: gastown.gastown.io/v1alpha1
 kind: Polecat
@@ -123,19 +123,14 @@ spec:
   beadID: proj-abc123
   desiredState: Working
   executionMode: kubernetes
-  # agent: opencode  # default
-  agentConfig:
-    provider: litellm
-    model: claude-sonnet-4
-    modelProvider:
-      apiKeySecretRef:
-        name: litellm-api-key
-        key: api-key
+  # agent: claude-code  # default
   kubernetes:
     gitRepository: "git@github.com:myorg/my-project.git"
     gitBranch: main
     gitSecretRef:
       name: git-ssh-key
+    claudeCredsSecretRef:
+      name: claude-creds
 EOF
 
 # Watch it work

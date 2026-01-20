@@ -71,7 +71,7 @@ The operator will:
 
 ## Create a Polecat
 
-Polecats are workers that execute beads issues. Default agent is `opencode`.
+Polecats are workers that execute beads issues. Default agent is `claude-code`.
 
 **Local mode (tmux):**
 
@@ -87,7 +87,7 @@ spec:
   desiredState: Working
   beadID: "mp-abc-123"
   executionMode: local
-  # agent: opencode  # default
+  # agent: claude-code  # default
 ```
 
 **Kubernetes mode (Pod):**
@@ -104,19 +104,14 @@ spec:
   desiredState: Working
   beadID: "mp-abc-123"
   executionMode: kubernetes
-  agent: opencode
-  agentConfig:
-    provider: litellm
-    model: claude-sonnet-4
-    modelProvider:
-      apiKeySecretRef:
-        name: litellm-api-key
-        key: api-key
+  # agent: claude-code  # default
   kubernetes:
     gitRepository: "git@github.com:myorg/myproject.git"
     gitBranch: main
     gitSecretRef:
       name: git-creds
+    claudeCredsSecretRef:
+      name: claude-creds
 ```
 
 ```bash

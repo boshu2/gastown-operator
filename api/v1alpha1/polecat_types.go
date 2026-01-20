@@ -194,7 +194,7 @@ type PolecatSpec struct {
 	Kubernetes *KubernetesSpec `json:"kubernetes,omitempty"`
 
 	// Agent is the coding agent type to use
-	// +kubebuilder:default=opencode
+	// +kubebuilder:default=claude-code
 	// +optional
 	Agent AgentType `json:"agent,omitempty"`
 

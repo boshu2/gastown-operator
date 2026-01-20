@@ -72,7 +72,7 @@ spec:
             description: PolecatSpec defines the desired state of Polecat
             properties:
               agent:
-                default: opencode
+                default: claude-code
                 description: Agent is the coding agent type to use
                 enum:
                 - opencode
