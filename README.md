@@ -2,9 +2,11 @@
 
 > *"Who runs Bartertown? Kubernetes runs Bartertown."*
 
+[![CI](https://github.com/boshu2/gastown-operator/actions/workflows/ci.yaml/badge.svg)](https://github.com/boshu2/gastown-operator/actions/workflows/ci.yaml)
 [![OpenShift](https://img.shields.io/badge/OpenShift-Native-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
 [![FIPS](https://img.shields.io/badge/FIPS-Compliant-blue)](https://csrc.nist.gov/projects/cryptographic-module-validation-program)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Helm](https://img.shields.io/badge/Helm-OCI-blue?logo=helm)](https://ghcr.io/boshu2/gastown-operator)
 
 A Kubernetes operator that runs [Gas Town](https://github.com/steveyegge/gastown) polecats as pods. Scale your AI agent army beyond the laptop.
 
@@ -38,7 +40,7 @@ We provide **two build profiles** - use what fits your environment:
 | **Base Image** | `golang:alpine` / `distroless` | Red Hat UBI9 |
 | **Crypto** | Standard Go | FIPS-validated (BoringCrypto) |
 | **Security** | Standard PSS | Restricted SCC compliant |
-| **Image Tag** | `:latest`, `:v0.1.2` | `:latest-fips`, `:v0.1.2-fips` |
+| **Image Tag** | `:latest`, `:v0.1.1` | `:latest-fips`, `:v0.1.1-fips` |
 
 ### Community Edition (Vanilla K8s)
 
@@ -46,7 +48,7 @@ Lightweight, runs anywhere:
 
 ```bash
 # Standard Kubernetes
-kubectl apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.2/install.yaml
+kubectl apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.1/install.yaml
 ```
 
 ### Enterprise Edition (OpenShift + FIPS)
@@ -55,7 +57,7 @@ For regulated environments (FedRAMP, HIPAA, government):
 
 ```bash
 # OpenShift with FIPS
-oc apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.2/install-fips.yaml
+oc apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.1/install-fips.yaml
 ```
 
 **What makes it enterprise-ready:**
@@ -196,7 +198,7 @@ helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \
 
 ```bash
 make install      # Install CRDs
-make deploy IMG=ghcr.io/boshu2/gastown-operator:v0.1.2
+make deploy IMG=ghcr.io/boshu2/gastown-operator:v0.1.1
 ```
 
 ## Requirements
@@ -213,9 +215,33 @@ make deploy IMG=ghcr.io/boshu2/gastown-operator:v0.1.2
 - [gastown-gui](https://github.com/web3dev1337/gastown-gui) - Web UI dashboard (we're integrating!)
 - [Beads](https://github.com/steveyegge/beads) - Git-based issue tracking
 
+## Testing
+
+The project includes comprehensive automated testing via GitHub Actions:
+
+| Test Type | Description |
+|-----------|-------------|
+| **Unit Tests** | Controller logic, webhook validation |
+| **E2E Community** | Kind cluster + community helm chart |
+| **E2E FIPS** | Kind cluster + FIPS helm chart |
+| **Helm Lint** | Chart validation for both editions |
+
+Run locally:
+```bash
+make test           # Unit tests
+make test-e2e       # E2E tests (requires Kind)
+```
+
 ## Status
 
-**v0.1.2** - E2E validated. Polecat pods successfully run AI coding agents in OpenShift. Full lifecycle tested: CR creation → pod spawn → git clone → agent execution → completion. Supports opencode (default), claude-code, aider, and custom agents.
+**v0.1.1** - Security hardening release. All vibe assessment findings addressed.
+
+**Key changes:**
+- SSH host key verification (MITM protection)
+- Command injection validation
+- Error handling improvements
+- GHCR OCI helm chart publishing
+- GitHub Actions CI with E2E tests
 
 Feedback welcome! See [steveyegge/gastown#668](https://github.com/steveyegge/gastown/issues/668) for discussion.
 
