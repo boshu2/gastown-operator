@@ -1,0 +1,43 @@
+# Gas Town Operator - Internal/Enterprise Values
+# ==============================================================================
+# This is an EXAMPLE template. The actual file should be stored as a
+# GitLab CI/CD Secure File, NOT committed to the repository.
+#
+# Setup:
+#   1. Copy this file and customize for your environment
+#   2. In GitLab: Settings → CI/CD → Secure Files → Upload
+#   3. Name it: values-internal.yaml
+#   4. The deploy job will automatically use it
+#
+# This file is overlaid on top of values.yaml, so only include overrides.
+# ==============================================================================
+
+# Internal container registry (behind VPN)
+image:
+  repository: dprusocplvjmp01.deepsky.lab:5000/gastown-operator
+  pullPolicy: IfNotPresent
+  # tag: ""  # Uses Chart.appVersion by default
+
+# Registry credentials (the secret must exist in the namespace)
+# Create with:
+#   kubectl create secret docker-registry dpr-registry-credentials \
+#     --docker-server=dprusocplvjmp01.deepsky.lab:5000 \
+#     --docker-username=<user> \
+#     --docker-password=<password> \
+#     -n gastown-system
+imagePullSecrets:
+  - name: dpr-registry-credentials
+
+# Internal-specific volume paths (if different from default)
+# volumes:
+#   enabled: true
+#   hostPath: /data/gastown
+
+# Resource adjustments for internal infrastructure
+# resources:
+#   limits:
+#     cpu: 1000m
+#     memory: 512Mi
+#   requests:
+#     cpu: 200m
+#     memory: 256Mi

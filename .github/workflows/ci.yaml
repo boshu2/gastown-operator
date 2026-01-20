@@ -78,7 +78,6 @@ jobs:
       - name: Lint Helm chart
         run: |
           helm lint ./helm/gastown-operator
-          helm lint ./helm/gastown-operator -f helm/gastown-operator/values-community.yaml
           helm lint ./helm/gastown-operator -f helm/gastown-operator/values-fips.yaml
 
   # ==========================================================================

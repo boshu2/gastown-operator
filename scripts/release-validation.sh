@@ -286,7 +286,6 @@ helm install gastown-operator "$HELM_CHART" \
   --set image.repository="${GHCR_REGISTRY}/gastown-operator" \
   --set image.tag="v${VERSION}" \
   --set image.pullPolicy=Never \
-  -f "$PROJECT_ROOT/helm/gastown-operator/values-community.yaml" \
   --wait --timeout 5m
 
 # Verify deployment

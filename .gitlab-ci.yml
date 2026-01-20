@@ -18,6 +18,10 @@
 #
 # Optional Variables:
 #   - TEKTON_NAMESPACE: Override default (olympus-ci)
+#
+# Secure Files (Settings → CI/CD → Secure Files):
+#   - values-internal.yaml: Internal deployment values (DPR registry, etc.)
+#     See helm/gastown-operator/values-internal.yaml.example for template
 
 variables:
   # DPR Registry (avoids Docker Hub rate limits)
@@ -316,7 +320,7 @@ sync:github:
       \`\`\`bash
       helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \\
         --version ${VERSION} \\
-        -f values-community.yaml
+        -n gastown-system --create-namespace
       \`\`\`
 
       ### Artifacts
