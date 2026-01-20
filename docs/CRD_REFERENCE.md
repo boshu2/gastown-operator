@@ -64,6 +64,7 @@ A Polecat is an autonomous worker agent that executes beads issues. Polecats can
 | `rig` | string | Yes | - | Name of the parent Rig |
 | `desiredState` | string | Yes | `Idle` | Target state: `Idle`, `Working`, `Terminated` |
 | `beadID` | string | No | - | Bead ID to work on (triggers work when set) |
+| `taskDescription` | string | No | - | Explicit task description for Claude (use when beads not synced) |
 | `executionMode` | string | No | `local` | Where to run: `local` (tmux) or `kubernetes` (Pod) |
 | `agent` | string | No | `claude-code` | Agent type: `claude-code`, `opencode`, `aider`, `custom` |
 | `agentConfig` | object | No | - | Configuration for the coding agent |

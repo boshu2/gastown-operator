@@ -19,7 +19,6 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"net/http"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -127,7 +126,7 @@ func main() {
 		webhookServer = webhook.NewServer(webhookServerOptions)
 
 		// Register /version endpoint on the webhook server
-		webhookServer.Register("/version", http.HandlerFunc(version.Handler()))
+		webhookServer.Register("/version", version.Handler())
 	} else {
 		setupLog.Info("Webhooks disabled via --disable-webhooks flag")
 	}

@@ -93,7 +93,7 @@ oc get pods -n gastown-system
 
 ### 4. Create a Polecat
 
-With OAuth credentials:
+With OAuth credentials and explicit task description:
 
 ```yaml
 apiVersion: gastown.gastown.io/v1alpha1
@@ -104,12 +104,17 @@ metadata:
 spec:
   rig: my-project
   beadID: issue-123
+  # taskDescription provides explicit instructions when beads aren't synced to repo
+  taskDescription: |
+    Add a /health endpoint that returns {"status": "ok"}.
+    After implementing, commit and push the changes.
   desiredState: Working
   executionMode: kubernetes
   # agent: claude-code  # default
   kubernetes:
     gitRepository: "git@github.com:myorg/myrepo.git"
     gitBranch: main
+    workBranch: feature/issue-123  # auto-generated if not set
     gitSecretRef:
       name: git-ssh-key
     claudeCredsSecretRef:
@@ -123,6 +128,15 @@ spec:
         cpu: "2"
         memory: "4Gi"
 ```
+
+**Note**: The `taskDescription` field is optional but recommended when beads aren't synced to the target repository. Claude will use this description to understand the task.
+
+### Git Push Capability
+
+Polecats can push commits to remote repositories. The git credentials are mounted in the claude container, allowing:
+- `git commit` with configured user (Gas Town Polecat)
+- `git push origin HEAD` to push the work branch
+- PR creation (if `gh` CLI is available)
 
 Or with API key (headless):
 
@@ -168,7 +182,61 @@ oc get polecat my-worker -n gastown-workers -o yaml
 
 ## E2E Proof: It Actually Works
 
-**Tested 2026-01-20 on OpenShift**
+### Test 2: PR Creation (2026-01-20)
+
+**Full end-to-end test with git push and PR creation:**
+
+```yaml
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: feature-version-endpoint
+  namespace: gastown
+spec:
+  rig: test-rig
+  beadID: go-cwl
+  taskDescription: |
+    Add a /version endpoint to the operator webhook server.
+    The endpoint should return JSON with version, commit, and buildTime.
+  desiredState: Working
+  executionMode: kubernetes
+  agent: claude-code
+  kubernetes:
+    gitRepository: "git@github.com:boshu2/gastown-operator.git"
+    gitBranch: main
+    workBranch: feature/go-cwl-version-endpoint
+    gitSecretRef:
+      name: git-credentials
+    claudeCredsSecretRef:
+      name: claude-credentials
+```
+
+**Result:**
+```
+$ oc get polecat feature-version-endpoint -n gastown
+NAME                       RIG        MODE         AGENT         PHASE   BEAD
+feature-version-endpoint   test-rig   kubernetes   claude-code   Done    go-cwl
+
+$ oc logs polecat-feature-version-endpoint -c claude --tail=30
+...
+Git SSH key configured
+...
+The task is complete.
+
+**Changes made:**
+1. Created `pkg/version/version.go` - version info with HTTP handler
+2. Modified `cmd/main.go` - register /version endpoint
+
+**Git operations:**
+- Committed: feat(go-cwl): add /version endpoint to webhook server
+- Pushed to: feature/go-cwl-version-endpoint branch
+```
+
+**PR Created:** https://github.com/boshu2/gastown-operator/pull/1
+
+---
+
+### Test 1: Basic Execution (2026-01-20)
 
 ### Operator Deployment
 
