@@ -40,7 +40,7 @@ We provide **two build profiles** - use what fits your environment:
 | **Base Image** | `golang:alpine` / `distroless` | Red Hat UBI9 |
 | **Crypto** | Standard Go | FIPS-validated (BoringCrypto) |
 | **Security** | Standard PSS | Restricted SCC compliant |
-| **Image Tag** | `:latest`, `:v0.1.1` | `:latest-fips`, `:v0.1.1-fips` |
+| **Image Tag** | `:latest`, `:v0.3.2` | `:latest-fips`, `:v0.3.2-fips` |
 
 ### Community Edition (Vanilla K8s)
 
@@ -48,7 +48,7 @@ Lightweight, runs anywhere:
 
 ```bash
 # Standard Kubernetes
-kubectl apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.1/install.yaml
+kubectl apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.3.2/install.yaml
 ```
 
 ### Enterprise Edition (OpenShift + FIPS)
@@ -57,7 +57,7 @@ For regulated environments (FedRAMP, HIPAA, government):
 
 ```bash
 # OpenShift with FIPS
-oc apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.1/install-fips.yaml
+oc apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.3.2/install-fips.yaml
 ```
 
 **What makes it enterprise-ready:**
@@ -180,25 +180,29 @@ The operator is a **view layer** - `gt` CLI remains authoritative. Kubernetes ha
 ### Helm (Recommended)
 
 ```bash
-# Install from GHCR (OCI registry)
+# Community Edition (vanilla Kubernetes)
 helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \
-  --version 0.1.1 \
+  --version 0.3.2 \
   --namespace gastown-system \
   --create-namespace
 
-# With custom values (OpenShift + FIPS)
+# Enterprise Edition (OpenShift + FIPS)
+# Download values-fips.yaml first, or use --set flags:
 helm install gastown-operator oci://ghcr.io/boshu2/gastown-operator \
-  --version 0.1.1 \
+  --version 0.3.2 \
   --namespace gastown-system \
   --create-namespace \
-  -f helm/gastown-operator/values-fips.yaml
+  --set image.tag=latest-fips \
+  --set securityContext.allowPrivilegeEscalation=false \
+  --set securityContext.runAsNonRoot=true \
+  --set securityContext.readOnlyRootFilesystem=true
 ```
 
 ### From Source
 
 ```bash
 make install      # Install CRDs
-make deploy IMG=ghcr.io/boshu2/gastown-operator:v0.1.1
+make deploy IMG=ghcr.io/boshu2/gastown-operator:v0.3.2
 ```
 
 ## Requirements
@@ -234,14 +238,14 @@ make test-e2e       # E2E tests (requires Kind)
 
 ## Status
 
-**v0.1.1** - Security hardening release. All vibe assessment findings addressed.
+**v0.3.2** - First stable release.
 
-**Key changes:**
+**Highlights:**
+- Helm chart published to GHCR with sane defaults (no internal registry refs)
+- Two editions: Community (vanilla K8s) and Enterprise (OpenShift + FIPS)
 - SSH host key verification (MITM protection)
 - Command injection validation
-- Error handling improvements
-- GHCR OCI helm chart publishing
-- GitHub Actions CI with E2E tests
+- Comprehensive E2E testing
 
 Feedback welcome! See [steveyegge/gastown#668](https://github.com/steveyegge/gastown/issues/668) for discussion.
 
