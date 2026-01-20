@@ -236,7 +236,7 @@ func (r *RefineryReconciler) processMerge(
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
-	defer func() { _ = os.RemoveAll(workDir) }()
+	defer func() { _ = os.RemoveAll(workDir) }() //nolint:errcheck // best-effort cleanup
 
 	repoDir := filepath.Join(workDir, "repo")
 
@@ -334,22 +334,22 @@ func (r *RefineryReconciler) setupGitCredentials(
 	}
 
 	if _, err := keyFile.Write(sshKey); err != nil {
-		_ = os.Remove(keyFile.Name())
+		_ = os.Remove(keyFile.Name()) //nolint:errcheck // best-effort cleanup on error path
 		return "", nil, fmt.Errorf("failed to write SSH key: %w", err)
 	}
 
 	if err := keyFile.Chmod(0o600); err != nil {
-		_ = os.Remove(keyFile.Name())
+		_ = os.Remove(keyFile.Name()) //nolint:errcheck // best-effort cleanup on error path
 		return "", nil, fmt.Errorf("failed to chmod SSH key: %w", err)
 	}
 
 	if err := keyFile.Close(); err != nil {
-		_ = os.Remove(keyFile.Name())
+		_ = os.Remove(keyFile.Name()) //nolint:errcheck // best-effort cleanup on error path
 		return "", nil, fmt.Errorf("failed to close SSH key file: %w", err)
 	}
 
 	cleanup := func() {
-		_ = os.Remove(keyFile.Name())
+		_ = os.Remove(keyFile.Name()) //nolint:errcheck // best-effort cleanup
 	}
 
 	return keyFile.Name(), cleanup, nil

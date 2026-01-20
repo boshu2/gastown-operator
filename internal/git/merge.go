@@ -101,7 +101,7 @@ func (c *Client) MergeBranch(ctx context.Context, opts MergeOptions) (*MergeResu
 	// Step 5: Rebase onto target
 	if err := c.RebaseOnto(ctx, opts.TargetBranch); err != nil {
 		// Abort the rebase if it failed
-		_ = c.AbortRebase(ctx)
+		_ = c.AbortRebase(ctx) //nolint:errcheck // best-effort abort on rebase failure
 		result.Error = fmt.Sprintf("rebase failed: %v", err)
 		return result, err
 	}

@@ -52,6 +52,6 @@ func Get() Info {
 func Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(Get())
+		_ = json.NewEncoder(w).Encode(Get()) //nolint:errcheck // HTTP response encoding error unrecoverable
 	}
 }

@@ -75,13 +75,13 @@ func (c *Client) ensureKnownHosts() (string, error) {
 
 	// Write pre-verified host keys from the shared package
 	if _, err := tmpFile.WriteString(pod.PreVerifiedSSHKnownHosts); err != nil {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmpFile.Name())
+		_ = tmpFile.Close()           //nolint:errcheck // best-effort cleanup on error path
+		_ = os.Remove(tmpFile.Name()) //nolint:errcheck // best-effort cleanup on error path
 		return "", fmt.Errorf("failed to write known_hosts: %w", err)
 	}
 
 	if err := tmpFile.Close(); err != nil {
-		_ = os.Remove(tmpFile.Name())
+		_ = os.Remove(tmpFile.Name()) //nolint:errcheck // best-effort cleanup on error path
 		return "", fmt.Errorf("failed to close known_hosts file: %w", err)
 	}
 
@@ -93,7 +93,7 @@ func (c *Client) ensureKnownHosts() (string, error) {
 // Should be called when the client is no longer needed.
 func (c *Client) Cleanup() {
 	if c.knownHostsPath != "" {
-		_ = os.Remove(c.knownHostsPath)
+		_ = os.Remove(c.knownHostsPath) //nolint:errcheck // best-effort cleanup
 		c.knownHostsPath = ""
 	}
 }
