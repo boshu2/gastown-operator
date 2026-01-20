@@ -175,7 +175,7 @@ spec:
       params:
         - name: image
           value: "$(params.registry)/gastown-operator:$(params.image-tag)"
-        - name: severity
+        - name: trivy-fail-on
           value: "$(params.trivy-fail-on)"
 
   # ===========================================================================
