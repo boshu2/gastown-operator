@@ -238,16 +238,16 @@ phase_local_validation() {
     export PRESCAN_FAIL_ON="HIGH"
   fi
 
-  if "$SCRIPT_DIR/prescan.sh" all; then
+  local prescan_exit=0
+  "$SCRIPT_DIR/prescan.sh" all || prescan_exit=$?
+
+  if [[ $prescan_exit -eq 0 ]]; then
     log_success "Vibe prescan passed"
+  elif [[ $prescan_exit -eq 4 ]]; then
+    log_warning "Vibe prescan found MEDIUM issues (acceptable for dry-run)"
   else
-    local prescan_exit=$?
-    if [[ $prescan_exit -eq 4 ]]; then
-      log_warning "Vibe prescan found MEDIUM issues (acceptable)"
-    else
-      log_error "Vibe prescan failed"
-      return 1
-    fi
+    log_error "Vibe prescan failed (exit code: $prescan_exit)"
+    return 1
   fi
 
   return 0
