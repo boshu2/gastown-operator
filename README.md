@@ -39,8 +39,6 @@
 
 ## Quick Start
 
-### 1. Install the Operator
-
 ```bash
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
   --version 0.3.2 \
@@ -48,53 +46,27 @@ helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
   --create-namespace
 ```
 
-### 2. Create Secrets
+Then tell Claude:
 
-```bash
-# Git SSH key for cloning/pushing
-kubectl create secret generic git-credentials -n gastown-system \
-  --from-file=ssh-privatekey=$HOME/.ssh/id_ed25519
+> "Set up gastown-operator on my cluster. Read the [USER_GUIDE.md](docs/USER_GUIDE.md) for instructions."
 
-# Claude API key
-kubectl create secret generic claude-credentials -n gastown-system \
-  --from-literal=api-key=$ANTHROPIC_API_KEY
-```
-
-### 3. Sling Work to Kubernetes
-
-From your Mayor session, just sling issues like normal - but to k8s:
-
-```bash
-# The Mayor dispatches work to kubernetes polecats
-gt sling proj-123 my-rig --mode kubernetes
-
-# Claude figures out the Polecat CR, the operator creates the pod
-# You don't write YAML - the agents handle it
-```
-
-That's it. The polecat runs as a pod, clones your repo, does the work, pushes, and exits.
-
-### 4. Watch Progress
-
-```bash
-# Check convoy status (same as local polecats)
-gt convoy list
-
-# Or peek at the pod directly
-kubectl logs -f polecat-proj-123 -n gastown-workers
-```
+Claude will handle the secrets, the Polecat CRs, everything. You don't write YAML - the agents do.
 
 ## What Is This?
 
-[Gas Town](https://github.com/steveyegge/gastown) runs AI agents (polecats) locally via tmux. This operator extends that to Kubernetes - polecats run as pods instead of local processes.
+[Gas Town](https://github.com/steveyegge/gastown) runs AI agents (polecats) locally via tmux. This operator extends that to Kubernetes - **polecats run as pods instead of local processes**.
 
-**The key insight:** You don't manually write Polecat CRs. The Mayor slings work with `gt sling`, Claude generates the appropriate Kubernetes resources, and the operator handles the rest.
+**The workflow:**
+1. Install the operator (above)
+2. Tell Claude to set it up using the docs
+3. Sling work: `gt sling issue-123 my-rig --mode kubernetes`
+4. Watch: `gt convoy list` or `kubectl logs -f polecat-issue-123`
 
-**Why run polecats in k8s?**
+**Why?**
 - Scale beyond your laptop's tmux sessions
 - Run agents closer to your infrastructure
-- Let Kubernetes handle scheduling and lifecycle
 - Parallel execution across a cluster
+- Kubernetes handles scheduling and lifecycle
 
 Supports: **claude-code** (default), **opencode**, **aider**, or **custom** agents.
 
