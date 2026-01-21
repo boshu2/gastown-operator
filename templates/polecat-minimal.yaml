@@ -1,0 +1,91 @@
+# Polecat Minimal Template - Quick Local Execution
+#
+# The simplest Polecat configuration for local (tmux) execution.
+# Copy, replace 3 variables, and apply.
+#
+# For full options including Kubernetes mode, see: polecat-kubernetes.yaml
+#
+# Variables to replace:
+#   {{POLECAT_NAME}} - Unique name (e.g., "furiosa", "nux", "max")
+#   {{RIG_NAME}}     - Parent rig (e.g., "athena", "daedalus")
+#   {{BEAD_ID}}      - Bead to work on (e.g., "at-1234", "gt-5678")
+#
+# Prerequisites:
+#   - Rig exists: kubectl get rig {{RIG_NAME}}
+#   - Bead exists: bd show {{BEAD_ID}}
+#   - tmux installed on host
+#
+# Usage:
+#   kubectl apply -f - <<EOF
+#   apiVersion: gastown.gastown.io/v1alpha1
+#   kind: Polecat
+#   metadata:
+#     name: furiosa
+#     namespace: gastown-system
+#   spec:
+#     rig: athena
+#     desiredState: Working
+#     beadID: "at-1234"
+#     executionMode: local
+#   EOF
+
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: {{POLECAT_NAME}}
+  namespace: gastown-system
+spec:
+  rig: {{RIG_NAME}}
+  desiredState: Working
+  beadID: "{{BEAD_ID}}"
+  executionMode: local
+
+---
+# Quick start commands:
+#
+# 1. Create polecat
+#    kubectl apply -f polecat-minimal.yaml
+#
+# 2. Check status
+#    kubectl get polecat {{POLECAT_NAME}} -n gastown-system
+#
+# 3. View tmux session
+#    tmux attach -t gt-{{RIG_NAME}}-{{POLECAT_NAME}}
+#
+# 4. Terminate when done
+#    kubectl patch polecat {{POLECAT_NAME}} -n gastown-system \
+#      --type=merge -p '{"spec":{"desiredState":"Terminated"}}'
+
+---
+# One-liner examples:
+#
+# Create working polecat:
+#   kubectl apply -f - <<EOF
+#   apiVersion: gastown.gastown.io/v1alpha1
+#   kind: Polecat
+#   metadata:
+#     name: furiosa
+#     namespace: gastown-system
+#   spec:
+#     rig: athena
+#     desiredState: Working
+#     beadID: "at-1234"
+#     executionMode: local
+#   EOF
+#
+# Create idle polecat (ready for assignment):
+#   kubectl apply -f - <<EOF
+#   apiVersion: gastown.gastown.io/v1alpha1
+#   kind: Polecat
+#   metadata:
+#     name: nux
+#     namespace: gastown-system
+#   spec:
+#     rig: athena
+#     desiredState: Idle
+#     executionMode: local
+#   EOF
+#
+# Assign work to idle polecat:
+#   kubectl patch polecat nux -n gastown-system --type=merge \
+#     -p '{"spec":{"beadID":"at-5678","desiredState":"Working"}}'

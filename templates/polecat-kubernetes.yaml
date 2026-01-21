@@ -1,0 +1,249 @@
+# Polecat Kubernetes Template - Full Options
+#
+# A Polecat running in Kubernetes mode (as a Pod) for cloud-native execution.
+# This template shows ALL available options with detailed comments.
+#
+# For a minimal template, see: polecat-minimal.yaml
+#
+# Variables to replace:
+#   {{POLECAT_NAME}}       - Unique name (e.g., "furiosa", "nux")
+#   {{NAMESPACE}}          - Target namespace (e.g., "gastown-system")
+#   {{RIG_NAME}}           - Parent rig (e.g., "athena")
+#   {{BEAD_ID}}            - Bead to work on (e.g., "at-1234")
+#   {{GIT_REPO}}           - Git repository URL (SSH format)
+#   {{GIT_BRANCH}}         - Base branch (e.g., "main")
+#   {{WORK_BRANCH}}        - Branch for work (e.g., "feature/at-1234")
+#   {{GIT_SECRET}}         - Name of git SSH secret
+#   {{CLAUDE_SECRET}}      - Name of Claude credentials secret
+#
+# Prerequisites:
+#   1. Rig must exist: kubectl get rig {{RIG_NAME}}
+#   2. Secrets created:
+#      - kubectl create secret generic {{GIT_SECRET}} --from-file=ssh-privatekey=...
+#      - kubectl create secret generic {{CLAUDE_SECRET}} --from-file=credentials.json=...
+#
+# Usage:
+#   1. Replace all {{VARIABLES}} with actual values
+#   2. Validate: ./scripts/validate-template.sh templates/polecat-kubernetes.yaml
+#   3. Apply: kubectl apply -f polecat-kubernetes.yaml
+#   4. Monitor: kubectl get polecat {{POLECAT_NAME}} -n {{NAMESPACE}} -w
+
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: {{POLECAT_NAME}}
+  namespace: {{NAMESPACE}}
+  labels:
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/component: polecat
+    # Add custom labels for filtering
+    # gastown.io/rig: {{RIG_NAME}}
+    # gastown.io/bead: {{BEAD_ID}}
+spec:
+  # ============================================
+  # CORE FIELDS
+  # ============================================
+
+  # Parent rig (REQUIRED)
+  # Must be an existing Rig resource
+  rig: {{RIG_NAME}}
+
+  # Target state (REQUIRED)
+  # - Idle: Created but not working
+  # - Working: Actively processing beadID
+  # - Terminated: Shutting down
+  desiredState: Working
+
+  # Bead to work on (optional, but needed for actual work)
+  # Triggers work when set and desiredState is Working
+  beadID: "{{BEAD_ID}}"
+
+  # Explicit task description (optional)
+  # Use when beads aren't synced to cluster or for ad-hoc tasks
+  # taskDescription: "Implement authentication feature per spec in docs/auth.md"
+
+  # ============================================
+  # EXECUTION MODE
+  # ============================================
+
+  # Where to run: local (tmux) or kubernetes (Pod)
+  # kubernetes mode requires the kubernetes section below
+  executionMode: kubernetes
+
+  # ============================================
+  # AGENT CONFIGURATION
+  # ============================================
+
+  # Agent type (optional, default: claude-code)
+  # Options: claude-code, opencode, aider, custom
+  agent: claude-code
+
+  # Agent customization (optional)
+  # Use for non-default agents or custom LLM providers
+  # agentConfig:
+  #   # LLM provider
+  #   provider: litellm  # litellm, anthropic, openai, ollama
+  #   model: claude-sonnet-4
+  #
+  #   # Custom API endpoint (for LiteLLM gateway)
+  #   modelProvider:
+  #     endpoint: https://ai-gateway.example.com/v1
+  #     apiKeySecretRef:
+  #       name: litellm-api-key
+  #       key: api-key
+  #
+  #   # Custom container image
+  #   image: ghcr.io/opencode-ai/opencode:v1.0.0
+  #
+  #   # Custom command/args
+  #   command: ["opencode"]
+  #   args: ["--headless", "--task", "$(BEAD_ID)"]
+  #
+  #   # Config from ConfigMap
+  #   configMapRef:
+  #     name: opencode-config
+  #
+  #   # Extra environment variables
+  #   env:
+  #     - name: LOG_LEVEL
+  #       value: "debug"
+
+  # ============================================
+  # KUBERNETES EXECUTION CONFIG
+  # ============================================
+
+  kubernetes:
+    # Git repository URL (REQUIRED for kubernetes mode)
+    # Use SSH format for private repos
+    gitRepository: "{{GIT_REPO}}"
+
+    # Base branch to checkout (optional, default: main)
+    gitBranch: {{GIT_BRANCH}}
+
+    # Work branch to create (optional, default: feature/<beadID>)
+    workBranch: {{WORK_BRANCH}}
+
+    # Git SSH credentials (REQUIRED for kubernetes mode)
+    # Secret must contain 'ssh-privatekey' key
+    gitSecretRef:
+      name: {{GIT_SECRET}}
+
+    # Claude credentials (REQUIRED unless using apiKeySecretRef)
+    # Secret must contain 'credentials.json' from ~/.claude/
+    claudeCredsSecretRef:
+      name: {{CLAUDE_SECRET}}
+
+    # Alternative: API key only (for headless operation)
+    # apiKeySecretRef:
+    #   name: anthropic-api-key
+    #   key: api-key
+
+    # Container image override (optional)
+    # Default image includes Claude Code pre-installed
+    # image: ghcr.io/boshu2/gastown-polecat:v1.0.0
+
+    # Max runtime before forced termination (optional)
+    # Prevents runaway polecats
+    activeDeadlineSeconds: 3600  # 1 hour
+
+    # Resource limits (recommended)
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+
+  # ============================================
+  # LIFECYCLE CONFIGURATION
+  # ============================================
+
+  # Auto-cleanup after completion (optional)
+  # Polecat resource deleted after this many seconds
+  ttlSecondsAfterFinished: 14400  # 4 hours
+
+  # Auto-terminate if idle (optional)
+  # Terminates polecat if no activity for this duration
+  maxIdleSeconds: 1800  # 30 minutes
+
+  # Resource limits for polecat (can also be in kubernetes.resources)
+  # resources:
+  #   requests:
+  #     cpu: "500m"
+  #     memory: "1Gi"
+  #   limits:
+  #     cpu: "2"
+  #     memory: "4Gi"
+
+# ============================================
+# STATUS FIELDS (read-only, set by controller)
+# ============================================
+#
+# phase: Idle | Working | Done | Stuck | Terminated
+# assignedBead: at-1234
+# branch: feature/at-1234
+# podName: polecat-furiosa-abc123
+# lastActivity: 2026-01-21T10:00:00Z
+# cleanupStatus: clean | has_uncommitted | has_unpushed
+# agent: claude-code
+# agentImage: ghcr.io/boshu2/gastown-polecat:v1.0.0
+# agentModel: claude-sonnet-4
+# conditions:
+#   - type: Ready
+#     status: "True"
+#     reason: PodRunning
+
+---
+# Example: Production polecat with Claude Code
+#
+# apiVersion: gastown.gastown.io/v1alpha1
+# kind: Polecat
+# metadata:
+#   name: furiosa
+#   namespace: gastown-system
+# spec:
+#   rig: athena
+#   desiredState: Working
+#   beadID: "at-1234"
+#   executionMode: kubernetes
+#   agent: claude-code
+#   kubernetes:
+#     gitRepository: "git@github.com:myorg/myproject.git"
+#     gitBranch: main
+#     workBranch: feature/at-1234
+#     gitSecretRef:
+#       name: git-credentials
+#     claudeCredsSecretRef:
+#       name: claude-credentials
+#     activeDeadlineSeconds: 3600
+#     resources:
+#       requests:
+#         cpu: "500m"
+#         memory: "1Gi"
+#       limits:
+#         cpu: "2"
+#         memory: "4Gi"
+#   ttlSecondsAfterFinished: 14400
+#   maxIdleSeconds: 1800
+
+---
+# Example: Polecat with API key (headless)
+#
+# apiVersion: gastown.gastown.io/v1alpha1
+# kind: Polecat
+# metadata:
+#   name: api-worker
+#   namespace: gastown-system
+# spec:
+#   rig: athena
+#   desiredState: Working
+#   beadID: "at-5678"
+#   executionMode: kubernetes
+#   kubernetes:
+#     gitRepository: "git@github.com:myorg/myproject.git"
+#     gitSecretRef:
+#       name: git-credentials
+#     apiKeySecretRef:
+#       name: anthropic-api-key
+#       key: api-key
