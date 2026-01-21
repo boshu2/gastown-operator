@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -53,6 +54,9 @@ type WitnessReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+	GTClient interface {
+		MailSend(ctx context.Context, address, subject, message string) error
+	}
 }
 
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=witnesses,verbs=get;list;watch;create;update;patch;delete
@@ -115,6 +119,16 @@ func (r *WitnessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if summary.Stuck > 0 {
 			r.Recorder.Event(witness, "Warning", "StuckPolecats",
 				"Detected polecats with no progress")
+
+			// Escalate to configured target
+			if r.GTClient != nil {
+				r.escalateIssues(ctx, witness, summary)
+			}
+		}
+
+		if summary.Failed > 0 {
+			r.Recorder.Event(witness, "Warning", "FailedPolecats",
+				"Detected failed polecats")
 		}
 	} else {
 		r.setCondition(witness, ConditionWitnessReady, metav1.ConditionTrue,
@@ -191,6 +205,45 @@ func (r *WitnessReconciler) setCondition(witness *gastownv1alpha1.Witness, condT
 		Message:            message,
 		LastTransitionTime: metav1.Now(),
 	})
+}
+
+// escalateIssues sends escalation alerts based on the configured escalation target.
+func (r *WitnessReconciler) escalateIssues(ctx context.Context, witness *gastownv1alpha1.Witness, summary gastownv1alpha1.PolecatsSummary) {
+	log := logf.FromContext(ctx)
+
+	target := witness.Spec.EscalationTarget
+	if target == "" {
+		target = "mayor"
+	}
+
+	subject := fmt.Sprintf("Health Alert: Witness %s.%s detected issues", witness.Namespace, witness.Name)
+	message := fmt.Sprintf("Rig: %s\nPhase: %s\nStuck Polecats: %d\nFailed Polecats: %d\nRunning: %d/%d",
+		witness.Spec.RigRef, witness.Status.Phase, summary.Stuck, summary.Failed, summary.Running, summary.Total)
+
+	switch target {
+	case "mayor":
+		if r.GTClient != nil {
+			if err := r.GTClient.MailSend(ctx, target, subject, message); err != nil {
+				log.Error(err, "Failed to send escalation mail to mayor", "witness", witness.Name)
+				r.Recorder.Event(witness, "Warning", "EscalationFailed",
+					fmt.Sprintf("Failed to send alert to mayor: %v", err))
+			} else {
+				log.Info("Escalation mail sent to mayor", "witness", witness.Name)
+			}
+		}
+	case "slack":
+		log.Info("Slack escalation configured but not yet implemented", "witness", witness.Name)
+		r.Recorder.Event(witness, "Warning", "SlackNotConfigured",
+			"Slack escalation is not yet implemented")
+	case "email":
+		log.Info("Email escalation configured but not yet implemented", "witness", witness.Name)
+		r.Recorder.Event(witness, "Warning", "EmailNotConfigured",
+			"Email escalation is not yet implemented")
+	default:
+		log.Info("Unknown escalation target", "witness", witness.Name, "target", target)
+		r.Recorder.Event(witness, "Warning", "UnknownEscalationTarget",
+			fmt.Sprintf("Unknown escalation target: %s", target))
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.

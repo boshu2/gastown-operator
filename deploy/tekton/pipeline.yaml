@@ -384,6 +384,10 @@ spec:
         - name: source
           workspace: source
       params:
+        - name: image
+          value: "$(params.registry)/gastown-operator:$(params.image-tag)"
+        - name: trivy-fail-on
+          value: "$(params.trivy-fail-on)"
         - name: version
           value: $(params.image-tag)
         - name: memory-type

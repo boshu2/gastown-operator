@@ -29,8 +29,9 @@ import (
 
 const (
 	// Container names
-	GitInitContainerName = "git-init"
-	ClaudeContainerName  = "claude"
+	GitInitContainerName   = "git-init"
+	ClaudeContainerName    = "claude"
+	TelemetryContainerName = "telemetry"
 
 	// Volume names
 	WorkspaceVolumeName     = "workspace"
@@ -38,6 +39,7 @@ const (
 	ClaudeCredsVolumeName   = "claude-creds"
 	TmpVolumeName           = "tmp"
 	HomeVolumeName          = "home"
+	MetricsVolumeName       = "metrics"
 	SSHKnownHostsVolumeName = "ssh-known-hosts"
 
 	// Mount paths
@@ -46,24 +48,34 @@ const (
 	ClaudeCredsMountPath   = "/claude-creds" // Temporary mount for credentials (copied to $HOME/.claude at startup)
 	TmpMountPath           = "/tmp"
 	HomeMountPath          = "/home/nonroot"
+	MetricsMountPath       = "/metrics"
 	SSHKnownHostsMountPath = "/ssh-known-hosts"
 
 	// Environment variable names for image configuration
-	EnvGitImage    = "GASTOWN_GIT_IMAGE"
-	EnvClaudeImage = "GASTOWN_CLAUDE_IMAGE"
+	EnvGitImage       = "GASTOWN_GIT_IMAGE"
+	EnvClaudeImage    = "GASTOWN_CLAUDE_IMAGE"
+	EnvTelemetryImage = "GASTOWN_TELEMETRY_IMAGE"
 
 	// Default images (community edition - vanilla Kubernetes)
 	// For enterprise/FIPS, set env vars to UBI images:
 	//   GASTOWN_GIT_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:9.3
 	//   GASTOWN_CLAUDE_IMAGE=registry.access.redhat.com/ubi9/nodejs-20:1
-	DefaultGitImage    = "alpine/git:2.43.0"
-	DefaultClaudeImage = "node:20-slim"
+	//   GASTOWN_TELEMETRY_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:9.3
+	DefaultGitImage       = "alpine/git:2.43.0"
+	DefaultClaudeImage    = "node:20-slim"
+	DefaultTelemetryImage = "alpine:latest"
 
 	// Default resource values
 	DefaultCPURequest    = "500m"
 	DefaultCPULimit      = "2"
 	DefaultMemoryRequest = "1Gi"
 	DefaultMemoryLimit   = "4Gi"
+
+	// Telemetry sidecar resource defaults
+	TelemetryCPURequest    = "100m"
+	TelemetryCPULimit      = "200m"
+	TelemetryMemoryRequest = "128Mi"
+	TelemetryMemoryLimit   = "256Mi"
 )
 
 // Pre-verified SSH host keys for common Git hosting providers.
@@ -117,6 +129,14 @@ func GetClaudeImage() string {
 	return DefaultClaudeImage
 }
 
+// GetTelemetryImage returns the telemetry sidecar image to use, checking environment variable first
+func GetTelemetryImage() string {
+	if img := os.Getenv(EnvTelemetryImage); img != "" {
+		return img
+	}
+	return DefaultTelemetryImage
+}
+
 // Build constructs the complete Pod spec for the Polecat
 func (b *Builder) Build() (*corev1.Pod, error) {
 	if b.polecat.Spec.Kubernetes == nil {
@@ -145,6 +165,7 @@ func (b *Builder) Build() (*corev1.Pod, error) {
 			},
 			Containers: []corev1.Container{
 				b.buildClaudeContainer(),
+				b.buildTelemetrySidecar(),
 			},
 			Volumes: b.buildVolumes(),
 		},
@@ -465,6 +486,106 @@ exec claude --print --dangerously-skip-permissions "$PROMPT"
 	return container
 }
 
+// buildTelemetrySidecar creates the telemetry sidecar container spec
+func (b *Builder) buildTelemetrySidecar() corev1.Container {
+	// Telemetry script that monitors the pod and writes metrics
+	telemetryScript := `
+set -e
+
+# Create metrics endpoint script
+cat > /metrics/collect.sh << 'SCRIPT'
+#!/bin/sh
+# Collect basic telemetry and output Prometheus metrics
+
+POLECAT_NAME="${POLECAT_NAME:-unknown}"
+POLECAT_RIG="${POLECAT_RIG:-unknown}"
+POLECAT_BEAD="${POLECAT_BEAD:-unknown}"
+START_TIME=$(date +%s)
+
+while true; do
+  CURRENT_TIME=$(date +%s)
+  ELAPSED=$((CURRENT_TIME - START_TIME))
+
+  # Write basic metrics in Prometheus format
+  {
+    echo "# HELP polecat_execution_duration_seconds Total execution time of the polecat"
+    echo "# TYPE polecat_execution_duration_seconds counter"
+    echo "polecat_execution_duration_seconds{polecat=\"$POLECAT_NAME\",rig=\"$POLECAT_RIG\",bead=\"$POLECAT_BEAD\"} $ELAPSED"
+
+    # Check if main container is running (claude)
+    if ps aux | grep -q '[n]ode.*claude'; then
+      echo "# HELP polecat_agent_running Agent container status (1=running, 0=stopped)"
+      echo "# TYPE polecat_agent_running gauge"
+      echo "polecat_agent_running{polecat=\"$POLECAT_NAME\",rig=\"$POLECAT_RIG\",bead=\"$POLECAT_BEAD\"} 1"
+    else
+      echo "polecat_agent_running{polecat=\"$POLECAT_NAME\",rig=\"$POLECAT_RIG\",bead=\"$POLECAT_BEAD\"} 0"
+    fi
+  } > /metrics/metrics.txt
+
+  sleep 5
+done
+SCRIPT
+
+chmod +x /metrics/collect.sh
+
+# Start the metrics collector in background
+/metrics/collect.sh &
+
+# Start a simple HTTP server to expose metrics
+while true; do
+  {
+    echo "HTTP/1.1 200 OK"
+    echo "Content-Type: text/plain; version=0.0.4"
+    echo "Connection: close"
+    echo ""
+    cat /metrics/metrics.txt 2>/dev/null || echo "# No metrics available yet"
+  } | nc -l -p 8080 -q 1
+done
+`
+
+	return corev1.Container{
+		Name:            TelemetryContainerName,
+		Image:           GetTelemetryImage(),
+		Command:         []string{"/bin/sh", "-c"},
+		Args:            []string{telemetryScript},
+		SecurityContext: b.buildSecurityContext(),
+		Env: []corev1.EnvVar{
+			{
+				Name:  "POLECAT_NAME",
+				Value: b.polecat.Name,
+			},
+			{
+				Name:  "POLECAT_RIG",
+				Value: b.polecat.Spec.Rig,
+			},
+			{
+				Name:  "POLECAT_BEAD",
+				Value: b.polecat.Spec.BeadID,
+			},
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      MetricsVolumeName,
+				MountPath: MetricsMountPath,
+			},
+			{
+				Name:      TmpVolumeName,
+				MountPath: TmpMountPath,
+			},
+		},
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse(TelemetryCPURequest),
+				corev1.ResourceMemory: resource.MustParse(TelemetryMemoryRequest),
+			},
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse(TelemetryCPULimit),
+				corev1.ResourceMemory: resource.MustParse(TelemetryMemoryLimit),
+			},
+		},
+	}
+}
+
 // buildVolumes creates the volume specifications
 func (b *Builder) buildVolumes() []corev1.Volume {
 	k8sSpec := b.polecat.Spec.Kubernetes
@@ -493,6 +614,12 @@ func (b *Builder) buildVolumes() []corev1.Volume {
 		},
 		{
 			Name: HomeVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
+		{
+			Name: MetricsVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
