@@ -21,7 +21,7 @@ trap 'echo "Error on line $LINENO. Exit code: $?" >&2' ERR
 # IMAGE VERSIONS - Keep in sync with .gitlab-ci.yml
 # ============================================================================
 
-VERSION_GO="1.24"
+VERSION_GO="1.25"
 VERSION_GOLANGCI_LINT="v2.8-alpine"
 VERSION_YAMLLINT="latest"
 VERSION_KUBECTL="1.32.11"
