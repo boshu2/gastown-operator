@@ -1,3 +1,5 @@
+<div align="center">
+
 # Kubernetes Operator for Gas Town
 
 ```
@@ -31,7 +33,10 @@
 [![OpenShift](https://img.shields.io/badge/OpenShift-Native-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-A Kubernetes operator that runs [Gas Town](https://github.com/steveyegge/gastown) polecats as pods. Scale your AI agent army beyond the laptop.
+*A Kubernetes operator that runs [Gas Town](https://github.com/steveyegge/gastown) polecats as pods.*
+*Scale your AI agent army beyond the laptop.*
+
+</div>
 
 ## Quick Start
 
