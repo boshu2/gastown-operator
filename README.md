@@ -39,74 +39,64 @@
 
 ## Quick Start
 
+### 1. Install the Operator
+
 ```bash
-# Add the helm chart and install
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
   --version 0.3.2 \
   --namespace gastown-system \
   --create-namespace
 ```
 
-That's it. The operator is now running.
-
-### Verify Installation
+### 2. Create Secrets
 
 ```bash
-kubectl get pods -n gastown-system
-# NAME                                                   READY   STATUS
-# gastown-operator-controller-manager-xxxxx-xxxxx        1/1     Running
+# Git SSH key for cloning/pushing
+kubectl create secret generic git-credentials -n gastown-system \
+  --from-file=ssh-privatekey=$HOME/.ssh/id_ed25519
+
+# Claude API key
+kubectl create secret generic claude-credentials -n gastown-system \
+  --from-literal=api-key=$ANTHROPIC_API_KEY
 ```
 
-### Create Your First Rig
+### 3. Sling Work to Kubernetes
+
+From your Mayor session, just sling issues like normal - but to k8s:
 
 ```bash
-kubectl apply -f - <<EOF
-apiVersion: gastown.gastown.io/v1alpha1
-kind: Rig
-metadata:
-  name: my-project
-spec:
-  gitURL: "git@github.com:myorg/my-project.git"
-  beadsPrefix: "proj"
-EOF
+# The Mayor dispatches work to kubernetes polecats
+gt sling proj-123 my-rig --mode kubernetes
+
+# Claude figures out the Polecat CR, the operator creates the pod
+# You don't write YAML - the agents handle it
 ```
 
-### Spawn a Polecat
+That's it. The polecat runs as a pod, clones your repo, does the work, pushes, and exits.
+
+### 4. Watch Progress
 
 ```bash
-kubectl apply -f - <<EOF
-apiVersion: gastown.gastown.io/v1alpha1
-kind: Polecat
-metadata:
-  name: furiosa
-  namespace: gastown-workers
-spec:
-  rig: my-project
-  beadID: proj-abc123
-  desiredState: Working
-  kubernetes:
-    gitRepository: "git@github.com:myorg/my-project.git"
-    gitBranch: main
-    gitSecretRef:
-      name: git-ssh-key
-    claudeCredsSecretRef:
-      name: claude-creds
-EOF
+# Check convoy status (same as local polecats)
+gt convoy list
 
-# Watch it work
-kubectl logs -f polecat-furiosa -n gastown-workers
+# Or peek at the pod directly
+kubectl logs -f polecat-proj-123 -n gastown-workers
 ```
 
 ## What Is This?
 
-[Gas Town](https://github.com/steveyegge/gastown) is a multi-agent orchestration framework - it runs AI agents (polecats) locally via tmux. This operator extends Gas Town to Kubernetes, so polecats run as pods instead of local processes.
+[Gas Town](https://github.com/steveyegge/gastown) runs AI agents (polecats) locally via tmux. This operator extends that to Kubernetes - polecats run as pods instead of local processes.
 
-**Why?**
+**The key insight:** You don't manually write Polecat CRs. The Mayor slings work with `gt sling`, Claude generates the appropriate Kubernetes resources, and the operator handles the rest.
+
+**Why run polecats in k8s?**
 - Scale beyond your laptop's tmux sessions
+- Run agents closer to your infrastructure
 - Let Kubernetes handle scheduling and lifecycle
-- Run polecats closer to your infrastructure
+- Parallel execution across a cluster
 
-Supports multiple coding agents: **opencode** (default), **claude-code**, **aider**, or **custom**.
+Supports: **claude-code** (default), **opencode**, **aider**, or **custom** agents.
 
 ## Installation Options
 
