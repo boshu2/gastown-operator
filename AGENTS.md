@@ -1,148 +1,36 @@
-# Agent Instructions for gastown-operator
+# Agent Instructions
 
-This file provides context for AI coding assistants working on gastown-operator.
+See **[AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md)** for complete agent context and instructions.
 
-## Project Overview
+This file exists for compatibility with tools that look for AGENTS.md.
 
-gastown-operator is a Kubernetes operator that runs Gas Town polecats as pods.
-It extends the [Gas Town](https://github.com/steveyegge/gastown) multi-agent
-orchestration framework from local tmux sessions to Kubernetes.
-
-## Key Concepts
-
-| Term | Description |
-|------|-------------|
-| **Gas Town** | Multi-agent orchestration framework (upstream) |
-| **Polecat** | Autonomous AI worker agent |
-| **Rig** | Project workspace (cluster-scoped CRD) |
-| **Convoy** | Batch tracking for parallel polecat execution |
-| **Witness** | Worker lifecycle monitor |
-| **Refinery** | Merge queue processor |
-| **BeadStore** | Issue tracking backend |
-
-## Repository Structure
-
-```
-gastown-operator/
-├── api/v1alpha1/       # CRD type definitions
-├── cmd/                # Entry points
-├── config/
-│   ├── crd/           # CustomResourceDefinitions
-│   ├── rbac/          # Role-based access control
-│   └── manager/       # Operator deployment
-├── deploy/
-│   └── tekton/        # CI pipeline definitions
-├── docs/              # Documentation
-├── internal/
-│   └── controller/    # Reconciliation logic
-└── pkg/               # Shared packages
-```
-
-## Development Commands
+## Quick Reference
 
 ```bash
-make build           # Build operator binary
-make test            # Run unit tests
-make lint            # Run linters
-make manifests       # Generate CRDs from Go types
-make install         # Install CRDs to cluster
-make run             # Run operator locally
-make docker-build    # Build container image
+# Install operator
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.3.2 \
+  --namespace gastown-system \
+  --create-namespace
+
+# Create secrets (gastown-workers namespace)
+kubectl create secret generic git-credentials -n gastown-workers \
+  --from-file=ssh-privatekey=$HOME/.ssh/id_ed25519
+
+kubectl create secret generic claude-credentials -n gastown-workers \
+  --from-literal=api-key=$ANTHROPIC_API_KEY
+
+# Verify
+kubectl get pods -n gastown-system
+kubectl get crds | grep gastown
 ```
 
-## Code Patterns
+## Full Setup
 
-### Controller Reconciliation
+For complete setup instructions including OpenShift, OAuth credentials, and Polecat examples, see:
+- [USER_GUIDE.md](docs/USER_GUIDE.md) - Complete walkthrough
+- [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md) - Agent context
 
-Controllers follow the standard controller-runtime pattern:
+## Key Warning
 
-```go
-func (r *PolecatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-    // 1. Fetch the resource
-    // 2. Check if deleted (handle finalizer)
-    // 3. Reconcile desired state
-    // 4. Update status
-    return ctrl.Result{}, nil
-}
-```
-
-### CRD Modifications
-
-When modifying CRDs in `api/v1alpha1/`:
-
-1. Update the Go struct with kubebuilder markers
-2. Run `make manifests` to regenerate YAML
-3. Run `make install` to apply to cluster
-
-### Testing
-
-- Unit tests use envtest (etcd + kube-apiserver)
-- Run `make test` before submitting PRs
-- Add test cases for new controller logic
-
-## Two Editions
-
-| Edition | Base Image | Use Case |
-|---------|------------|----------|
-| Community | distroless | Vanilla Kubernetes |
-| Enterprise | UBI9 + FIPS | OpenShift, regulated |
-
-Build with `EDITION=fips make docker-build` for enterprise.
-
-## Common Tasks
-
-### Add a new CRD field
-
-1. Edit `api/v1alpha1/<type>_types.go`
-2. Add kubebuilder validation markers
-3. Run `make manifests`
-4. Update controller logic
-5. Add tests
-
-### Debug controller
-
-```bash
-# Run with debug logging
-make run ARGS="--zap-log-level=debug"
-
-# Check operator logs in cluster
-kubectl logs -n gastown-system deployment/gastown-operator-controller-manager
-```
-
-## Dependencies
-
-- controller-runtime v0.22.x
-- kubebuilder v4
-- Go 1.25+
-
-## Related Documentation
-
-- [Gas Town](https://github.com/steveyegge/gastown) - Upstream framework
-- [Kubebuilder Book](https://book.kubebuilder.io/) - Operator patterns
-- [Controller Runtime](https://pkg.go.dev/sigs.k8s.io/controller-runtime) - API docs
-
-## Landing the Plane (Session Completion)
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+**DO NOT manually write Polecat YAML** in normal workflows. The Mayor dispatches work with `gt sling`, and Claude generates the appropriate Kubernetes resources. The operator handles the rest.
