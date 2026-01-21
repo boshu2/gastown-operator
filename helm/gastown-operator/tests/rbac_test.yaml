@@ -1,0 +1,25 @@
+suite: gastown-operator RBAC tests
+templates:
+  - templates/clusterrole.yaml
+  - templates/clusterrolebinding.yaml
+  - templates/serviceaccount.yaml
+tests:
+  - it: should render ClusterRole
+    template: templates/clusterrole.yaml
+    asserts:
+      - isKind:
+          of: ClusterRole
+      - exists:
+          path: rules
+
+  - it: should render ClusterRoleBinding
+    template: templates/clusterrolebinding.yaml
+    asserts:
+      - isKind:
+          of: ClusterRoleBinding
+
+  - it: should render ServiceAccount
+    template: templates/serviceaccount.yaml
+    asserts:
+      - isKind:
+          of: ServiceAccount

@@ -1,0 +1,31 @@
+# Pre-commit hooks for gastown-operator
+# Install: pre-commit install
+# Run: pre-commit run --all-files
+
+repos:
+  # Helm validation
+  - repo: local
+    hooks:
+      - id: helm-lint
+        name: helm lint
+        entry: bash -c 'helm lint helm/gastown-operator --strict'
+        language: system
+        files: ^helm/.*\.(yaml|yml|tpl)$
+        pass_filenames: false
+
+  # Go validation
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: go fmt
+        entry: bash -c 'gofmt -w .'
+        language: system
+        files: \.go$
+        pass_filenames: false
+
+      - id: go-vet
+        name: go vet
+        entry: bash -c 'go vet ./...'
+        language: system
+        files: \.go$
+        pass_filenames: false
