@@ -48,7 +48,7 @@ helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
 
 Then tell Claude:
 
-> "Set up gastown-operator on my cluster. Read the [USER_GUIDE.md](docs/USER_GUIDE.md) for instructions."
+> "Set up gastown-operator on my cluster. Read [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md)."
 
 Claude will handle the secrets, the Polecat CRs, everything. You don't write YAML - the agents do.
 
