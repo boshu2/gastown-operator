@@ -23,10 +23,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -35,8 +33,7 @@ var polecatlog = logf.Log.WithName("polecat-resource")
 
 // SetupPolecatWebhookWithManager registers the Polecat webhooks with the manager.
 func SetupPolecatWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&Polecat{}).
+	return ctrl.NewWebhookManagedBy(mgr, &Polecat{}).
 		WithValidator(&PolecatCustomValidator{}).
 		WithDefaulter(&PolecatCustomDefaulter{}).
 		Complete()
@@ -44,34 +41,21 @@ func SetupPolecatWebhookWithManager(mgr ctrl.Manager) error {
 
 // +kubebuilder:webhook:path=/validate-gastown-gastown-io-v1alpha1-polecat,mutating=false,failurePolicy=fail,sideEffects=None,groups=gastown.gastown.io,resources=polecats,verbs=create;update,versions=v1alpha1,name=vpolecat.kb.io,admissionReviewVersions=v1
 
-// PolecatCustomValidator implements admission.CustomValidator for Polecat.
+// PolecatCustomValidator implements admission.Validator[*Polecat] for Polecat.
 type PolecatCustomValidator struct{}
 
-var _ webhook.CustomValidator = &PolecatCustomValidator{}
+var _ admission.Validator[*Polecat] = &PolecatCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator.
-func (v *PolecatCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	polecat, ok := obj.(*Polecat)
-	if !ok {
-		return nil, fmt.Errorf("expected a Polecat but got a %T", obj)
-	}
+// ValidateCreate implements admission.Validator.
+func (v *PolecatCustomValidator) ValidateCreate(ctx context.Context, polecat *Polecat) (admission.Warnings, error) {
 	polecatlog.Info("validate create", "name", polecat.Name)
 
 	return v.validatePolecat(polecat)
 }
 
-// ValidateUpdate implements webhook.CustomValidator.
-func (v *PolecatCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	polecat, ok := newObj.(*Polecat)
-	if !ok {
-		return nil, fmt.Errorf("expected a Polecat but got a %T", newObj)
-	}
+// ValidateUpdate implements admission.Validator.
+func (v *PolecatCustomValidator) ValidateUpdate(ctx context.Context, oldPolecat, polecat *Polecat) (admission.Warnings, error) {
 	polecatlog.Info("validate update", "name", polecat.Name)
-
-	oldPolecat, ok := oldObj.(*Polecat)
-	if !ok {
-		return nil, fmt.Errorf("expected a Polecat but got a %T", oldObj)
-	}
 
 	// Validate immutable fields
 	if oldPolecat.Spec.Rig != polecat.Spec.Rig {
@@ -87,12 +71,8 @@ func (v *PolecatCustomValidator) ValidateUpdate(ctx context.Context, oldObj, new
 	return v.validatePolecat(polecat)
 }
 
-// ValidateDelete implements webhook.CustomValidator.
-func (v *PolecatCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	polecat, ok := obj.(*Polecat)
-	if !ok {
-		return nil, fmt.Errorf("expected a Polecat but got a %T", obj)
-	}
+// ValidateDelete implements admission.Validator.
+func (v *PolecatCustomValidator) ValidateDelete(ctx context.Context, polecat *Polecat) (admission.Warnings, error) {
 	polecatlog.Info("validate delete", "name", polecat.Name)
 
 	// No validation on delete
@@ -236,17 +216,13 @@ func validateResources(resources *corev1.ResourceRequirements) ([]string, admiss
 
 // +kubebuilder:webhook:path=/mutate-gastown-gastown-io-v1alpha1-polecat,mutating=true,failurePolicy=fail,sideEffects=None,groups=gastown.gastown.io,resources=polecats,verbs=create;update,versions=v1alpha1,name=mpolecat.kb.io,admissionReviewVersions=v1
 
-// PolecatCustomDefaulter implements admission.CustomDefaulter for Polecat.
+// PolecatCustomDefaulter implements admission.Defaulter[*Polecat] for Polecat.
 type PolecatCustomDefaulter struct{}
 
-var _ webhook.CustomDefaulter = &PolecatCustomDefaulter{}
+var _ admission.Defaulter[*Polecat] = &PolecatCustomDefaulter{}
 
-// Default implements webhook.CustomDefaulter.
-func (d *PolecatCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
-	polecat, ok := obj.(*Polecat)
-	if !ok {
-		return fmt.Errorf("expected a Polecat but got a %T", obj)
-	}
+// Default implements admission.Defaulter.
+func (d *PolecatCustomDefaulter) Default(ctx context.Context, polecat *Polecat) error {
 	polecatlog.Info("default", "name", polecat.Name)
 
 	// Set default execution mode

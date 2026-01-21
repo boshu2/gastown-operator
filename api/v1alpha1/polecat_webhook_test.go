@@ -318,25 +318,7 @@ func TestPolecatCustomValidator_ValidateDelete(t *testing.T) {
 	assert.Nil(t, warnings)
 }
 
-func TestPolecatCustomValidator_WrongType(t *testing.T) {
-	validator := &PolecatCustomValidator{}
-	ctx := context.Background()
-
-	// Pass a non-Polecat object
-	wrongObj := &Rig{}
-
-	_, err := validator.ValidateCreate(ctx, wrongObj)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected a Polecat")
-
-	_, err = validator.ValidateUpdate(ctx, wrongObj, wrongObj)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected a Polecat")
-
-	_, err = validator.ValidateDelete(ctx, wrongObj)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected a Polecat")
-}
+// Note: WrongType tests removed - generics enforce type safety at compile time
 
 func TestPolecatCustomDefaulter_Default(t *testing.T) {
 	defaulter := &PolecatCustomDefaulter{}
@@ -450,17 +432,7 @@ func TestPolecatCustomDefaulter_Default(t *testing.T) {
 	}
 }
 
-func TestPolecatCustomDefaulter_WrongType(t *testing.T) {
-	defaulter := &PolecatCustomDefaulter{}
-	ctx := context.Background()
-
-	// Pass a non-Polecat object
-	wrongObj := &Rig{}
-
-	err := defaulter.Default(ctx, wrongObj)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected a Polecat")
-}
+// Note: WrongType tests removed - generics enforce type safety at compile time
 
 func TestValidateKubernetesSpec(t *testing.T) {
 	tests := []struct {

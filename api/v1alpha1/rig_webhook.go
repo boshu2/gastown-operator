@@ -24,10 +24,8 @@ import (
 	"regexp"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -36,8 +34,7 @@ var riglog = logf.Log.WithName("rig-resource")
 
 // SetupRigWebhookWithManager registers the Rig webhooks with the manager.
 func SetupRigWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&Rig{}).
+	return ctrl.NewWebhookManagedBy(mgr, &Rig{}).
 		WithValidator(&RigCustomValidator{}).
 		WithDefaulter(&RigCustomDefaulter{}).
 		Complete()
@@ -45,17 +42,13 @@ func SetupRigWebhookWithManager(mgr ctrl.Manager) error {
 
 // +kubebuilder:webhook:path=/mutate-gastown-gastown-io-v1alpha1-rig,mutating=true,failurePolicy=fail,sideEffects=None,groups=gastown.gastown.io,resources=rigs,verbs=create;update,versions=v1alpha1,name=mrig.kb.io,admissionReviewVersions=v1
 
-// RigCustomDefaulter implements admission.CustomDefaulter for Rig.
+// RigCustomDefaulter implements admission.Defaulter[*Rig] for Rig.
 type RigCustomDefaulter struct{}
 
-var _ webhook.CustomDefaulter = &RigCustomDefaulter{}
+var _ admission.Defaulter[*Rig] = &RigCustomDefaulter{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the type.
-func (d *RigCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
-	rig, ok := obj.(*Rig)
-	if !ok {
-		return fmt.Errorf("expected a Rig but got a %T", obj)
-	}
+// Default implements admission.Defaulter so a webhook will be registered for the type.
+func (d *RigCustomDefaulter) Default(ctx context.Context, rig *Rig) error {
 	riglog.Info("defaulting", "name", rig.Name)
 
 	// Default MaxPolecats to 8 if not set
@@ -73,34 +66,21 @@ func (d *RigCustomDefaulter) Default(ctx context.Context, obj runtime.Object) er
 
 // +kubebuilder:webhook:path=/validate-gastown-gastown-io-v1alpha1-rig,mutating=false,failurePolicy=fail,sideEffects=None,groups=gastown.gastown.io,resources=rigs,verbs=create;update,versions=v1alpha1,name=vrig.kb.io,admissionReviewVersions=v1
 
-// RigCustomValidator implements admission.CustomValidator for Rig.
+// RigCustomValidator implements admission.Validator[*Rig] for Rig.
 type RigCustomValidator struct{}
 
-var _ webhook.CustomValidator = &RigCustomValidator{}
+var _ admission.Validator[*Rig] = &RigCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type.
-func (v *RigCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	rig, ok := obj.(*Rig)
-	if !ok {
-		return nil, fmt.Errorf("expected a Rig but got a %T", obj)
-	}
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type.
+func (v *RigCustomValidator) ValidateCreate(ctx context.Context, rig *Rig) (admission.Warnings, error) {
 	riglog.Info("validate create", "name", rig.Name)
 
 	return v.validateRig(rig)
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type.
-func (v *RigCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	rig, ok := newObj.(*Rig)
-	if !ok {
-		return nil, fmt.Errorf("expected a Rig but got a %T", newObj)
-	}
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type.
+func (v *RigCustomValidator) ValidateUpdate(ctx context.Context, oldRig, rig *Rig) (admission.Warnings, error) {
 	riglog.Info("validate update", "name", rig.Name)
-
-	oldRig, ok := oldObj.(*Rig)
-	if !ok {
-		return nil, fmt.Errorf("expected a Rig but got a %T", oldObj)
-	}
 
 	// Validate immutable fields
 	if oldRig.Spec.BeadsPrefix != rig.Spec.BeadsPrefix {
@@ -111,12 +91,8 @@ func (v *RigCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj 
 	return v.validateRig(rig)
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type.
-func (v *RigCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	rig, ok := obj.(*Rig)
-	if !ok {
-		return nil, fmt.Errorf("expected a Rig but got a %T", obj)
-	}
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type.
+func (v *RigCustomValidator) ValidateDelete(ctx context.Context, rig *Rig) (admission.Warnings, error) {
 	riglog.Info("validate delete", "name", rig.Name)
 
 	// No validation on delete
