@@ -32,14 +32,14 @@ variables:
   DPR_REGISTRY: "dprusocplvjmp01.deepsky.lab:5000"
 
   # CI Images from DPR
-  GO_IMAGE: "${DPR_REGISTRY}/ci-images/golang:1.24"
+  GO_IMAGE: "${DPR_REGISTRY}/ci-images/golang:1.25"
   GO_LINT_IMAGE: "${DPR_REGISTRY}/ci-images/golangci-lint:v2.7.2"
   KUBECTL_IMAGE: "${DPR_REGISTRY}/ci-images/k8s:1.31.4"
   YAMLLINT_IMAGE: "${DPR_REGISTRY}/ci-images/yamllint:latest"
   NODE_IMAGE: "${DPR_REGISTRY}/library/node:20-alpine"
   ALPINE_GIT_IMAGE: "${DPR_REGISTRY}/library/alpine/git:latest"
 
-  GO_VERSION: "1.24"
+  GO_VERSION: "1.25"
   TEKTON_NAMESPACE: "olympus-ci"
   PIPELINE_NAME: "gastown-operator-ci"
 
