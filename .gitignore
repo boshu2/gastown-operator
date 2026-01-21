@@ -33,6 +33,7 @@ go.work
 .agents/
 .claude/
 !.claude/SKILL.md
+!.claude/references/
 .runtime/
 state.json
 
