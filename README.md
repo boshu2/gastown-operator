@@ -1,9 +1,24 @@
 # Kubernetes Operator for Gas Town
 
-> *"Who runs Bartertown? Kubernetes runs Bartertown."*
+```
+   ________    _____    _________  ___________  ______  ____      ___   ___
+  /  _____/   /  _  \  /   _____/  \__    ___/ /  __  \ \   \    /   \ |   \
+ /   \  ___  /  /_\  \ \_____  \     |    |   |  |  |  | \   \/\/   /  |    \
+ \    \_\  \/    |    \/        \    |    |   |  |__|  |  \        /   |  |\ \
+  \______  /\____|__  /_______  /    |____|    \______/    \__/\__/    |__| \_\
+         \/         \/        \/
+   ___  ___  ___  ___  ___    __   _____  ___  ___
+  / _ \| _ \| __|| _ \/   \  /__\ |_   _|/ _ \| _ \
+ | (_) |  _/| _| |   /| - | / \/ \  | | | (_) |   /
+  \___/|_|  |___||_|_\|_|_| \_/\_/  |_|  \___/|_|_\
+
+        "Who runs Bartertown? Kubernetes runs Bartertown."
+```
 
 [![CI](https://github.com/boshu2/gastown-operator/actions/workflows/ci.yaml/badge.svg)](https://github.com/boshu2/gastown-operator/actions/workflows/ci.yaml)
+[![Release](https://img.shields.io/github/v/release/boshu2/gastown-operator?logo=github)](https://github.com/boshu2/gastown-operator/releases/latest)
 [![Helm](https://img.shields.io/badge/Helm-OCI-blue?logo=helm)](https://ghcr.io/boshu2/charts/gastown-operator)
+[![GHCR](https://img.shields.io/badge/GHCR-Container-purple?logo=github)](https://ghcr.io/boshu2/gastown-operator)
 [![OpenShift](https://img.shields.io/badge/OpenShift-Native-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
