@@ -2,6 +2,8 @@
 
 > Run polecats as pods. Scale your AI agent army beyond the laptop.
 
+**Quick Links:** [SKILL.md](SKILL.md) (copy-paste templates) | [templates/](templates/) (all resources) | [FRICTION_POINTS.md](FRICTION_POINTS.md) (anti-patterns)
+
 ---
 
 ## Identity
@@ -137,9 +139,25 @@ kubectl create secret generic claude-credentials -n gastown-workers \
 
 ---
 
+## Templates (Copy-Paste Ready)
+
+All templates are in [templates/](templates/) with `{{VARIABLE}}` markers:
+
+| Template | Variables | Use Case |
+|----------|-----------|----------|
+| [polecat-minimal.yaml](templates/polecat-minimal.yaml) | `POLECAT_NAME`, `RIG_NAME`, `BEAD_ID` | Quick local polecat |
+| [polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml) | All fields | Full K8s execution |
+| [convoy.yaml](templates/convoy.yaml) | `CONVOY_NAME`, `BEAD_IDS` | Batch tracking |
+| [witness.yaml](templates/witness.yaml) | `RIG_NAME` | Health monitoring |
+| [refinery.yaml](templates/refinery.yaml) | `RIG_NAME`, `TARGET_BRANCH` | Merge processing |
+| [secret-git-ssh.yaml](templates/secret-git-ssh.yaml) | `SSH_PRIVATE_KEY` | Git credentials |
+| [secret-claude-creds.yaml](templates/secret-claude-creds.yaml) | `API_KEY` | Claude credentials |
+
+**Validation:** `./scripts/validate-template.sh <file>` checks syntax and required fields.
+
 ## Polecat CR Example
 
-If you DO need to create a Polecat manually (testing, debugging):
+Minimal working example (or use [templates/polecat-minimal.yaml](templates/polecat-minimal.yaml)):
 
 ```yaml
 apiVersion: gastown.gastown.io/v1alpha1
@@ -151,19 +169,10 @@ spec:
   rig: my-project
   beadID: issue-123
   desiredState: Working
-  executionMode: kubernetes
-  taskDescription: |
-    Implement the /health endpoint.
-    Commit and push when done.
-  kubernetes:
-    gitRepository: "git@github.com:myorg/myrepo.git"
-    gitBranch: main
-    gitSecretRef:
-      name: git-credentials
-    apiKeySecretRef:
-      name: claude-credentials
-      key: api-key
+  executionMode: local
 ```
+
+For Kubernetes execution with full options, see [templates/polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml)
 
 ---
 
@@ -224,6 +233,11 @@ Check API key is valid or OAuth tokens haven't expired (24hr lifetime).
 
 ## Documentation
 
-- [USER_GUIDE.md](docs/USER_GUIDE.md) - Complete setup walkthrough
-- [CRD_REFERENCE.md](docs/CRD_REFERENCE.md) - Full spec/status docs
-- [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Common issues
+| Document | Purpose |
+|----------|---------|
+| [SKILL.md](SKILL.md) | Agent quick reference with copy-paste templates |
+| [templates/](templates/) | All YAML templates with `{{VARIABLE}}` markers |
+| [FRICTION_POINTS.md](FRICTION_POINTS.md) | Anti-patterns and common mistakes |
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Complete setup walkthrough |
+| [docs/CRD_REFERENCE.md](docs/CRD_REFERENCE.md) | Full spec/status docs |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues |
