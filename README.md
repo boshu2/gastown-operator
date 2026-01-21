@@ -37,7 +37,7 @@ Then tell Claude:
 
 Claude will handle the secrets, the Polecat CRs, everything. You don't write YAML - the agents do.
 
-**For AI Agents:** See [SKILL.md](SKILL.md) for copy-paste templates and [templates/](templates/) for all resource examples.
+**For AI Agents:** See [.claude/SKILL.md](.claude/SKILL.md) for copy-paste templates and [templates/](templates/) for all resource examples.
 
 ## What Is This?
 
