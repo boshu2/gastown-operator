@@ -1,0 +1,105 @@
+# Refinery Template - Merge Processing for Gas Town
+#
+# A Refinery processes merge queues for a Rig, sequentially rebasing
+# and merging polecat branches after validation.
+# Olympian API: Crucible
+#
+# Key responsibilities:
+#   - Queue polecat branches for merge
+#   - Rebase onto target branch
+#   - Run validation tests before merge
+#   - Handle merge conflicts and failures
+#
+# Lifecycle:
+#   Idle -> Processing -> (back to Idle or Error)
+#
+# Variables to replace:
+#   {{REFINERY_NAME}}    - Unique name (e.g., "athena-refinery")
+#   {{NAMESPACE}}        - Target namespace (default: gastown-system)
+#   {{RIG_NAME}}         - Rig to process merges for (e.g., "athena")
+#   {{TARGET_BRANCH}}    - Branch to merge into (e.g., "main")
+#   {{TEST_COMMAND}}     - Validation command (e.g., "make test")
+#   {{GIT_SECRET_NAME}}  - Secret with git credentials
+#
+# Usage:
+#   1. Replace all {{VARIABLES}} with actual values
+#   2. Validate: ./scripts/validate-template.sh templates/refinery.yaml
+#   3. Apply: kubectl apply -f refinery.yaml
+#   4. Monitor: kubectl get refinery {{REFINERY_NAME}} -n {{NAMESPACE}}
+
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Refinery
+metadata:
+  name: {{REFINERY_NAME}}
+  namespace: {{NAMESPACE}}
+  labels:
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/component: refinery
+spec:
+  # Rig to process merges for (REQUIRED)
+  # Must be an existing Rig resource
+  rigRef: {{RIG_NAME}}
+
+  # Branch to merge into (optional, default: "main")
+  # Polecat branches will be rebased onto this branch before merging
+  targetBranch: {{TARGET_BRANCH}}
+
+  # Validation command (optional)
+  # Runs after rebase, before merge. Merge aborted if command fails.
+  # Examples:
+  #   - "make test"
+  #   - "./scripts/validate.sh"
+  #   - "go test ./..."
+  testCommand: "{{TEST_COMMAND}}"
+
+  # Concurrent merge processing (optional, default: 1)
+  # Keep at 1 for sequential merges to avoid conflicts
+  # Only increase if merges are independent
+  parallelism: 1
+
+  # Git credentials for push access (optional)
+  # Required if pushing to protected branches or private repos
+  gitSecretRef:
+    name: {{GIT_SECRET_NAME}}
+
+# Status fields (read-only, set by controller):
+#   phase: Idle | Processing | Error
+#   queueLength: 3 - Branches waiting to merge
+#   currentMerge: "feature/at-1234" - Currently processing
+#   lastMergeTime: timestamp
+#   mergesSummary:
+#     total: 10     - Total merges attempted
+#     succeeded: 9  - Successful merges
+#     failed: 1     - Failed merges
+#     pending: 3    - Branches in queue
+
+---
+# Example: Standard refinery for athena
+#
+# apiVersion: gastown.gastown.io/v1alpha1
+# kind: Refinery
+# metadata:
+#   name: athena-refinery
+#   namespace: gastown-system
+# spec:
+#   rigRef: athena
+#   targetBranch: main
+#   testCommand: "make test"
+#   parallelism: 1
+#   gitSecretRef:
+#     name: git-credentials
+
+---
+# Example: Refinery with no tests (for docs repos)
+#
+# apiVersion: gastown.gastown.io/v1alpha1
+# kind: Refinery
+# metadata:
+#   name: docs-refinery
+#   namespace: gastown-system
+# spec:
+#   rigRef: olympus
+#   targetBranch: main
+#   # No testCommand - skip validation
+#   gitSecretRef:
+#     name: git-credentials

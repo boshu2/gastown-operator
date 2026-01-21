@@ -1,0 +1,92 @@
+# Witness Template - Health Monitoring for Gas Town
+#
+# A Witness monitors the health of Polecats in a Rig and escalates issues.
+# Olympian API: Sentinel
+#
+# Key responsibilities:
+#   - Detect stuck polecats (no progress for threshold duration)
+#   - Monitor polecat health (session active, git state)
+#   - Escalate issues to mayor or external systems
+#
+# Lifecycle:
+#   Pending -> Active -> Degraded (if issues detected)
+#
+# Variables to replace:
+#   {{WITNESS_NAME}}      - Unique name (e.g., "athena-witness")
+#   {{NAMESPACE}}         - Target namespace (default: gastown-system)
+#   {{RIG_NAME}}          - Rig to monitor (e.g., "athena")
+#   {{CHECK_INTERVAL}}    - How often to check (e.g., "30s", "1m")
+#   {{STUCK_THRESHOLD}}   - Idle time before considered stuck (e.g., "15m")
+#   {{ESCALATION_TARGET}} - Where to send alerts (e.g., "mayor", "slack")
+#
+# Usage:
+#   1. Replace all {{VARIABLES}} with actual values
+#   2. Validate: ./scripts/validate-template.sh templates/witness.yaml
+#   3. Apply: kubectl apply -f witness.yaml
+#   4. Check status: kubectl get witness {{WITNESS_NAME}} -n {{NAMESPACE}}
+
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Witness
+metadata:
+  name: {{WITNESS_NAME}}
+  namespace: {{NAMESPACE}}
+  labels:
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/component: witness
+spec:
+  # Rig to monitor (REQUIRED)
+  # Must be an existing Rig resource
+  rigRef: {{RIG_NAME}}
+
+  # How often to check polecat health (optional, default: 30s)
+  # Lower values = faster detection but more resource usage
+  healthCheckInterval: {{CHECK_INTERVAL}}
+
+  # How long idle before considered stuck (optional, default: 15m)
+  # Polecats with no activity for this duration trigger alerts
+  stuckThreshold: {{STUCK_THRESHOLD}}
+
+  # Where to send alerts (optional, default: "mayor")
+  # Options:
+  #   - "mayor" - Send to mayor's mail inbox
+  #   - "slack" - Post to configured Slack channel (requires SlackConfig)
+  #   - "email" - Send email notification (requires EmailConfig)
+  escalationTarget: {{ESCALATION_TARGET}}
+
+# Status fields (read-only, set by controller):
+#   phase: Pending | Active | Degraded
+#   lastCheckTime: timestamp of last health check
+#   polecatsSummary:
+#     total: 5      - Total polecats in rig
+#     running: 3    - Actively running
+#     succeeded: 1  - Successfully completed
+#     failed: 0     - Failed polecats
+#     stuck: 1      - Polecats with no progress
+
+---
+# Example: Production witness for athena rig
+#
+# apiVersion: gastown.gastown.io/v1alpha1
+# kind: Witness
+# metadata:
+#   name: athena-witness
+#   namespace: gastown-system
+# spec:
+#   rigRef: athena
+#   healthCheckInterval: 30s
+#   stuckThreshold: 15m
+#   escalationTarget: mayor
+
+---
+# Example: Aggressive monitoring for critical work
+#
+# apiVersion: gastown.gastown.io/v1alpha1
+# kind: Witness
+# metadata:
+#   name: critical-witness
+#   namespace: gastown-system
+# spec:
+#   rigRef: athena
+#   healthCheckInterval: 10s    # Check every 10 seconds
+#   stuckThreshold: 5m          # Alert if stuck for 5 minutes
+#   escalationTarget: slack     # Immediate Slack notification

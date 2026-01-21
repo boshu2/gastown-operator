@@ -1,0 +1,85 @@
+# Convoy Template - Batch Tracking for Gas Town
+#
+# A Convoy tracks a batch of beads for coordinated execution.
+# Use for wave-based implementation patterns where you need to monitor
+# progress across multiple polecats working on related issues.
+#
+# Lifecycle:
+#   Pending -> InProgress -> Complete/Failed
+#
+# Variables to replace:
+#   {{CONVOY_NAME}}     - Unique name (e.g., "wave-1", "auth-feature")
+#   {{NAMESPACE}}       - Target namespace (default: gastown-system)
+#   {{DESCRIPTION}}     - Human-readable description
+#   {{BEAD_ID_1}}       - First bead ID to track (e.g., "at-1234")
+#   {{BEAD_ID_2}}       - Additional bead IDs (add more as needed)
+#   {{RIG_NAME}}        - Rig where polecats run (e.g., "athena")
+#   {{MAX_PARALLEL}}    - Max concurrent polecats (0=unlimited)
+#
+# Usage:
+#   1. Replace all {{VARIABLES}} with actual values
+#   2. Validate: ./scripts/validate-template.sh templates/convoy.yaml
+#   3. Apply: kubectl apply -f convoy.yaml
+#   4. Monitor: kubectl get convoy {{CONVOY_NAME}} -n {{NAMESPACE}} -w
+
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Convoy
+metadata:
+  name: {{CONVOY_NAME}}
+  namespace: {{NAMESPACE}}
+  labels:
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/component: convoy
+    # Optional: add your own labels for filtering
+    # gastown.io/wave: "1"
+    # gastown.io/epic: "at-1234"
+spec:
+  # Human-readable description (REQUIRED)
+  # Shows up in `gt convoy list` and status dashboards
+  description: "{{DESCRIPTION}}"
+
+  # List of bead IDs to track (REQUIRED, min 1)
+  # These are the issues that polecats will work on
+  trackedBeads:
+    - "{{BEAD_ID_1}}"
+    - "{{BEAD_ID_2}}"
+    # Add more beads as needed:
+    # - "{{BEAD_ID_3}}"
+
+  # Max concurrent polecats (optional, default: 0=unlimited)
+  # Set to limit resource usage or control blast radius
+  parallelism: {{MAX_PARALLEL}}
+
+  # Rig where polecats will be created (optional)
+  # If not specified, beads routing determines the rig from bead prefix
+  rigRef: {{RIG_NAME}}
+
+  # Mail address for completion notification (optional)
+  # Receives notification when all beads complete or convoy fails
+  # notifyOnComplete: "mayor"
+
+# Status fields (read-only, set by controller):
+#   phase: Pending | InProgress | Complete | Failed
+#   progress: "2/5" - completed/total
+#   completedBeads: ["at-1234", "at-1235"]
+#   pendingBeads: ["at-1236"]
+#   startedAt: timestamp
+#   completedAt: timestamp
+
+---
+# Example: Wave 1 of an epic implementation
+#
+# apiVersion: gastown.gastown.io/v1alpha1
+# kind: Convoy
+# metadata:
+#   name: wave-1-auth
+#   namespace: gastown-system
+# spec:
+#   description: "Wave 1: Core authentication components"
+#   trackedBeads:
+#     - "at-abc1"
+#     - "at-abc2"
+#     - "at-abc3"
+#   parallelism: 3
+#   rigRef: athena
+#   notifyOnComplete: "mayor"
