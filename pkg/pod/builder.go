@@ -487,6 +487,8 @@ exec claude --print --dangerously-skip-permissions "$PROMPT"
 }
 
 // buildTelemetrySidecar creates the telemetry sidecar container spec
+//
+//nolint:lll // Prometheus metric lines in embedded shell script cannot be broken
 func (b *Builder) buildTelemetrySidecar() corev1.Container {
 	// Telemetry script that monitors the pod and writes metrics
 	telemetryScript := `

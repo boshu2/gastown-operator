@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+//nolint:goconst // test fixtures use repeated string literals for clarity
 package pod
 
 import (
@@ -477,11 +478,11 @@ func TestTelemetrySidecar(t *testing.T) {
 		telemetrySidecar := pod.Spec.Containers[1]
 		resources := telemetrySidecar.Resources
 
-		if resources.Requests == nil || len(resources.Requests) == 0 {
+		if len(resources.Requests) == 0 {
 			t.Error("telemetry sidecar missing resource requests")
 		}
 
-		if resources.Limits == nil || len(resources.Limits) == 0 {
+		if len(resources.Limits) == 0 {
 			t.Error("telemetry sidecar missing resource limits")
 		}
 	})

@@ -45,6 +45,11 @@ const (
 	ConditionBeadStoreSynced = "Synced"
 	ConditionBeadStoreReady  = "Ready"
 
+	// Phase constants for BeadStore status
+	PhaseError   = "Error"
+	PhasePending = "Pending"
+	PhaseSynced  = "Synced"
+
 	// beadstoreFinalizer ensures cleanup of external resources
 	beadstoreFinalizer = "gastown.io/beadstore-cleanup"
 )
@@ -103,7 +108,7 @@ func (r *BeadStoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		log.Error(err, "Failed to validate rig")
 		r.setCondition(&beadstore, ConditionBeadStoreReady, metav1.ConditionFalse, "RigValidationFailed",
 			err.Error())
-		beadstore.Status.Phase = "Error"
+		beadstore.Status.Phase = PhaseError
 		if updateErr := r.Status().Update(ctx, &beadstore); updateErr != nil {
 			timer.RecordResult(metrics.ResultError)
 			return ctrl.Result{}, gterrors.Wrap(updateErr, "failed to update status")
@@ -116,7 +121,7 @@ func (r *BeadStoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		log.Info("Rig not found", "rig", beadstore.Spec.RigRef)
 		r.setCondition(&beadstore, ConditionBeadStoreReady, metav1.ConditionFalse, "RigNotFound",
 			fmt.Sprintf("Rig %q not found", beadstore.Spec.RigRef))
-		beadstore.Status.Phase = "Pending"
+		beadstore.Status.Phase = PhasePending
 		if err := r.Status().Update(ctx, &beadstore); err != nil {
 			timer.RecordResult(metrics.ResultError)
 			return ctrl.Result{}, gterrors.Wrap(err, "failed to update status")
@@ -132,7 +137,7 @@ func (r *BeadStoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		log.Error(err, "Failed to get rig status")
 		r.setCondition(&beadstore, ConditionBeadStoreSynced, metav1.ConditionFalse, "RigStatusFailed",
 			err.Error())
-		beadstore.Status.Phase = "Error"
+		beadstore.Status.Phase = PhaseError
 		if updateErr := r.Status().Update(ctx, &beadstore); updateErr != nil {
 			timer.RecordResult(metrics.ResultError)
 			return ctrl.Result{}, gterrors.Wrap(updateErr, "failed to update status")
@@ -147,7 +152,7 @@ func (r *BeadStoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		log.Error(err, "Failed to sync beads", "rig", beadstore.Spec.RigRef)
 		r.setCondition(&beadstore, ConditionBeadStoreSynced, metav1.ConditionFalse, "SyncFailed",
 			err.Error())
-		beadstore.Status.Phase = "Error"
+		beadstore.Status.Phase = PhaseError
 		if updateErr := r.Status().Update(ctx, &beadstore); updateErr != nil {
 			timer.RecordResult(metrics.ResultError)
 			return ctrl.Result{}, gterrors.Wrap(updateErr, "failed to update status")
@@ -158,7 +163,7 @@ func (r *BeadStoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Update status
 	now := metav1.Now()
-	beadstore.Status.Phase = "Synced"
+	beadstore.Status.Phase = PhaseSynced
 	beadstore.Status.LastSyncTime = &now
 	beadstore.Status.IssueCount = int32(issueCount)
 
@@ -188,6 +193,8 @@ func (r *BeadStoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 }
 
 // handleDeletion handles cleanup when BeadStore is deleted
+//
+//nolint:unparam // Result is always empty but signature matches controller pattern
 func (r *BeadStoreReconciler) handleDeletion(ctx context.Context, beadstore *gastownv1alpha1.BeadStore, timer *metrics.ReconcileTimer) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
