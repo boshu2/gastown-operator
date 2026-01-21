@@ -231,16 +231,18 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.WitnessReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		//nolint:staticcheck // TODO: migrate to events.EventRecorder
 		Recorder: mgr.GetEventRecorderFor("witness-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Witness")
 		os.Exit(1)
 	}
 	if err := (&controller.RefineryReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		//nolint:staticcheck // TODO: migrate to events.EventRecorder
 		Recorder: mgr.GetEventRecorderFor("refinery-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Refinery")

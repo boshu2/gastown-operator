@@ -530,25 +530,7 @@ func TestRigCustomValidator_ValidateDelete(t *testing.T) {
 	assert.Nil(t, warnings)
 }
 
-func TestRigCustomValidator_WrongType(t *testing.T) {
-	validator := &RigCustomValidator{}
-	ctx := context.Background()
-
-	// Pass a non-Rig object
-	wrongObj := &Polecat{}
-
-	_, err := validator.ValidateCreate(ctx, wrongObj)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected a Rig")
-
-	_, err = validator.ValidateUpdate(ctx, wrongObj, wrongObj)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected a Rig")
-
-	_, err = validator.ValidateDelete(ctx, wrongObj)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected a Rig")
-}
+// Note: WrongType tests removed - generics enforce type safety at compile time
 
 func TestRigCustomDefaulter_Default(t *testing.T) {
 	defaulter := &RigCustomDefaulter{}
@@ -634,14 +616,4 @@ func TestRigCustomDefaulter_Default(t *testing.T) {
 	}
 }
 
-func TestRigCustomDefaulter_WrongType(t *testing.T) {
-	defaulter := &RigCustomDefaulter{}
-	ctx := context.Background()
-
-	// Pass a non-Rig object
-	wrongObj := &Polecat{}
-
-	err := defaulter.Default(ctx, wrongObj)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected a Rig")
-}
+// Note: WrongType tests removed - generics enforce type safety at compile time
