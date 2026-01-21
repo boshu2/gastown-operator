@@ -27,3 +27,6 @@ config/samples/
 # Ignore local development files
 .envrc
 .tool-versions
+
+# Explicitly include gt CLI binary (built by make build-gt)
+!gt

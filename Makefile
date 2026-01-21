@@ -145,18 +145,20 @@ build-gt: ## Build gt CLI for Docker image (required before docker-build).
 	@echo "Building gt CLI from gastown..."
 	@rm -rf /tmp/gastown-build
 	@git clone --depth 1 https://github.com/steveyegge/gastown.git /tmp/gastown-build
-	@cd /tmp/gastown-build && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(PWD)/gt ./cmd/gt
+	@cd /tmp/gastown-build && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$(CURDIR)/gt" ./cmd/gt
 	@rm -rf /tmp/gastown-build
-	@echo "gt CLI built at ./gt"
+	@test -f "$(CURDIR)/gt" || { echo "ERROR: gt binary not found at $(CURDIR)/gt"; exit 1; }
+	@echo "gt CLI built at $(CURDIR)/gt"
 
 .PHONY: build-gt-fips
 build-gt-fips: ## Build gt CLI with FIPS-compliant crypto (for Dockerfile.fips).
 	@echo "Building gt CLI from daedalus (FIPS)..."
 	@rm -rf /tmp/gastown-build
 	@git clone --depth 1 https://git.deepskylab.io/olympus/daedalus.git /tmp/gastown-build
-	@cd /tmp/gastown-build && CGO_ENABLED=1 GOEXPERIMENT=boringcrypto go build -trimpath -ldflags="-s -w" -o $(PWD)/gt ./cmd/gt
+	@cd /tmp/gastown-build && CGO_ENABLED=1 GOEXPERIMENT=boringcrypto go build -trimpath -ldflags="-s -w" -o "$(CURDIR)/gt" ./cmd/gt
 	@rm -rf /tmp/gastown-build
-	@echo "gt CLI (FIPS) built at ./gt"
+	@test -f "$(CURDIR)/gt" || { echo "ERROR: gt binary not found at $(CURDIR)/gt"; exit 1; }
+	@echo "gt CLI (FIPS) built at $(CURDIR)/gt"
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
