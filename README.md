@@ -1,31 +1,15 @@
 <div align="center">
 
-# Kubernetes Operator for Gas Town
+```
+  ____           _____                    ___                       _
+ / ___| __ _ ___  |_   _|____      ___ __  / _ \ _ __   ___ _ __ __ _| |_ ___  _ __
+| |  _ / _` / __|   | |/ _ \ \ /\ / / '_ \| | | | '_ \ / _ \ '__/ _` | __/ _ \| '__|
+| |_| | (_| \__ \   | | (_) \ V  V /| | | | |_| | |_) |  __/ | | (_| | || (_) | |
+ \____|\__,_|___/   |_|\___/ \_/\_/ |_| |_|\___/| .__/ \___|_|  \__,_|\__\___/|_|
+                                                |_|
+```
 
-```
-                    🔥🔥🔥                    🔥🔥🔥
-                     🔥🔥      .  .    .  .     🔥🔥
-                    🔥🔥    .  |  |  .          🔥🔥
-                  .  .  . \|__|____|/ .  .  .
-                   \| \|  .' .''. '.  |/ |/
-                    \__|_/  / /\ \  \_|__/
-              .      |  | |  \/  | |  |      .
-         . \|/ .   .'|  |_|      |_|  |'.   . \|/ .
-          \===/ .'   '.  __    __  .'   '. \===/
-           |H|  |  .   \/  \  /  \/   .  |  |H|
-           |H|  |  |\  |    \/    |  /|  |  |H|
-          /===\ '.  \ \|          |/ /  .' /===\
-         ' /|\ '  '._\  GASTOWN   /_.'  ' /|\ '
-              '      | OPERATOR  |      '
-                     |    ___    |            🔥 WITNESS ME!
-                     |   [___]   |
-  🔥🔥  _.====._   '.   V8   .'   _.====._  🔥🔥    SHINY AND
-  🔥   [________]    '------'    [________]   🔥      CHROME!
-  🔥🔥     ||                        ||     🔥🔥
-         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-              WHO RUNS BARTERTOWN? KUBERNETES RUNS BARTERTOWN.
-         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-```
+# Kubernetes Operator for Gas Town
 
 [![Release](https://img.shields.io/github/v/release/boshu2/gastown-operator?logo=github)](https://github.com/boshu2/gastown-operator/releases/latest)
 [![Helm](https://img.shields.io/badge/Helm-OCI-blue?logo=helm)](https://ghcr.io/boshu2/charts/gastown-operator)
@@ -52,6 +36,8 @@ Then tell Claude:
 > "Set up gastown-operator on my cluster. Read [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md)."
 
 Claude will handle the secrets, the Polecat CRs, everything. You don't write YAML - the agents do.
+
+**For AI Agents:** See [SKILL.md](SKILL.md) for copy-paste templates and [templates/](templates/) for all resource examples.
 
 ## What Is This?
 
@@ -131,6 +117,28 @@ make deploy IMG=ghcr.io/boshu2/gastown-operator:0.3.2
 | **Refinery** | Merge queue processor |
 | **Witness** | Worker lifecycle monitor |
 | **BeadStore** | Issue tracking backend |
+
+## Templates
+
+Copy-paste YAML templates for all resources:
+
+| Template | Purpose |
+|----------|---------|
+| [polecat-minimal.yaml](templates/polecat-minimal.yaml) | Quick local polecat (3 variables) |
+| [polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml) | Full K8s execution with all options |
+| [convoy.yaml](templates/convoy.yaml) | Batch tracking |
+| [witness.yaml](templates/witness.yaml) | Health monitoring |
+| [refinery.yaml](templates/refinery.yaml) | Merge processing |
+| [secret-git-ssh.yaml](templates/secret-git-ssh.yaml) | Git SSH credentials |
+| [secret-claude-creds.yaml](templates/secret-claude-creds.yaml) | Claude API credentials |
+
+Validate before applying:
+
+```bash
+./scripts/validate-template.sh templates/polecat-kubernetes.yaml
+```
+
+See [FRICTION_POINTS.md](FRICTION_POINTS.md) for common mistakes and fixes.
 
 ## Configuration
 
