@@ -90,7 +90,7 @@ fi
 
 # Set default image if not specified
 if [ -z "$OPERATOR_IMAGE" ]; then
-  OPERATOR_IMAGE="${GHCR_REGISTRY}/gastown-operator:v${VERSION}"
+  OPERATOR_IMAGE="${GHCR_REGISTRY}/gastown-operator:${VERSION}"
 fi
 
 echo -e "${BLUE}========================================"
@@ -238,8 +238,8 @@ if [ "$USE_LOCAL" = true ]; then
   )
 
   # Build operator
-  docker build -t "${GHCR_REGISTRY}/gastown-operator:v${VERSION}" "$PROJECT_ROOT"
-  OPERATOR_IMAGE="${GHCR_REGISTRY}/gastown-operator:v${VERSION}"
+  docker build -t "${GHCR_REGISTRY}/gastown-operator:${VERSION}" "$PROJECT_ROOT"
+  OPERATOR_IMAGE="${GHCR_REGISTRY}/gastown-operator:${VERSION}"
 else
   log_info "Pulling operator image: $OPERATOR_IMAGE"
   docker pull "$OPERATOR_IMAGE" || {
@@ -276,7 +276,7 @@ if [ "$USE_LOCAL" = true ]; then
   HELM_CHART="$PROJECT_ROOT/helm/gastown-operator"
 else
   log_info "Pulling Helm chart from GHCR..."
-  helm pull "oci://${GHCR_REGISTRY}/gastown-operator" --version "$VERSION" --untar --untardir /tmp/
+  helm pull "oci://${GHCR_REGISTRY}/charts/gastown-operator" --version "$VERSION" --untar --untardir /tmp/
   HELM_CHART="/tmp/gastown-operator"
 fi
 
