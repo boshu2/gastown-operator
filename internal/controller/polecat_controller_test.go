@@ -505,9 +505,10 @@ var _ = Describe("Polecat Controller", func() {
 			Expect(pod.Spec.InitContainers).To(HaveLen(1))
 			Expect(pod.Spec.InitContainers[0].Name).To(Equal("git-init"))
 
-			// Verify main container exists
-			Expect(pod.Spec.Containers).To(HaveLen(1))
+			// Verify main container and telemetry sidecar exist
+			Expect(pod.Spec.Containers).To(HaveLen(2))
 			Expect(pod.Spec.Containers[0].Name).To(Equal("claude"))
+			Expect(pod.Spec.Containers[1].Name).To(Equal("telemetry"))
 
 			// Verify volumes
 			volumeNames := make([]string, len(pod.Spec.Volumes))
