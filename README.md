@@ -3,105 +3,35 @@
 > *"Who runs Bartertown? Kubernetes runs Bartertown."*
 
 [![CI](https://github.com/boshu2/gastown-operator/actions/workflows/ci.yaml/badge.svg)](https://github.com/boshu2/gastown-operator/actions/workflows/ci.yaml)
+[![Helm](https://img.shields.io/badge/Helm-OCI-blue?logo=helm)](https://ghcr.io/boshu2/charts/gastown-operator)
 [![OpenShift](https://img.shields.io/badge/OpenShift-Native-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
-[![FIPS](https://img.shields.io/badge/FIPS-Compliant-blue)](https://csrc.nist.gov/projects/cryptographic-module-validation-program)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Helm](https://img.shields.io/badge/Helm-OCI-blue?logo=helm)](https://ghcr.io/boshu2/gastown-operator)
 
 A Kubernetes operator that runs [Gas Town](https://github.com/steveyegge/gastown) polecats as pods. Scale your AI agent army beyond the laptop.
-
-Supports multiple coding agents: **opencode** (default), **claude-code**, **aider**, or **custom**.
-
-```
-    ╔═══════════════════════════════════════╗
-    ║   GAS TOWN + KUBERNETES = SCALE       ║
-    ║                                       ║
-    ║   Polecats in pods. Convoys in CRDs.  ║
-    ║   Same gt CLI. Cloud-native runtime.  ║
-    ╚═══════════════════════════════════════╝
-```
-
-## What Is This?
-
-[Gas Town](https://github.com/steveyegge/gastown) is a multi-agent orchestration framework - it runs AI agents (polecats) locally via tmux. This operator extends Gas Town to Kubernetes, so polecats run as pods instead of local processes.
-
-**Why?**
-- Scale beyond your laptop's tmux sessions
-- Let Kubernetes handle scheduling and lifecycle
-- Run polecats closer to your infrastructure
-
-## Two Editions
-
-We provide **two build profiles** - use what fits your environment:
-
-| | **Community Edition** | **Enterprise Edition** |
-|---|---|---|
-| **Target** | Vanilla Kubernetes | OpenShift / Regulated environments |
-| **Base Image** | `golang:alpine` / `distroless` | Red Hat UBI9 |
-| **Crypto** | Standard Go | FIPS-validated (BoringCrypto) |
-| **Security** | Standard PSS | Restricted SCC compliant |
-| **Image Tag** | `:latest`, `:v0.3.2` | `:latest-fips`, `:v0.3.2-fips` |
-
-### Community Edition (Vanilla K8s)
-
-Lightweight, runs anywhere:
-
-```bash
-# Standard Kubernetes
-kubectl apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.3.2/install.yaml
-```
-
-### Enterprise Edition (OpenShift + FIPS)
-
-For regulated environments (FedRAMP, HIPAA, government):
-
-```bash
-# OpenShift with FIPS
-oc apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.3.2/install-fips.yaml
-```
-
-**What makes it enterprise-ready:**
-
-```yaml
-# Every pod runs with restricted SCC compliance
-securityContext:
-  runAsNonRoot: true
-  readOnlyRootFilesystem: true
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop: ["ALL"]
-  seccompProfile:
-    type: RuntimeDefault
-```
-
-**FIPS-compliant build:**
-- `registry.access.redhat.com/ubi9/go-toolset:1.22` (build)
-- `registry.access.redhat.com/ubi9/ubi-micro:9.3` (runtime)
-- `GOEXPERIMENT=boringcrypto` (FIPS-validated crypto)
-
-For when your compliance officer asks "but is it FIPS?"
-
-## Custom Resources
-
-| CRD | Description |
-|-----|-------------|
-| **Rig** | Project workspace (cluster-scoped) |
-| **Polecat** | Autonomous worker agent pod |
-| **Convoy** | Batch tracking for parallel execution |
-| **Refinery** | Merge queue processor |
-| **Witness** | Worker lifecycle monitor |
-| **BeadStore** | Issue tracking backend |
 
 ## Quick Start
 
 ```bash
-# Install CRDs
-kubectl apply -f config/crd/bases/
+# Add the helm chart and install
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.3.2 \
+  --namespace gastown-system \
+  --create-namespace
+```
 
-# Run operator
-make run-local
+That's it. The operator is now running.
 
-# Create a Rig
+### Verify Installation
+
+```bash
+kubectl get pods -n gastown-system
+# NAME                                                   READY   STATUS
+# gastown-operator-controller-manager-xxxxx-xxxxx        1/1     Running
+```
+
+### Create Your First Rig
+
+```bash
 kubectl apply -f - <<EOF
 apiVersion: gastown.gastown.io/v1alpha1
 kind: Rig
@@ -110,10 +40,12 @@ metadata:
 spec:
   gitURL: "git@github.com:myorg/my-project.git"
   beadsPrefix: "proj"
-  localPath: "/home/user/workspaces/my-project"
 EOF
+```
 
-# Spawn a Polecat (claude-code - default)
+### Spawn a Polecat
+
+```bash
 kubectl apply -f - <<EOF
 apiVersion: gastown.gastown.io/v1alpha1
 kind: Polecat
@@ -124,8 +56,6 @@ spec:
   rig: my-project
   beadID: proj-abc123
   desiredState: Working
-  executionMode: kubernetes
-  # agent: claude-code  # default
   kubernetes:
     gitRepository: "git@github.com:myorg/my-project.git"
     gitBranch: main
@@ -139,11 +69,97 @@ EOF
 kubectl logs -f polecat-furiosa -n gastown-workers
 ```
 
+## What Is This?
+
+[Gas Town](https://github.com/steveyegge/gastown) is a multi-agent orchestration framework - it runs AI agents (polecats) locally via tmux. This operator extends Gas Town to Kubernetes, so polecats run as pods instead of local processes.
+
+**Why?**
+- Scale beyond your laptop's tmux sessions
+- Let Kubernetes handle scheduling and lifecycle
+- Run polecats closer to your infrastructure
+
+Supports multiple coding agents: **opencode** (default), **claude-code**, **aider**, or **custom**.
+
+## Installation Options
+
+### Option 1: Helm (Recommended)
+
+```bash
+# Standard Kubernetes
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.3.2 \
+  --namespace gastown-system \
+  --create-namespace
+```
+
+### Option 2: Helm for OpenShift
+
+OpenShift requires stricter security settings:
+
+```bash
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.3.2 \
+  --namespace gastown-system \
+  --create-namespace \
+  --set securityContext.allowPrivilegeEscalation=false \
+  --set securityContext.runAsNonRoot=true \
+  --set securityContext.runAsUser=null \
+  --set securityContext.readOnlyRootFilesystem=true \
+  --set volumes.enabled=false
+```
+
+Or use the FIPS-compliant image for regulated environments:
+
+```bash
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.3.2 \
+  --namespace gastown-system \
+  --create-namespace \
+  --set image.tag=0.3.2-fips \
+  --set securityContext.allowPrivilegeEscalation=false \
+  --set securityContext.runAsNonRoot=true \
+  --set securityContext.runAsUser=null \
+  --set securityContext.readOnlyRootFilesystem=true \
+  --set volumes.enabled=false
+```
+
+### Option 3: From Source
+
+```bash
+make install      # Install CRDs
+make deploy IMG=ghcr.io/boshu2/gastown-operator:0.3.2
+```
+
+## Custom Resources
+
+| CRD | Description |
+|-----|-------------|
+| **Rig** | Project workspace (cluster-scoped) |
+| **Polecat** | Autonomous worker agent pod |
+| **Convoy** | Batch tracking for parallel execution |
+| **Refinery** | Merge queue processor |
+| **Witness** | Worker lifecycle monitor |
+| **BeadStore** | Issue tracking backend |
+
+## Configuration
+
+### Helm Values
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `image.repository` | `ghcr.io/boshu2/gastown-operator` | Container image |
+| `image.tag` | `0.3.2` | Image tag |
+| `replicaCount` | `1` | Number of replicas |
+| `volumes.enabled` | `true` | Mount host path for gt CLI |
+| `volumes.hostPath` | `/home/core/gt` | Path to Gas Town on host |
+
+See [values.yaml](helm/gastown-operator/values.yaml) for full configuration.
+
 ## Architecture
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│                  OpenShift Cluster                      │
+│                  Kubernetes Cluster                     │
 │                                                         │
 │   ┌─────────────────────────────────────────────────┐  │
 │   │              gastown-operator                    │  │
@@ -175,79 +191,27 @@ kubectl logs -f polecat-furiosa -n gastown-workers
 
 The operator is a **view layer** - `gt` CLI remains authoritative. Kubernetes handles scheduling, scaling, and lifecycle.
 
-## Installation
-
-### Helm (Recommended)
-
-```bash
-# Community Edition (vanilla Kubernetes)
-helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.3.2 \
-  --namespace gastown-system \
-  --create-namespace
-
-# Enterprise Edition (OpenShift + FIPS)
-# Download values-fips.yaml first, or use --set flags:
-helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.3.2 \
-  --namespace gastown-system \
-  --create-namespace \
-  --set image.tag=latest-fips \
-  --set securityContext.allowPrivilegeEscalation=false \
-  --set securityContext.runAsNonRoot=true \
-  --set securityContext.readOnlyRootFilesystem=true
-```
-
-### From Source
-
-```bash
-make install      # Install CRDs
-make deploy IMG=ghcr.io/boshu2/gastown-operator:v0.3.2
-```
-
 ## Requirements
 
-- Kubernetes 1.26+ (OpenShift 4.13+ recommended)
-- `gt` CLI accessible to operator (for local mode)
+- Kubernetes 1.26+ or OpenShift 4.13+
+- Helm 3.8+
 - Git SSH credentials (for polecat git operations)
-- LLM API credentials (LiteLLM, Anthropic, OpenAI, or Ollama)
+- LLM API credentials (Anthropic, OpenAI, or Ollama)
+
+## Editions
+
+| | **Community** | **Enterprise (FIPS)** |
+|---|---|---|
+| **Target** | Vanilla Kubernetes | OpenShift / Regulated |
+| **Base Image** | `distroless` | Red Hat UBI9 |
+| **Crypto** | Standard Go | FIPS-validated (BoringCrypto) |
+| **Image Tag** | `0.3.2` | `0.3.2-fips` |
 
 ## Related Projects
 
 - [Gas Town](https://github.com/steveyegge/gastown) - The multi-agent orchestration framework
 - [opencode](https://github.com/opencode-ai/opencode) - Open-source coding agent (default)
-- [gastown-gui](https://github.com/web3dev1337/gastown-gui) - Web UI dashboard (we're integrating!)
 - [Beads](https://github.com/steveyegge/beads) - Git-based issue tracking
-
-## Testing
-
-The project includes comprehensive automated testing via GitHub Actions:
-
-| Test Type | Description |
-|-----------|-------------|
-| **Unit Tests** | Controller logic, webhook validation |
-| **E2E Community** | Kind cluster + community helm chart |
-| **E2E FIPS** | Kind cluster + FIPS helm chart |
-| **Helm Lint** | Chart validation for both editions |
-
-Run locally:
-```bash
-make test           # Unit tests
-make test-e2e       # E2E tests (requires Kind)
-```
-
-## Status
-
-**v0.3.2** - First stable release.
-
-**Highlights:**
-- Helm chart published to GHCR with sane defaults (no internal registry refs)
-- Two editions: Community (vanilla K8s) and Enterprise (OpenShift + FIPS)
-- SSH host key verification (MITM protection)
-- Command injection validation
-- Comprehensive E2E testing
-
-Feedback welcome! See [steveyegge/gastown#668](https://github.com/steveyegge/gastown/issues/668) for discussion.
 
 ## Contributing
 
