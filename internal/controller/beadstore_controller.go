@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -161,11 +162,14 @@ func (r *BeadStoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	}
 
-	// Update status
+	// Update status (cap issueCount at MaxInt32 to avoid overflow)
+	if issueCount > math.MaxInt32 {
+		issueCount = math.MaxInt32
+	}
 	now := metav1.Now()
 	beadstore.Status.Phase = PhaseSynced
 	beadstore.Status.LastSyncTime = &now
-	beadstore.Status.IssueCount = int32(issueCount)
+	beadstore.Status.IssueCount = int32(issueCount) // #nosec G115 -- bounds checked above
 
 	r.setCondition(&beadstore, ConditionBeadStoreSynced, metav1.ConditionTrue, "SyncSucceeded",
 		fmt.Sprintf("Successfully synced %d issues", issueCount))

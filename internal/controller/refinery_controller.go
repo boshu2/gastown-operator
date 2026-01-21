@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -100,9 +101,13 @@ func (r *RefineryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Find polecats that are ready for merge
 	mergeQueue := r.findMergeReadyPolecats(polecatList)
 
-	// Update queue statistics
-	refinery.Status.QueueLength = int32(len(mergeQueue))
-	refinery.Status.MergesSummary.Pending = int32(len(mergeQueue))
+	// Update queue statistics (cap at MaxInt32 to avoid overflow)
+	queueLen := len(mergeQueue)
+	if queueLen > math.MaxInt32 {
+		queueLen = math.MaxInt32
+	}
+	refinery.Status.QueueLength = int32(queueLen)           // #nosec G115 -- bounds checked above
+	refinery.Status.MergesSummary.Pending = int32(queueLen) // #nosec G115 -- bounds checked above
 
 	// If no work, mark as Idle
 	if len(mergeQueue) == 0 {
