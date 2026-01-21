@@ -4,46 +4,65 @@ version: 1.0.0
 tier: solo
 context: repo
 description: >
-  Create and manage Gas Town Kubernetes resources (Polecat, Convoy, Witness, Refinery).
-  Triggers on "create polecat", "deploy convoy", "gastown k8s", "kubernetes polecat".
+  Kubernetes operator for Gas Town multi-agent orchestration. Triggers on
+  "create polecat", "spawn worker", "kubernetes polecat", "deploy convoy".
 triggers:
   - "create polecat"
   - "deploy polecat"
-  - "gastown kubernetes"
-  - "gastown k8s"
+  - "spawn polecat"
+  - "kubernetes polecat"
+  - "k8s polecat"
   - "create convoy"
   - "deploy convoy"
   - "create witness"
   - "create refinery"
-  - "kubernetes polecat"
-  - "k8s polecat"
+  - "gastown kubernetes"
+  - "gastown k8s"
 allowed-tools:
   - Read
   - Write
   - Bash(kubectl:*, helm:*, oc:*)
+  - Grep
+  - Glob
 ---
 
 # Gas Town Operator Skill
 
-Create Gas Town Kubernetes resources quickly and correctly.
+Create Gas Town Kubernetes resources (Polecat, Convoy, Witness, Refinery) quickly and correctly.
 
 ---
 
-## Quick Reference
+## Critical Facts (Memorize)
 
-| Resource | Template | Purpose |
-|----------|----------|---------|
-| Polecat (minimal) | [templates/polecat-minimal.yaml](../templates/polecat-minimal.yaml) | Quick local polecat |
-| Polecat (k8s) | [templates/polecat-kubernetes.yaml](../templates/polecat-kubernetes.yaml) | Full k8s execution |
-| Convoy | [templates/convoy.yaml](../templates/convoy.yaml) | Batch tracking |
-| Witness | [templates/witness.yaml](../templates/witness.yaml) | Health monitoring |
-| Refinery | [templates/refinery.yaml](../templates/refinery.yaml) | Merge processing |
-| Git Secret | [templates/secret-git-ssh.yaml](../templates/secret-git-ssh.yaml) | SSH key for git |
-| Claude Secret | [templates/secret-claude-creds.yaml](../templates/secret-claude-creds.yaml) | Claude credentials |
+### API Group
+
+**API Group:** `gastown.gastown.io`
+**Version:** `v1alpha1`
+**Namespace:** `gastown-system` (operator), `gastown-workers` (polecats)
+
+### CRDs
+
+| CRD | Scope | Purpose |
+|-----|-------|---------|
+| Rig | Cluster | Project workspace |
+| Polecat | Namespaced | Autonomous worker agent |
+| Convoy | Namespaced | Batch tracking |
+| Witness | Namespaced | Health monitoring |
+| Refinery | Namespaced | Merge processing |
+| BeadStore | Namespaced | Issue sync config |
+
+### Required Secrets (for Kubernetes mode)
+
+| Secret | Namespace | Purpose |
+|--------|-----------|---------|
+| `git-credentials` | gastown-workers | SSH key for git clone/push |
+| `claude-credentials` | gastown-workers | API key or OAuth creds |
 
 ---
 
-## Minimal Polecat (Copy-Paste Ready)
+## Golden Command Templates
+
+### Minimal Polecat (Local Execution)
 
 ```yaml
 apiVersion: gastown.gastown.io/v1alpha1
@@ -58,22 +77,14 @@ spec:
   executionMode: local
 ```
 
-**Variables to replace:**
-- `{{POLECAT_NAME}}` - e.g., `furiosa`, `nux` (from mad-max namepool)
-- `{{RIG_NAME}}` - e.g., `athena`, `daedalus` (must exist)
-- `{{BEAD_ID}}` - e.g., `at-1234`, `gt-5678` (bead to work on)
+**Variables:**
+- `{{POLECAT_NAME}}` - Unique name (e.g., `furiosa`, `nux`)
+- `{{RIG_NAME}}` - Parent rig (e.g., `athena`, `daedalus`)
+- `{{BEAD_ID}}` - Bead to work on (e.g., `at-1234`)
 
----
-
-## Common Operations
-
-### Create a Working Polecat
+### Create Polecat One-Liner
 
 ```bash
-# 1. Verify rig exists
-kubectl get rig {{RIG_NAME}}
-
-# 2. Create polecat
 kubectl apply -f - <<EOF
 apiVersion: gastown.gastown.io/v1alpha1
 kind: Polecat
@@ -86,92 +97,113 @@ spec:
   beadID: "at-1234"
   executionMode: local
 EOF
-
-# 3. Watch status
-kubectl get polecat furiosa -n gastown-system -w
 ```
 
-### Check Polecat Status
+---
 
+## Common Failures
+
+### "rig not found"
+
+Rig doesn't exist. Create it first:
 ```bash
-kubectl get polecats -n gastown-system
-kubectl describe polecat {{POLECAT_NAME}} -n gastown-system
+kubectl get rigs  # Check existing rigs
+kubectl apply -f templates/rig.yaml  # Create rig
 ```
 
-### Terminate a Polecat
+### "secret not found"
 
+Missing credentials for Kubernetes mode:
 ```bash
-kubectl patch polecat {{POLECAT_NAME}} -n gastown-system \
-  --type=merge -p '{"spec":{"desiredState":"Terminated"}}'
+# Check secrets
+kubectl get secrets -n gastown-workers
+
+# Create git credentials
+kubectl create secret generic git-credentials -n gastown-workers \
+  --from-file=ssh-privatekey=$HOME/.ssh/id_ed25519
+
+# Create Claude credentials
+kubectl create secret generic claude-credentials -n gastown-workers \
+  --from-literal=api-key=$ANTHROPIC_API_KEY
+```
+
+### Polecat stuck in Pending
+
+Check pod events:
+```bash
+kubectl describe polecat/{{NAME}} -n gastown-system
+kubectl get events -n gastown-workers --sort-by='.lastTimestamp' | tail -10
+```
+
+### Permission denied (publickey)
+
+SSH key not configured with git provider:
+```bash
+# Check key format
+kubectl get secret git-credentials -n gastown-workers -o jsonpath='{.data.ssh-privatekey}' | base64 -d | head -1
+# Should show: -----BEGIN OPENSSH PRIVATE KEY-----
 ```
 
 ---
 
-## API Reference
+## Templates (Copy-Paste Ready)
 
-**API Group:** `gastown.gastown.io`
-**Version:** `v1alpha1`
+All templates in `templates/` with `{{VARIABLE}}` markers:
 
-| CRD | Scope | Purpose |
-|-----|-------|---------|
-| Rig | Cluster | Project workspace |
-| Polecat | Namespaced | Autonomous worker |
-| Convoy | Namespaced | Batch tracking |
-| Witness | Namespaced | Health monitoring |
-| Refinery | Namespaced | Merge processing |
-| BeadStore | Namespaced | Issue sync config |
+| Template | Purpose |
+|----------|---------|
+| `polecat-minimal.yaml` | Quick local polecat (3 variables) |
+| `polecat-kubernetes.yaml` | Full K8s execution with all options |
+| `convoy.yaml` | Batch tracking |
+| `witness.yaml` | Health monitoring |
+| `refinery.yaml` | Merge processing |
+| `secret-git-ssh.yaml` | Git SSH credentials |
+| `secret-claude-creds.yaml` | Claude API credentials |
 
----
-
-## Common Fields
-
-### Polecat Spec
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `rig` | Yes | Parent rig name |
-| `desiredState` | Yes | `Idle`, `Working`, `Terminated` |
-| `beadID` | No | Bead to work on |
-| `executionMode` | No | `local` (tmux) or `kubernetes` (Pod) |
-| `agent` | No | `claude-code`, `opencode`, `aider` |
-| `kubernetes.*` | If k8s | Git repo, secrets, resources |
-
-### Convoy Spec
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `description` | Yes | Human-readable name |
-| `trackedBeads` | Yes | List of bead IDs |
-| `parallelism` | No | Max concurrent polecats |
-| `rigRef` | No | Target rig |
-
----
-
-## Validation
-
-Before applying, run:
-
+**Validate before applying:**
 ```bash
 ./scripts/validate-template.sh templates/polecat-kubernetes.yaml
 ```
 
 ---
 
-## Anti-Patterns
+## Monitoring
 
-See [FRICTION_POINTS.md](../FRICTION_POINTS.md) for:
-- Missing secrets
-- Wrong namespace
-- Invalid bead IDs
-- Rig not found errors
+```bash
+# List polecats
+kubectl get polecats -n gastown-system
+
+# Watch polecat status
+kubectl get polecat {{NAME}} -n gastown-system -w
+
+# Check polecat details
+kubectl describe polecat {{NAME}} -n gastown-system
+
+# View tmux session (local mode)
+tmux attach -t gt-{{RIG}}-{{POLECAT}}
+
+# View pod logs (kubernetes mode)
+kubectl logs -n gastown-workers -l polecat={{NAME}} -f
+```
 
 ---
 
-## Full Documentation
+## Checklist Before Creating Polecat
+
+- [ ] Rig exists: `kubectl get rig {{RIG_NAME}}`
+- [ ] Bead exists: `bd show {{BEAD_ID}}`
+- [ ] Namespace exists: `kubectl get ns gastown-system`
+- [ ] For K8s mode: secrets exist in `gastown-workers`
+- [ ] For K8s mode: `activeDeadlineSeconds` set (prevent runaway)
+
+---
+
+## JIT Load
 
 | Topic | Location |
 |-------|----------|
-| CRD Reference | [docs/CRD_REFERENCE.md](../docs/CRD_REFERENCE.md) |
-| Secret Management | [docs/SECRET_MANAGEMENT.md](../docs/SECRET_MANAGEMENT.md) |
-| Troubleshooting | [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) |
-| Architecture | [docs/architecture.md](../docs/architecture.md) |
+| Full templates | `templates/*.yaml` |
+| Anti-patterns | `FRICTION_POINTS.md` |
+| CRD Reference | `docs/CRD_REFERENCE.md` |
+| Troubleshooting | `docs/TROUBLESHOOTING.md` |
+| User Guide | `docs/USER_GUIDE.md` |
