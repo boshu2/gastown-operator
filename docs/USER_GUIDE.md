@@ -84,8 +84,21 @@ oc create secret generic anthropic-api-key -n gastown-workers \
 ### 3. Deploy the Operator
 
 ```bash
-# Install CRDs
-oc apply -f https://github.com/boshu2/gastown-operator/releases/download/v0.1.2/install.yaml
+# Install via Helm (recommended)
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.3.2 \
+  --namespace gastown-system \
+  --create-namespace
+
+# For OpenShift with restricted SCC:
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.3.2 \
+  --namespace gastown-system \
+  --create-namespace \
+  --set securityContext.allowPrivilegeEscalation=false \
+  --set securityContext.runAsNonRoot=true \
+  --set securityContext.runAsUser=null \
+  --set securityContext.readOnlyRootFilesystem=true
 
 # Verify
 oc get pods -n gastown-system

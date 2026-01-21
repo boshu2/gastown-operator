@@ -4,24 +4,35 @@ Get the Gas Town Operator running in minutes.
 
 ## Prerequisites
 
-- Kubernetes cluster (1.26+)
-- Helm 3.x
-- `kubectl` configured with cluster access
-- `gt` CLI installed and configured
-- A Gas Town setup (`~/gt/` with rigs)
+- Kubernetes 1.26+ or OpenShift 4.13+
+- Helm 3.8+
+- `kubectl`/`oc` configured with cluster access
+- Git SSH key for repository access
+- Claude API key or OAuth credentials
 
 ## Installation
 
-### 1. Add the Helm repository (or install from local chart)
-
 ```bash
-# From local chart
-helm install gastown-operator ./helm/gastown-operator \
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.3.2 \
   --namespace gastown-system \
   --create-namespace
 ```
 
-### 2. Verify installation
+For OpenShift with restricted SCC:
+
+```bash
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.3.2 \
+  --namespace gastown-system \
+  --create-namespace \
+  --set securityContext.allowPrivilegeEscalation=false \
+  --set securityContext.runAsNonRoot=true \
+  --set securityContext.runAsUser=null \
+  --set securityContext.readOnlyRootFilesystem=true
+```
+
+## Verify Installation
 
 ```bash
 kubectl get pods -n gastown-system
@@ -30,7 +41,7 @@ kubectl get crds | grep gastown
 
 You should see:
 - `gastown-operator-controller-manager` pod running
-- Three CRDs: `rigs.gastown.gastown.io`, `polecats.gastown.gastown.io`, `convoys.gastown.gastown.io`
+- Six CRDs: `rigs`, `polecats`, `convoys`, `witnesses`, `refineries`, `beadstores`
 
 ## Create Your First Rig
 
