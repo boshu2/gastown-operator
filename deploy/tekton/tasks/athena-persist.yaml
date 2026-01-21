@@ -126,7 +126,7 @@ spec:
         Pipeline Status: $(params.pipeline-status)
 
         Artifacts:
-        - Container image: ghcr.io/boshu2/gastown-operator:v$(params.version)
+        - Container image: ghcr.io/boshu2/gastown-operator:$(params.version)
         - Helm chart: oci://ghcr.io/boshu2/charts/gastown-operator:$(params.version)
         - SBOM: attached to image
 

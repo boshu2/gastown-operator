@@ -248,7 +248,7 @@ flowchart LR
 
 **Critical:** This stage ONLY runs after e2e tests pass.
 **Artifacts published:**
-- `ghcr.io/boshu2/gastown-operator:vX.Y.Z`
+- `ghcr.io/boshu2/gastown-operator:X.Y.Z`
 - `oci://ghcr.io/boshu2/charts/gastown-operator:X.Y.Z` (Helm)
 
 ## Complete Pipeline Timeline
@@ -353,7 +353,7 @@ helm rollback gastown-operator -n gastown-system
 
 # Or deploy specific version
 helm upgrade gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.3.1 \
+  --version 0.3.2 \
   -n gastown-system
 ```
 
