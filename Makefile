@@ -178,7 +178,7 @@ docker-build: build-gt ## Build community docker image (vanilla K8s).
 	$(CONTAINER_TOOL) build -t ${IMG}:${VERSION} -t ${IMG}:latest -f Dockerfile .
 
 .PHONY: docker-build-e2e
-docker-build-e2e: ## Build image for E2E tests (IMG should be full image:tag reference).
+docker-build-e2e: build-gt ## Build image for E2E tests (IMG should be full image:tag reference).
 	$(CONTAINER_TOOL) build -t ${IMG} -f Dockerfile .
 
 .PHONY: docker-build-fips
