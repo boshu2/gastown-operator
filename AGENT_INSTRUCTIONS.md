@@ -2,7 +2,7 @@
 
 > Run polecats as pods. Scale your AI agent army beyond the laptop.
 
-**Quick Links:** [SKILL.md](SKILL.md) (copy-paste templates) | [templates/](templates/) (all resources) | [FRICTION_POINTS.md](FRICTION_POINTS.md) (anti-patterns)
+**Quick Links:** [.claude/SKILL.md](.claude/SKILL.md) (copy-paste templates) | [templates/](templates/) (all resources) | [FRICTION_POINTS.md](FRICTION_POINTS.md) (anti-patterns)
 
 ---
 
@@ -235,7 +235,7 @@ Check API key is valid or OAuth tokens haven't expired (24hr lifetime).
 
 | Document | Purpose |
 |----------|---------|
-| [SKILL.md](SKILL.md) | Agent quick reference with copy-paste templates |
+| [.claude/SKILL.md](.claude/SKILL.md) | Agent quick reference with copy-paste templates |
 | [templates/](templates/) | All YAML templates with `{{VARIABLE}}` markers |
 | [FRICTION_POINTS.md](FRICTION_POINTS.md) | Anti-patterns and common mistakes |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Complete setup walkthrough |

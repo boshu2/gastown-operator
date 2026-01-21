@@ -33,13 +33,13 @@ Create Gas Town Kubernetes resources quickly and correctly.
 
 | Resource | Template | Purpose |
 |----------|----------|---------|
-| Polecat (minimal) | [templates/polecat-minimal.yaml](templates/polecat-minimal.yaml) | Quick local polecat |
-| Polecat (k8s) | [templates/polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml) | Full k8s execution |
-| Convoy | [templates/convoy.yaml](templates/convoy.yaml) | Batch tracking |
-| Witness | [templates/witness.yaml](templates/witness.yaml) | Health monitoring |
-| Refinery | [templates/refinery.yaml](templates/refinery.yaml) | Merge processing |
-| Git Secret | [templates/secret-git-ssh.yaml](templates/secret-git-ssh.yaml) | SSH key for git |
-| Claude Secret | [templates/secret-claude-creds.yaml](templates/secret-claude-creds.yaml) | Claude credentials |
+| Polecat (minimal) | [templates/polecat-minimal.yaml](../templates/polecat-minimal.yaml) | Quick local polecat |
+| Polecat (k8s) | [templates/polecat-kubernetes.yaml](../templates/polecat-kubernetes.yaml) | Full k8s execution |
+| Convoy | [templates/convoy.yaml](../templates/convoy.yaml) | Batch tracking |
+| Witness | [templates/witness.yaml](../templates/witness.yaml) | Health monitoring |
+| Refinery | [templates/refinery.yaml](../templates/refinery.yaml) | Merge processing |
+| Git Secret | [templates/secret-git-ssh.yaml](../templates/secret-git-ssh.yaml) | SSH key for git |
+| Claude Secret | [templates/secret-claude-creds.yaml](../templates/secret-claude-creds.yaml) | Claude credentials |
 
 ---
 
@@ -159,7 +159,7 @@ Before applying, run:
 
 ## Anti-Patterns
 
-See [FRICTION_POINTS.md](FRICTION_POINTS.md) for:
+See [FRICTION_POINTS.md](../FRICTION_POINTS.md) for:
 - Missing secrets
 - Wrong namespace
 - Invalid bead IDs
@@ -171,7 +171,7 @@ See [FRICTION_POINTS.md](FRICTION_POINTS.md) for:
 
 | Topic | Location |
 |-------|----------|
-| CRD Reference | [docs/CRD_REFERENCE.md](docs/CRD_REFERENCE.md) |
-| Secret Management | [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md) |
-| Troubleshooting | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
-| Architecture | [docs/architecture.md](docs/architecture.md) |
+| CRD Reference | [docs/CRD_REFERENCE.md](../docs/CRD_REFERENCE.md) |
+| Secret Management | [docs/SECRET_MANAGEMENT.md](../docs/SECRET_MANAGEMENT.md) |
+| Troubleshooting | [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) |
+| Architecture | [docs/architecture.md](../docs/architecture.md) |

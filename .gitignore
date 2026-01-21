@@ -32,6 +32,7 @@ go.work
 # Claude Code / Gas Town
 .agents/
 .claude/
+!.claude/SKILL.md
 .runtime/
 state.json
 
