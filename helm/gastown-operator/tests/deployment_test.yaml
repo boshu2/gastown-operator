@@ -1,0 +1,17 @@
+suite: gastown-operator deployment tests
+templates:
+  - templates/deployment.yaml
+tests:
+  - it: should render Deployment
+    asserts:
+      - isKind:
+          of: Deployment
+      - exists:
+          path: metadata.name
+      - exists:
+          path: spec.template.spec.containers[0]
+
+  - it: should have correct labels
+    asserts:
+      - exists:
+          path: metadata.labels
