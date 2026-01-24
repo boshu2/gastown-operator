@@ -367,7 +367,9 @@ push:helm:
 
 sync:github:
   stage: publish
-  image: ${ALPINE_GIT_IMAGE}
+  image:
+    name: ${ALPINE_GIT_IMAGE}
+    entrypoint: [""]  # Override entrypoint (alpine/git sets git as entrypoint)
   needs:
     - job: semantic-release
       artifacts: true
