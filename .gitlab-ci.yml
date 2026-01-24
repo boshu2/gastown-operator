@@ -320,7 +320,7 @@ push:ghcr:
 # Push Helm chart to GHCR OCI registry
 push:helm:
   stage: push
-  image: ${DPR_REGISTRY}/alpine/helm:3.14.0
+  image: ${KUBECTL_IMAGE}
   needs:
     - job: semantic-release
       artifacts: true
@@ -460,7 +460,7 @@ sync:github:
 # Test upgrade path: helm upgrade on existing deployment
 deploy:test-upgrade:
   stage: test
-  image: ${DPR_REGISTRY}/alpine/helm:3.14.0
+  image: ${KUBECTL_IMAGE}
   needs:
     - job: semantic-release
       artifacts: true
@@ -520,7 +520,7 @@ deploy:test-upgrade:
 # Test fresh install: delete namespace and reinstall from scratch
 deploy:test-fresh:
   stage: test
-  image: ${DPR_REGISTRY}/alpine/helm:3.14.0
+  image: ${KUBECTL_IMAGE}
   needs:
     - job: semantic-release
       artifacts: true
@@ -724,7 +724,7 @@ test:e2e:
 #        -n gastown-system
 deploy:internal:
   stage: .post
-  image: ${DPR_REGISTRY}/alpine/helm:3.14.0
+  image: ${KUBECTL_IMAGE}
   needs:
     - job: semantic-release
       artifacts: true
