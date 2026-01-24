@@ -22,9 +22,9 @@ trap 'echo "Error on line $LINENO. Exit code: $?" >&2' ERR
 # ============================================================================
 
 VERSION_GO="1.25"
-VERSION_GOLANGCI_LINT="v2.8-alpine"
+VERSION_GOLANGCI_LINT="v2.7.2"
 VERSION_YAMLLINT="latest"
-VERSION_KUBECTL="1.32.11"
+VERSION_KUBECTL="1.31.4"
 
 # ============================================================================
 # CONFIGURATION
@@ -38,15 +38,27 @@ DEST_TLS_VERIFY="${DEST_TLS_VERIFY:-false}"
 # ============================================================================
 
 IMAGES=(
-  # Go build images
-  "docker.io/library/golang:${VERSION_GO}|library/golang:${VERSION_GO}"
+  # Go build images (ci-images/ prefix for CI)
+  "docker.io/library/golang:${VERSION_GO}|ci-images/golang:${VERSION_GO}"
 
   # Linting
-  "docker.io/golangci/golangci-lint:${VERSION_GOLANGCI_LINT}|golangci/golangci-lint:${VERSION_GOLANGCI_LINT}"
-  "docker.io/cytopia/yamllint:${VERSION_YAMLLINT}|cytopia/yamllint:${VERSION_YAMLLINT}"
+  "docker.io/golangci/golangci-lint:${VERSION_GOLANGCI_LINT}|ci-images/golangci-lint:${VERSION_GOLANGCI_LINT}"
+  "docker.io/cytopia/yamllint:${VERSION_YAMLLINT}|ci-images/yamllint:${VERSION_YAMLLINT}"
 
   # Kubernetes
-  "docker.io/alpine/k8s:${VERSION_KUBECTL}|alpine/k8s:${VERSION_KUBECTL}"
+  "docker.io/alpine/k8s:${VERSION_KUBECTL}|ci-images/k8s:${VERSION_KUBECTL}"
+
+  # Node (for semantic-release) - uses library/ prefix per CI config
+  "docker.io/library/node:20-alpine|library/node:20-alpine"
+
+  # Alpine git (for publish stage)
+  "docker.io/alpine/git:latest|library/alpine/git:latest"
+
+  # Helm (for test and push stages)
+  "docker.io/alpine/helm:3.14.0|alpine/helm:3.14.0"
+
+  # Skopeo (for image push)
+  "quay.io/skopeo/stable:latest|ci-images/skopeo:latest"
 )
 
 # ============================================================================
@@ -86,10 +98,14 @@ echo "TLS Verify: $DEST_TLS_VERIFY"
 echo "============================================"
 echo ""
 echo "Images to mirror:"
-echo "  golang:${VERSION_GO}"
-echo "  golangci-lint:${VERSION_GOLANGCI_LINT}"
-echo "  yamllint:${VERSION_YAMLLINT}"
-echo "  kubectl:${VERSION_KUBECTL}"
+echo "  ci-images/golang:${VERSION_GO}"
+echo "  ci-images/golangci-lint:${VERSION_GOLANGCI_LINT}"
+echo "  ci-images/yamllint:${VERSION_YAMLLINT}"
+echo "  ci-images/k8s:${VERSION_KUBECTL}"
+echo "  ci-images/skopeo:latest"
+echo "  library/node:20-alpine"
+echo "  library/alpine/git:latest"
+echo "  alpine/helm:3.14.0"
 echo ""
 
 # Check skopeo is available
