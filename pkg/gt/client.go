@@ -218,7 +218,8 @@ func (c *Client) Sling(ctx context.Context, beadID, rig string) error {
 // PolecatList returns all polecats in a rig
 func (c *Client) PolecatList(ctx context.Context, rig string) ([]PolecatInfo, error) {
 	var result []PolecatInfo
-	if err := c.runJSON(ctx, &result, "polecat", "list", "--rig", rig); err != nil {
+	// Upstream gt CLI uses positional arg: gt polecat list [rig]
+	if err := c.runJSON(ctx, &result, "polecat", "list", rig); err != nil {
 		return nil, err
 	}
 	return result, nil
