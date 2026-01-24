@@ -274,7 +274,9 @@ monitor:tekton:
 # Push image from internal registry to GHCR
 push:ghcr:
   stage: push
-  image: ${DPR_REGISTRY}/ci-images/skopeo:latest
+  image:
+    name: ${DPR_REGISTRY}/ci-images/skopeo:latest
+    entrypoint: [""]  # Override entrypoint (skopeo image sets skopeo as entrypoint)
   needs:
     - job: semantic-release
       artifacts: true
