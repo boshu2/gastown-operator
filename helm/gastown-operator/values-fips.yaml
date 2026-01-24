@@ -46,6 +46,7 @@ podSecurityContext:
     type: RuntimeDefault
 
 # OpenShift restricted SCC compliant
+# NOTE: runAsUser must be null to let OpenShift assign from the namespace range
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
@@ -53,6 +54,7 @@ securityContext:
       - ALL
   readOnlyRootFilesystem: true
   runAsNonRoot: true
+  runAsUser: null
 
 resources:
   limits:
