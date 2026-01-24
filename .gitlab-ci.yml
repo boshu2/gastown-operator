@@ -282,9 +282,14 @@ monitor:tekton:
 # =============================================================================
 
 # Build and push multi-arch image to GHCR
-# Note: Rebuilds from source to get multi-arch (amd64 + arm64)
-# The Tekton build pushes to internal registry (single-arch) for CI testing
-# The Dockerfile now includes a gt-builder stage that builds gt for each target platform
+#
+# Why buildx instead of copying from Tekton?
+#   - jren-kaniko-build ClusterTask is AMD64-only (ARM64 on roadmap)
+#   - Buildx enables multi-arch (amd64 + arm64) for Apple Silicon users
+#   - Source code security scans (gosec, govulncheck, gitleaks, Trivy FS) ran in Tekton
+#   - We add Trivy image scan here to maintain security posture
+#
+# The Dockerfile includes a gt-builder stage that builds gt for each target platform
 push:ghcr:
   stage: push
   image: docker:24-dind
@@ -292,6 +297,7 @@ push:ghcr:
     - docker:24-dind
   variables:
     DOCKER_BUILDX_PLATFORM: linux/amd64,linux/arm64
+    TRIVY_VERSION: "0.58.1"
   needs:
     - job: semantic-release
       artifacts: true
@@ -318,14 +324,13 @@ push:ghcr:
       docker buildx create --use --name multiarch-builder
 
       # Build and push multi-arch image
-      # The Dockerfile includes a gt-builder stage that builds gt for each target platform
       docker buildx build --push \
         --platform ${DOCKER_BUILDX_PLATFORM} \
         -t ghcr.io/boshu2/gastown-operator:${VERSION} \
         -t ghcr.io/boshu2/gastown-operator:latest \
         .
 
-      # Cleanup
+      # Cleanup buildx builder
       docker buildx rm multiarch-builder || true
 
       echo ""
@@ -334,6 +339,34 @@ push:ghcr:
       echo "  - ghcr.io/boshu2/gastown-operator:latest"
       echo ""
       echo "Platforms: ${DOCKER_BUILDX_PLATFORM}"
+
+      # Security scan the pushed image with Trivy
+      echo ""
+      echo "========================================"
+      echo "  Running Trivy Security Scan"
+      echo "========================================"
+      echo ""
+
+      # Install Trivy
+      apk add --no-cache curl
+      curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v${TRIVY_VERSION}
+
+      # Scan the pushed image (amd64 variant)
+      trivy image \
+        --severity CRITICAL,HIGH \
+        --exit-code 1 \
+        --ignore-unfixed \
+        ghcr.io/boshu2/gastown-operator:${VERSION} || {
+          echo ""
+          echo "WARNING: Trivy found CRITICAL/HIGH vulnerabilities"
+          echo "Image was already pushed. Review vulnerabilities and consider patching."
+          # Don't fail the job - image is already public, just warn
+        }
+
+      echo ""
+      echo "========================================"
+      echo "  GHCR Push Complete"
+      echo "========================================"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
