@@ -470,16 +470,18 @@ deploy:test-upgrade:
     - mkdir -p ~/.kube
     - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
     - chmod 600 ~/.kube/config
-    - |
-      if [ ! -f "${CI_PROJECT_DIR}/values-internal.yaml" ]; then
-        echo "ERROR: values-internal.yaml secure file not found"
-        exit 1
-      fi
   script:
     - |
       if [ "${RELEASE_PUBLISHED}" != "true" ]; then
         echo "No release to test"
         exit 0
+      fi
+    - |
+      # Check secure file only when we have a release to test
+      if [ ! -f "${CI_PROJECT_DIR}/values-internal.yaml" ]; then
+        echo "ERROR: values-internal.yaml secure file not found"
+        echo "Upload via: GitLab Settings → CI/CD → Secure Files"
+        exit 1
       fi
 
       echo "========================================"
@@ -530,16 +532,18 @@ deploy:test-fresh:
     - mkdir -p ~/.kube
     - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
     - chmod 600 ~/.kube/config
-    - |
-      if [ ! -f "${CI_PROJECT_DIR}/values-internal.yaml" ]; then
-        echo "ERROR: values-internal.yaml secure file not found"
-        exit 1
-      fi
   script:
     - |
       if [ "${RELEASE_PUBLISHED}" != "true" ]; then
         echo "No release to test"
         exit 0
+      fi
+    - |
+      # Check secure file only when we have a release to test
+      if [ ! -f "${CI_PROJECT_DIR}/values-internal.yaml" ]; then
+        echo "ERROR: values-internal.yaml secure file not found"
+        echo "Upload via: GitLab Settings → CI/CD → Secure Files"
+        exit 1
       fi
 
       echo "========================================"
@@ -734,18 +738,18 @@ deploy:internal:
     - mkdir -p ~/.kube
     - echo "${KUBE_CONFIG}" | base64 -d > ~/.kube/config
     - chmod 600 ~/.kube/config
-    # Download secure file (GitLab CI automatically makes it available)
-    - |
-      if [ ! -f "${CI_PROJECT_DIR}/values-internal.yaml" ]; then
-        echo "ERROR: values-internal.yaml secure file not found"
-        echo "Upload it via: Settings → CI/CD → Secure Files"
-        exit 1
-      fi
   script:
     - |
       if [ "${RELEASE_PUBLISHED}" != "true" ]; then
         echo "No release to deploy"
         exit 0
+      fi
+    - |
+      # Check secure file only when we have a release to deploy
+      if [ ! -f "${CI_PROJECT_DIR}/values-internal.yaml" ]; then
+        echo "ERROR: values-internal.yaml secure file not found"
+        echo "Upload it via: Settings → CI/CD → Secure Files"
+        exit 1
       fi
 
       echo "========================================"
