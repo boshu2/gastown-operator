@@ -149,8 +149,19 @@ See [FRICTION_POINTS.md](FRICTION_POINTS.md) for common mistakes and fixes.
 | `image.repository` | `ghcr.io/boshu2/gastown-operator` | Container image |
 | `image.tag` | `0.3.2` | Image tag |
 | `replicaCount` | `1` | Number of replicas |
-| `volumes.enabled` | `true` | Mount host path for gt CLI |
+| `volumes.enabled` | `false` | Mount host path (for local execution mode only) |
 | `volumes.hostPath` | `/home/core/gt` | Path to Gas Town on host |
+
+**Note:** `volumes.enabled` defaults to `false` because most users use Kubernetes execution mode where polecats run as pods. Enable host volumes only for local execution mode:
+
+```bash
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.3.2 \
+  --namespace gastown-system \
+  --create-namespace \
+  --set volumes.enabled=true \
+  --set volumes.hostPath=/path/to/your/gt
+```
 
 See [values.yaml](helm/gastown-operator/values.yaml) for full configuration.
 

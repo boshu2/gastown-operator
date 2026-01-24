@@ -24,8 +24,10 @@ gtConfig:
 
 # Volume configuration for accessing host filesystem
 # NOTE: hostPath limits deployment to single-node clusters where the path exists
+# Default: disabled (most users don't need host mounts for Kubernetes execution mode)
+# Enable with: --set volumes.enabled=true,volumes.hostPath=/path/to/gt
 volumes:
-  enabled: true
+  enabled: false
   hostPath: /home/core/gt
 
 serviceAccount:

@@ -175,6 +175,19 @@ rules:
     - get
     - list
     - watch
+# Pods (for Kubernetes execution mode - creating polecat pods)
+- apiGroups:
+    - ""
+  resources:
+    - pods
+  verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
 # Leader election
 - apiGroups:
     - coordination.k8s.io

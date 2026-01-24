@@ -108,6 +108,17 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 .PHONY: validate
 validate: vet lint ## Run all local validations (vet + lint). Run before push.
 
+.PHONY: sync-helm
+sync-helm: manifests ## Sync Helm chart CRDs with generated manifests.
+	./scripts/sync-helm.sh
+
+.PHONY: validate-helm
+validate-helm: ## Validate Helm chart is in sync with generated manifests.
+	./scripts/validate-helm-sync.sh
+
+.PHONY: validate-all
+validate-all: validate validate-helm ## Run all validations including Helm sync check.
+
 .PHONY: release-validate
 release-validate: ## Run full release validation (Kind cluster, both Helm charts, E2E tests).
 	./scripts/release-validation.sh --local

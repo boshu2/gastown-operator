@@ -145,6 +145,19 @@ cleanup() {
 # Trap for cleanup on exit
 trap cleanup EXIT
 
+# Check Helm chart sync first (fast fail)
+log_section "Validating Helm Chart Sync"
+
+if [ -f "$PROJECT_ROOT/scripts/validate-helm-sync.sh" ]; then
+  if ! "$PROJECT_ROOT/scripts/validate-helm-sync.sh"; then
+    log_error "Helm chart out of sync. Run 'make sync-helm' to fix."
+    exit 1
+  fi
+  log_success "Helm chart is in sync with generated manifests"
+else
+  log_warning "Helm sync validation script not found, skipping"
+fi
+
 # Check prerequisites
 log_section "Prerequisites Check"
 
