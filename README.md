@@ -1,15 +1,8 @@
 <div align="center">
 
-```
-  ____           _____                    ___                       _
- / ___| __ _ ___  |_   _|____      ___ __  / _ \ _ __   ___ _ __ __ _| |_ ___  _ __
-| |  _ / _` / __|   | |/ _ \ \ /\ / / '_ \| | | | '_ \ / _ \ '__/ _` | __/ _ \| '__|
-| |_| | (_| \__ \   | | (_) \ V  V /| | | | |_| | |_) |  __/ | | (_| | || (_) | |
- \____|\__,_|___/   |_|\___/ \_/\_/ |_| |_|\___/| .__/ \___|_|  \__,_|\__\___/|_|
-                                                |_|
-```
+# Gas Town Operator
 
-# Kubernetes Operator for Gas Town
+**Kubernetes operator for Gas Town polecats**
 
 [![Release](https://img.shields.io/github/v/release/boshu2/gastown-operator?logo=github)](https://github.com/boshu2/gastown-operator/releases/latest)
 [![Helm](https://img.shields.io/badge/Helm-OCI-blue?logo=helm)](https://ghcr.io/boshu2/charts/gastown-operator)
@@ -56,12 +49,6 @@ Claude will handle the secrets, the Polecat CRs, everything. You don't write YAM
 
 [Gas Town](https://github.com/steveyegge/gastown) runs AI agents (polecats) locally via tmux. This operator extends that to Kubernetes - **polecats run as pods instead of local processes**.
 
-**The workflow:**
-1. Install the operator (above)
-2. Tell Claude to set it up using the docs
-3. Sling work: `gt sling issue-123 my-rig --mode kubernetes`
-4. Watch: `gt convoy list` or `kubectl logs -f polecat-issue-123`
-
 **Why Kubernetes?**
 - **Horizontal scale**: Your laptop runs 4-8 agents. A cluster runs hundreds.
 - **Zero infrastructure**: No tmux, no screen, no SSH. Just pods.
@@ -69,6 +56,80 @@ Claude will handle the secrets, the Polecat CRs, everything. You don't write YAM
 - **Resource isolation**: Each polecat gets dedicated CPU/memory.
 
 Supports: **claude-code** (default), **opencode**, **aider**, or **custom** agents.
+
+## How It Works
+
+The operator is **CRD-driven**. You create a Polecat custom resource, and the operator handles the rest.
+
+### Happy Path (Kubernetes Mode)
+
+```
+You                          Kubernetes                      Git
+ │                              │                              │
+ ├─ kubectl apply polecat.yaml ─►                              │
+ │   (executionMode: kubernetes) │                              │
+ │                              │                              │
+ │                    Operator creates Pod                     │
+ │                              │                              │
+ │                    ┌─────────▼─────────┐                    │
+ │                    │   Polecat Pod     │                    │
+ │                    │  ┌─────────────┐  │                    │
+ │                    │  │ Claude Code │  │                    │
+ │                    │  │  - clones   │──┼── git clone ───────►
+ │                    │  │  - works    │  │                    │
+ │                    │  │  - commits  │──┼── git push ────────►
+ │                    │  └─────────────┘  │                    │
+ │                    └───────────────────┘                    │
+ │                              │                              │
+ ◄── kubectl get polecat ───────┤                              │
+     (status: Done)             │                              │
+```
+
+**Step by step:**
+
+1. **Create secrets** for git SSH key and Claude credentials
+2. **Apply a Polecat CR** with your task:
+   ```yaml
+   apiVersion: gastown.gastown.io/v1alpha1
+   kind: Polecat
+   metadata:
+     name: my-task
+   spec:
+     rig: my-project
+     executionMode: kubernetes
+     desiredState: Working
+     kubernetes:
+       gitRepository: "git@github.com:org/repo.git"
+       gitSecretRef:
+         name: git-ssh-key
+       claudeCredsSecretRef:
+         name: claude-creds
+     task:
+       description: "Implement feature X"
+   ```
+3. **Operator creates a Pod** with Claude Code pre-installed
+4. **Pod runs Claude**, which clones, implements, commits, and pushes
+5. **Results appear in git** - the branch is pushed, PR created if configured
+6. **Check status**: `kubectl get polecat my-task`
+
+### What Goes Where
+
+| Data | Location | How to Access |
+|------|----------|---------------|
+| Work progress | Pod logs | `kubectl logs polecat-my-task` |
+| Final code | Git remote | Pushed to branch |
+| Polecat status | CRD status | `kubectl get polecat -o yaml` |
+
+### Local Mode (Alternative)
+
+If the operator runs on a host with Gas Town installed, it can also manage local polecats:
+
+```yaml
+spec:
+  executionMode: local  # Uses tmux on host instead of pods
+```
+
+In this mode, the operator calls `gt sling` on the host filesystem. This is useful for hybrid setups where you want K8s to orchestrate but execution stays local.
 
 ## Installation Options
 
@@ -245,7 +306,7 @@ docker pull ghcr.io/boshu2/polecat-agent:0.4.0
 | gt CLI | latest |
 | git, ssh, jq | system |
 
-See [images/polecat-agent/](images/polecat-agent/) for build details.
+See [images/polecat-agent/](images/polecat-agent/) for build details and [CUSTOMIZING.md](images/polecat-agent/CUSTOMIZING.md) to extend the image with your own tools.
 
 ## Requirements
 

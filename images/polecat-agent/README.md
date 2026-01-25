@@ -62,9 +62,12 @@ docker buildx imagetools inspect ghcr.io/boshu2/polecat-agent:0.4.0 --format '{{
 | **jq** | JSON processing |
 | **curl** | HTTP client |
 
-**Not included** (no longer needed):
-- Node.js (Claude Code is now native binary)
-- npm (not needed)
+**Not included** (minimal base - extend as needed):
+- Python, Go, Node.js, Rust
+- Build tools (make, gcc)
+- Language package managers
+
+Need more tools? See [CUSTOMIZING.md](CUSTOMIZING.md) for how to extend the image.
 
 ## Usage with Operator
 

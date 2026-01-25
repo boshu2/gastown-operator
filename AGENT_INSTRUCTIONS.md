@@ -128,14 +128,15 @@ kubectl create secret generic claude-credentials -n gastown-workers \
 
 ## Usage Pattern
 
-**You don't manually write Polecat CRs.** The normal workflow is:
+**The normal workflow:**
 
 1. Install operator (above)
 2. Create secrets (above)
-3. From Mayor session: `gt sling issue-123 my-rig --mode kubernetes`
-4. Claude generates the Polecat CR
-5. Operator creates the pod
-6. Watch progress: `gt convoy list` or `kubectl logs -f polecat-issue-123`
+3. Apply a Polecat CR (use [templates/polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml))
+4. Operator creates the pod
+5. Watch progress: `kubectl logs -f polecat-<name>` or `kubectl get polecat`
+
+Or tell Claude: "Create a polecat to implement issue-123" and it will generate the CR for you.
 
 ---
 
