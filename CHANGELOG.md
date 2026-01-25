@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multi-arch builds**: buildx-based amd64 + arm64 builds locally on Mac
 - **Helm OCI push**: Direct push to `oci://ghcr.io/boshu2/charts/gastown-operator`
 - **GitHub releases**: Automated release creation via `gh` CLI
+- **Polecat Agent Image**: Pre-built container with Claude Code 2.0.22
+- **Security hardening**: gosec enabled in linting, all findings addressed
 
 ### Features
 
@@ -24,6 +26,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **ci:** add `scripts/build-local.sh` for buildx without push
 * **ci:** add `scripts/push-helm.sh` for helm OCI registry push
 * **ci:** add `scripts/github-release.sh` for gh release automation
+* **images:** add pre-built `polecat-agent` container with Claude Code 2.0.22 and gt CLI
+* **images:** multi-arch (amd64 + arm64) with SBOM and Trivy scan
+
+### Security
+
+* **security:** enable gosec linter in `.golangci.yml` with G204 exclusion
+* **security:** fix G301 directory permissions (0755→0750)
+* **security:** fix G306 file permissions in test files (0644→0600)
+* **security:** add G304 nolint comments for constrained file reads
+* **security:** Trivy scan shows 0 vulnerabilities in operator and gt binaries
+
+### Bug Fixes
+
+* **images:** update polecat-agent to Go 1.24 (required by gastown main)
+* **images:** fix Claude Code binary permissions for non-root user
 
 ### Installation
 
