@@ -177,7 +177,7 @@ kubectl gt auth sync -n gastown-system
 
 ### Rig shows "Degraded" phase
 
-The operator can't verify the local path. This is expected when running cloud-native (the path only needs to exist on the operator host for local mode).
+The operator can't verify the local path. This is expected when running in Kubernetes-only mode (Rigs use the `localPath` field for reference, but actual execution happens in pods).
 
 ### "Rig not found" error
 

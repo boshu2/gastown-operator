@@ -329,7 +329,14 @@ spec:
   rig: test-rig
   beadID: go-test-001
   desiredState: Idle
-  executionMode: local
+  kubernetes:
+    gitRepository: "git@github.com:test/repo.git"
+    gitBranch: main
+    gitSecretRef:
+      name: git-credentials
+    apiKeySecretRef:
+      name: anthropic-api-key
+      key: api-key
 EOF
 
   success "Test polecat created"
