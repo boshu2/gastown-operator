@@ -50,3 +50,5 @@ cover.out
 # Local config
 config.toml
 !config.example.toml
+cmd/kubectl-gt/kubectl-gt
+cmd/kubectl-gt/bin/kubectl-gt-*
