@@ -274,6 +274,209 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
+		It("should auto-provision Witness and Refinery when Rig is created", func() {
+			rigName := "test-auto-rig"
+
+			By("creating a Rig CR")
+			rigYAML := fmt.Sprintf(`
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Rig
+metadata:
+  name: %s
+spec:
+  gitURL: git@github.com:test/auto-rig-repo.git
+  beadsPrefix: tr
+`, rigName)
+
+			rigFile := filepath.Join("/tmp", "test-auto-rig.yaml")
+			err := os.WriteFile(rigFile, []byte(rigYAML), 0644)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := exec.Command("kubectl", "apply", "-f", rigFile)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create Rig")
+
+			By("verifying the Rig has finalizer added")
+			verifyRigFinalizer := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "rig", rigName,
+					"-o", "jsonpath={.metadata.finalizers}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("gastown.io/rig-cleanup"))
+			}
+			Eventually(verifyRigFinalizer, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying Witness CR is auto-created")
+			witnessName := rigName + "-witness"
+			verifyWitnessCreated := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "witness", witnessName,
+					"-n", namespace, "-o", "jsonpath={.metadata.name}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Witness should be auto-created")
+				g.Expect(output).To(Equal(witnessName))
+			}
+			Eventually(verifyWitnessCreated, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying Witness has correct rig reference")
+			verifyWitnessRigRef := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "witness", witnessName,
+					"-n", namespace, "-o", "jsonpath={.spec.rigRef}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal(rigName))
+			}
+			Eventually(verifyWitnessRigRef, 30*time.Second).Should(Succeed())
+
+			By("verifying Refinery CR is auto-created")
+			refineryName := rigName + "-refinery"
+			verifyRefineryCreated := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "refinery", refineryName,
+					"-n", namespace, "-o", "jsonpath={.metadata.name}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Refinery should be auto-created")
+				g.Expect(output).To(Equal(refineryName))
+			}
+			Eventually(verifyRefineryCreated, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying Refinery has correct rig reference and target branch")
+			verifyRefinerySpec := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "refinery", refineryName,
+					"-n", namespace, "-o", "jsonpath={.spec.rigRef},{.spec.targetBranch}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal(rigName + ",main"))
+			}
+			Eventually(verifyRefinerySpec, 30*time.Second).Should(Succeed())
+
+			By("verifying Rig status shows children created")
+			verifyRigStatus := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "rig", rigName,
+					"-o", "jsonpath={.status.witnessCreated},{.status.refineryCreated}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("true,true"))
+			}
+			Eventually(verifyRigStatus, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("cleaning up the test Rig")
+			cmd = exec.Command("kubectl", "delete", "rig", rigName)
+			_, _ = utils.Run(cmd)
+
+			By("verifying Witness is deleted with Rig (finalizer cleanup)")
+			verifyWitnessDeleted := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "witness", witnessName, "-n", namespace)
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred(), "Witness should be deleted")
+			}
+			Eventually(verifyWitnessDeleted, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying Refinery is deleted with Rig (finalizer cleanup)")
+			verifyRefineryDeleted := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "refinery", refineryName, "-n", namespace)
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred(), "Refinery should be deleted")
+			}
+			Eventually(verifyRefineryDeleted, 2*time.Minute, time.Second).Should(Succeed())
+		})
+
+		It("should detect merge-ready Polecats via Refinery", func() {
+			rigName := "test-merge-rig"
+			polecatName := "test-merge-polecat"
+
+			By("creating a Rig CR")
+			rigYAML := fmt.Sprintf(`
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Rig
+metadata:
+  name: %s
+spec:
+  gitURL: git@github.com:test/merge-rig-repo.git
+  beadsPrefix: tm
+`, rigName)
+
+			rigFile := filepath.Join("/tmp", "test-merge-rig.yaml")
+			err := os.WriteFile(rigFile, []byte(rigYAML), 0644)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := exec.Command("kubectl", "apply", "-f", rigFile)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create Rig")
+
+			By("waiting for auto-provisioned Refinery")
+			refineryName := rigName + "-refinery"
+			verifyRefineryCreated := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "refinery", refineryName,
+					"-n", namespace, "-o", "jsonpath={.metadata.name}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal(refineryName))
+			}
+			Eventually(verifyRefineryCreated, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("creating a Polecat with rig label")
+			polecatYAML := fmt.Sprintf(`
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    gastown.io/rig: %s
+spec:
+  rig: %s
+  desiredState: Working
+  beadID: test-merge-1234
+status:
+  phase: Completed
+  branch: polecat/%s
+`, polecatName, namespace, rigName, rigName, polecatName)
+
+			polecatFile := filepath.Join("/tmp", "test-merge-polecat.yaml")
+			err = os.WriteFile(polecatFile, []byte(polecatYAML), 0644)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd = exec.Command("kubectl", "apply", "-f", polecatFile)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create Polecat")
+
+			By("adding Available=True condition to Polecat (simulating work completion)")
+			// Use kubectl patch to add the Available condition
+			patchJSON := `[{"op":"replace","path":"/status/conditions","value":[{"type":"Available","status":"True","reason":"WorkComplete","message":"Work completed successfully","lastTransitionTime":"2026-01-01T00:00:00Z"}]}]`
+			cmd = exec.Command("kubectl", "patch", "polecat", polecatName,
+				"-n", namespace, "--type=json", "--subresource=status",
+				"-p", patchJSON)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to patch Polecat status")
+
+			By("verifying Polecat has Available=True condition")
+			verifyPolecatAvailable := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "polecat", polecatName,
+					"-n", namespace,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Available')].status}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("True"))
+			}
+			Eventually(verifyPolecatAvailable, 30*time.Second).Should(Succeed())
+
+			By("verifying Refinery detects the merge-ready Polecat (queue length > 0)")
+			verifyRefineryQueue := func(g Gomega) {
+				// Trigger reconciliation by getting the refinery
+				cmd := exec.Command("kubectl", "get", "refinery", refineryName,
+					"-n", namespace, "-o", "jsonpath={.status.queueLength}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				// Queue should have at least 1 item
+				g.Expect(output).NotTo(Equal("0"), "Refinery should detect merge-ready polecat")
+			}
+			// Note: This may take time as Refinery reconciles on its interval
+			Eventually(verifyRefineryQueue, 3*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("cleaning up test resources")
+			_ = exec.Command("kubectl", "delete", "polecat", polecatName, "-n", namespace)
+			_ = exec.Command("kubectl", "delete", "rig", rigName)
+		})
+
 		It("should create a Pod for a Polecat in kubernetes execution mode", func() {
 			polecatName := "test-k8s-polecat"
 			testNamespace := namespace // Use the operator's namespace for testing
