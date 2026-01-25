@@ -24,10 +24,10 @@ The operator just gives you more compute - as much as your cluster can handle.
 
 | On Your Laptop | With the Operator |
 |----------------|-------------------|
-| 1 polecat | **100 polecats** |
-| Your CPU | **Cluster CPUs** |
-| Your context window | **Parallel context windows** |
-| You watching it | **Fire and forget** |
+| ~20-30 polecats | **Hundreds** |
+| Your RAM ceiling | **Cluster resources** |
+| Laptop stays on | **Fire and forget** |
+| One machine | **Horizontal scale** |
 
 **That's it.** Same `gt sling`. Same `bd` issues. Same handoffs. Just... more.
 
