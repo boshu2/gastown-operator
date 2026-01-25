@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/boshu2/gastown-operator/compare/v0.3.2...v0.4.0) (2026-01-24) - Local CI/CD Pipeline
+
+### Highlights
+
+- **Local Make-based CI/CD**: Replace GitLab CI entirely with `make ci` targets
+- **Multi-arch builds**: buildx-based amd64 + arm64 builds locally on Mac
+- **Helm OCI push**: Direct push to `oci://ghcr.io/boshu2/charts/gastown-operator`
+- **GitHub releases**: Automated release creation via `gh` CLI
+
+### Features
+
+* **ci:** add `make ci` for full local CI/CD pipeline
+* **ci:** add `make ci-validate` for lint, vet, manifests, helm sync
+* **ci:** add `make ci-build` for local multi-arch buildx
+* **ci:** add `make ci-push` for GHCR image + helm chart push
+* **ci:** add `make ci-publish` for GitHub release creation
+* **ci:** add `scripts/build-local.sh` for buildx without push
+* **ci:** add `scripts/push-helm.sh` for helm OCI registry push
+* **ci:** add `scripts/github-release.sh` for gh release automation
+
+### Installation
+
+```bash
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.4.0 \
+  --namespace gastown-system \
+  --create-namespace
+```
+
 ## [0.3.2](https://github.com/boshu2/gastown-operator/compare/v0.3.1...v0.3.2) (2026-01-20) - First Stable Release
 
 This is the first stable release of the Gas Town Kubernetes Operator.
