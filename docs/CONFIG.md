@@ -161,9 +161,9 @@ data:
 | Field | Default | Notes |
 |-------|---------|-------|
 | `desiredState` | `Idle` | Initial state |
-| `executionMode` | `local` | Run via tmux |
+| `executionMode` | `kubernetes` | Run as Pod |
 | `agent` | `claude-code` | Coding agent type |
-| `agentConfig.provider` | `litellm` | LLM provider (for opencode) |
+| `agentConfig.provider` | `litellm` | LLM provider |
 | `kubernetes.gitBranch` | `main` | Base branch |
 | `kubernetes.activeDeadlineSeconds` | `3600` | 1 hour max runtime |
 

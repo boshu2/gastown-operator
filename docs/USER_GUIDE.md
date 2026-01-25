@@ -2,18 +2,13 @@
 
 Run AI coding agents as Kubernetes pods. Scale your agent army beyond the laptop.
 
-## Supported Agents
+## Supported Agent
 
-The operator supports multiple coding agents:
+The operator runs **Claude Code** - Anthropic's official coding agent CLI.
 
-| Agent | Description | Default |
-|-------|-------------|---------|
-| `claude-code` | Anthropic's Claude Code CLI | **Yes** |
-| `opencode` | Open-source coding agent using LiteLLM | No |
-| `aider` | AI pair programming in your terminal | No |
-| `custom` | Your own agent implementation | No |
-
-**Default is `claude-code`** - Anthropic's official coding agent.
+| Agent | Description |
+|-------|-------------|
+| `claude-code` | Anthropic's Claude Code CLI |
 
 ## How It Works
 
@@ -36,9 +31,9 @@ Your Laptop                          Kubernetes Cluster
                                      └─────────────────────────────┘
 ```
 
-Authentication varies by agent:
-- **opencode**: API key via LiteLLM endpoint
-- **claude-code**: OAuth session from `claude /login` or API key
+Authentication options:
+- **OAuth session** from `claude /login` (recommended)
+- **API key** for headless deployments
 
 ## Prerequisites
 

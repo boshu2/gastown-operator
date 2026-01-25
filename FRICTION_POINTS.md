@@ -14,7 +14,7 @@ This document catalogs common mistakes when creating Gas Town Kubernetes resourc
 | `permission denied (publickey)` | Git SSH key invalid | Check secret has correct key, add to git provider |
 | `authentication failed` | Claude creds expired | Re-run `claude login`, update secret |
 | `namespace not found` | Missing namespace | Create namespace first |
-| `polecat stuck in Working` | Various causes | Check tmux session for details |
+| `polecat stuck in Working` | Various causes | Check pod logs for details |
 
 ---
 
@@ -259,29 +259,7 @@ bd ready --parent=<epic>  # List ready beads
 
 ---
 
-## Anti-Pattern 8: Local Mode Without tmux
-
-**Wrong assumption:** Polecat in local mode will work without tmux installed.
-
-**Error:**
-```
-Error: tmux session creation failed: tmux: command not found
-```
-
-**Fix:**
-```bash
-# Install tmux
-brew install tmux  # macOS
-apt install tmux   # Ubuntu/Debian
-
-# Or use kubernetes mode instead
-spec:
-  executionMode: kubernetes  # Runs in Pod, no tmux needed
-```
-
----
-
-## Anti-Pattern 9: Resources Too Low for Kubernetes Mode
+## Anti-Pattern 8: Resources Too Low
 
 **Wrong:**
 ```yaml
@@ -319,7 +297,7 @@ spec:
 
 ---
 
-## Anti-Pattern 10: Forgetting to Push Work
+## Anti-Pattern 9: Forgetting to Push Work
 
 **Symptoms:**
 - Polecat completes work
@@ -375,13 +353,7 @@ When something goes wrong, check in order:
    kubectl logs -n gastown-system -l control-plane=controller-manager --tail=100
    ```
 
-5. **For local mode - tmux session?**
-   ```bash
-   tmux list-sessions | grep gt-
-   tmux capture-pane -t gt-<rig>-<polecat> -p | tail -50
-   ```
-
-6. **For kubernetes mode - pod logs?**
+5. **Pod logs?**
    ```bash
    kubectl logs polecat-<name> -n <namespace> --all-containers
    ```

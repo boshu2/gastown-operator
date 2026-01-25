@@ -1,86 +1,64 @@
-# ADR-002: Local vs Kubernetes Execution Modes
+# ADR-002: Kubernetes-Only Execution Mode
 
-**Status**: Accepted
+**Status**: Superseded (was: Accepted)
 **Date**: 2026-01-01
+**Superseded**: 2026-01-24
 
 ## Context
 
-Polecats (AI agent workers) need to execute tasks. Two execution environments exist:
+Originally, the operator supported two execution modes:
 
 1. **Local**: Agent runs in a tmux session on the operator host
 2. **Kubernetes**: Agent runs as a Pod in the cluster
 
-Users have different needs:
-- Development: Quick iteration, easy debugging (favor local)
-- Production: Isolation, scalability, resource management (favor Kubernetes)
+## Decision (Superseded)
 
-## Decision
+After evaluation, **local mode has been removed**. The operator now supports **Kubernetes-only execution**.
 
-Support **both execution modes**, selectable per-Polecat via `spec.executionMode`.
+### Why Remove Local Mode?
+
+1. **Complexity**: Two code paths doubled maintenance burden
+2. **Security**: Local mode required tmux/host access - security anti-pattern
+3. **Portability**: Local mode tied operator to specific host configuration
+4. **Focus**: One execution mode done well > two done poorly
+5. **OSS Readiness**: Clean standalone operator is more adoptable
+
+## Current Implementation
+
+All Polecats run as Kubernetes Pods:
 
 ```yaml
 apiVersion: gastown.gastown.io/v1alpha1
 kind: Polecat
 spec:
-  executionMode: kubernetes  # or "local"
-  kubernetes:                # Only when mode=kubernetes
-    gitRepository: "..."
-    image: "..."
+  desiredState: Working
+  kubernetes:
+    gitRepository: "git@github.com:org/repo.git"
+    gitSecretRef:
+      name: git-creds
+    apiKeySecretRef:
+      name: anthropic-api-key
+      key: api-key
 ```
 
-## Implementation
-
-### Local Mode (default)
-
-- Controller calls `gt sling` to dispatch work
-- Agent runs in tmux session on operator host
-- State tracked via `gt polecat status`
-
-### Kubernetes Mode
-
-- Controller creates a Pod with:
-  - Init container: clones git repo with SSH key
-  - Main container: runs Claude agent
-  - Secrets mounted for credentials
-- Pod lifecycle tracks work completion
-- Results pushed to git before termination
+The `executionMode` field defaults to `kubernetes` and only accepts `kubernetes`.
 
 ## Consequences
 
 ### Positive
 
-- **Gradual migration**: Users can adopt K8s execution incrementally
-- **Development flexibility**: Local mode for rapid iteration
-- **Production readiness**: K8s mode for isolation and scale
-- **Resource management**: K8s provides CPU/memory limits
+- **Simpler codebase**: Single execution path to maintain
+- **Cleaner dependencies**: No gt CLI or tmux required
+- **True isolation**: Every polecat runs in its own pod
+- **Cloud-native**: Works in any Kubernetes cluster
 
 ### Negative
 
-- **Two code paths**: More complexity to maintain
-- **Feature parity**: Some features may not work identically in both modes
-- **Testing burden**: Need to test both execution paths
+- **No local debugging**: Can't attach to tmux for quick inspection
+- **Slower iteration**: Pod startup adds latency vs local tmux
 
 ### Mitigations
 
-- Clear documentation on mode differences
-- Common interface for work dispatch
-- Mode-specific validation in webhooks
-
-## Mode Comparison
-
-| Feature | Local | Kubernetes |
-|---------|-------|------------|
-| Isolation | Shared host | Pod sandbox |
-| Scaling | Limited by host | Cluster capacity |
-| Debugging | tmux attach | kubectl logs |
-| Network | Host network | Pod network |
-| Resources | Shared | Dedicated |
-| Startup time | Fast | Slower (pod scheduling) |
-| Cost | Free | Cluster resources |
-
-## Migration Path
-
-1. Start with local mode for development
-2. Test kubernetes mode with non-critical work
-3. Migrate production workloads to kubernetes mode
-4. Keep local mode for debugging and development
+- Use `kubectl logs -f` for live log streaming
+- Use `kubectl exec` for interactive debugging
+- Use short `activeDeadlineSeconds` during development

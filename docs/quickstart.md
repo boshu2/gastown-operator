@@ -17,7 +17,7 @@ The Gas Town Operator uses a 3-namespace architecture for separation of concerns
 | Namespace | Purpose | Resources |
 |-----------|---------|-----------|
 | `gastown-system` | Control plane | Operator deployment, controller-manager |
-| `gastown-workers` | Workloads | Polecat pods (kubernetes mode), Secrets |
+| `gastown-workers` | Workloads | Polecat pods, Secrets |
 | Cluster-scoped | Global resources | Rig CRDs |
 
 ### Why This Architecture?
@@ -42,7 +42,7 @@ kubectl label namespace gastown-workers pod-security.kubernetes.io/enforce=basel
 ### Which Namespace for What?
 
 - **Operator install** → `gastown-system`
-- **Polecat CRs** → `gastown-workers` (for kubernetes mode)
+- **Polecat CRs** → `gastown-workers`
 - **Convoy CRs** → `gastown-workers`
 - **Witness/Refinery CRs** → `gastown-system`
 - **Secrets (git, claude)** → Same namespace as the Polecats referencing them
@@ -120,9 +120,7 @@ The operator will:
 
 ## Create a Polecat
 
-Polecats are workers that execute beads issues. Default agent is `claude-code`.
-
-**Local mode (tmux):**
+Polecats are workers that execute beads issues. They run Claude Code as Kubernetes pods.
 
 ```yaml
 # worker-polecat.yaml
@@ -135,25 +133,6 @@ spec:
   rig: myproject
   desiredState: Working
   beadID: "mp-abc-123"
-  executionMode: local
-  # agent: claude-code  # default
-```
-
-**Kubernetes mode (Pod):**
-
-```yaml
-# k8s-polecat.yaml
-apiVersion: gastown.gastown.io/v1alpha1
-kind: Polecat
-metadata:
-  name: worker-1
-  namespace: default
-spec:
-  rig: myproject
-  desiredState: Working
-  beadID: "mp-abc-123"
-  executionMode: kubernetes
-  # agent: claude-code  # default
   kubernetes:
     gitRepository: "git@github.com:myorg/myproject.git"
     gitBranch: main
@@ -167,7 +146,7 @@ spec:
 kubectl apply -f worker-polecat.yaml
 ```
 
-The operator will call `gt sling mp-abc-123 myproject` to spawn the polecat.
+The operator will create a Pod that clones the repo and runs Claude Code on the bead.
 
 ## Create a Convoy
 

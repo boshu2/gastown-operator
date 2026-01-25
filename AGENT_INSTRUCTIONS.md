@@ -23,10 +23,9 @@
 The gastown-operator extends [Gas Town](https://github.com/steveyegge/gastown) to Kubernetes. Instead of running polecats locally via tmux, they run as pods in your cluster.
 
 **What it provides:**
-1. **Polecat pods** - AI agents running as Kubernetes pods
+1. **Polecat pods** - Claude Code agents running as Kubernetes pods
 2. **CRD-based management** - Rig, Polecat, Convoy, Witness, Refinery, BeadStore
 3. **Git integration** - Clone repos, create branches, push commits
-4. **Multiple agents** - claude-code (default), opencode, aider, or custom
 
 ---
 
@@ -170,10 +169,17 @@ spec:
   rig: my-project
   beadID: issue-123
   desiredState: Working
-  executionMode: local
+  kubernetes:
+    gitRepository: "git@github.com:myorg/myrepo.git"
+    gitBranch: main
+    gitSecretRef:
+      name: git-credentials
+    apiKeySecretRef:
+      name: claude-credentials
+      key: api-key
 ```
 
-For Kubernetes execution with full options, see [templates/polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml)
+For full options, see [templates/polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml)
 
 ---
 

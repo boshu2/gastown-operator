@@ -55,7 +55,7 @@ spec:
 
 **Scope:** Namespaced
 
-A Polecat is an autonomous worker agent that executes beads issues. Polecats can run locally (tmux sessions) or in Kubernetes (Pods).
+A Polecat is an autonomous worker agent that executes beads issues. Polecats run as Kubernetes Pods.
 
 ### Spec
 
@@ -65,8 +65,8 @@ A Polecat is an autonomous worker agent that executes beads issues. Polecats can
 | `desiredState` | string | Yes | `Idle` | Target state: `Idle`, `Working`, `Terminated` |
 | `beadID` | string | No | - | Bead ID to work on (triggers work when set) |
 | `taskDescription` | string | No | - | Explicit task description for Claude (use when beads not synced) |
-| `executionMode` | string | No | `local` | Where to run: `local` (tmux) or `kubernetes` (Pod) |
-| `agent` | string | No | `claude-code` | Agent type: `claude-code`, `opencode`, `aider`, `custom` |
+| `executionMode` | string | No | `kubernetes` | Where to run (kubernetes only) |
+| `agent` | string | No | `claude-code` | Agent type (claude-code only) |
 | `agentConfig` | object | No | - | Configuration for the coding agent |
 | `kubernetes` | object | No* | - | Kubernetes execution config (*required if `executionMode=kubernetes`) |
 | `resources` | ResourceRequirements | No | - | CPU/memory for the polecat pod |
@@ -98,7 +98,7 @@ A Polecat is an autonomous worker agent that executes beads issues. Polecats can
 | `image` | string | No | - | Override container image for the agent |
 | `command` | []string | No | - | Override entrypoint command |
 | `args` | []string | No | - | Additional arguments to the agent command |
-| `configMapRef.name` | string | No | - | ConfigMap containing agent config (e.g., opencode.json) |
+| `configMapRef.name` | string | No | - | ConfigMap containing agent configuration |
 | `env` | []EnvVar | No | - | Additional environment variables |
 
 ### Status
@@ -108,10 +108,8 @@ A Polecat is an autonomous worker agent that executes beads issues. Polecats can
 | `phase` | string | `Idle`, `Working`, `Done`, `Stuck`, `Terminated` |
 | `assignedBead` | string | Currently assigned bead ID |
 | `branch` | string | Git branch for this polecat's work |
-| `worktreePath` | string | Filesystem path to worktree |
-| `tmuxSession` | string | Tmux session name (local mode) |
-| `sessionActive` | bool | Whether tmux session is running (local mode) |
-| `podName` | string | Pod name (kubernetes mode) |
+| `podName` | string | Pod name |
+| `podActive` | bool | Whether Pod is running |
 | `lastActivity` | timestamp | When polecat last showed activity |
 | `cleanupStatus` | string | `clean`, `has_uncommitted`, `has_unpushed`, `unknown` |
 | `agent` | string | Agent type currently running |
@@ -144,23 +142,7 @@ A Polecat is an autonomous worker agent that executes beads issues. Polecats can
 
 ### Examples
 
-**Local execution (tmux) with default agent:**
-
-```yaml
-apiVersion: gastown.gastown.io/v1alpha1
-kind: Polecat
-metadata:
-  name: furiosa
-  namespace: gastown-system
-spec:
-  rig: myproject
-  desiredState: Working
-  beadID: "gt-abc-123"
-  executionMode: local
-  # agent: claude-code  # default
-```
-
-**Kubernetes execution with Claude Code (default):**
+**Kubernetes execution with Claude Code:**
 
 ```yaml
 apiVersion: gastown.gastown.io/v1alpha1
@@ -214,35 +196,6 @@ spec:
     apiKeySecretRef:
       name: anthropic-api-key
       key: api-key
-```
-
-**Kubernetes execution with opencode (alternative agent):**
-
-```yaml
-apiVersion: gastown.gastown.io/v1alpha1
-kind: Polecat
-metadata:
-  name: opencode-worker
-  namespace: gastown-system
-spec:
-  rig: myproject
-  desiredState: Working
-  beadID: "gt-abc-123"
-  executionMode: kubernetes
-  agent: opencode
-  agentConfig:
-    provider: litellm
-    model: claude-sonnet-4
-    modelProvider:
-      endpoint: https://ai-gateway.example.com/v1
-      apiKeySecretRef:
-        name: litellm-api-key
-        key: api-key
-  kubernetes:
-    gitRepository: "git@github.com:myorg/myproject.git"
-    gitBranch: main
-    gitSecretRef:
-      name: git-creds
 ```
 
 ---

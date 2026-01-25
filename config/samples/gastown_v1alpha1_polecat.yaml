@@ -5,8 +5,16 @@ metadata:
     app.kubernetes.io/name: gastown-operator
     app.kubernetes.io/managed-by: kustomize
   name: polecat-sample
+  namespace: gastown-workers
 spec:
   rig: sample-rig
-  desiredState: Idle
-  executionMode: local
-  # For kubernetes mode, see polecat-kubernetes-sample.yaml
+  desiredState: Working
+  taskDescription: "Implement the assigned task"
+  kubernetes:
+    gitRepository: "git@github.com:org/repo.git"
+    gitBranch: main
+    gitSecretRef:
+      name: git-credentials
+    apiKeySecretRef:
+      name: anthropic-api-key
+      key: api-key

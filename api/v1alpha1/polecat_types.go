@@ -131,7 +131,7 @@ type AgentConfig struct {
 	// +optional
 	Args []string `json:"args,omitempty"`
 
-	// ConfigMapRef references a ConfigMap containing agent configuration (e.g., opencode.json)
+	// ConfigMapRef references a ConfigMap containing agent configuration
 	// +optional
 	ConfigMapRef *corev1.LocalObjectReference `json:"configMapRef,omitempty"`
 

@@ -85,7 +85,7 @@ spec:
                     type: array
                   configMapRef:
                     description: ConfigMapRef references a ConfigMap containing agent
-                      configuration (e.g., opencode.json)
+                      configuration
                     properties:
                       name:
                         default: ""

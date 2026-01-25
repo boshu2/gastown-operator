@@ -276,7 +276,7 @@ func runPolecatLogs(_, name string, follow bool, container string) error {
 
 	podName, ok, _ := unstructured.NestedString(polecat.Object, "status", "podName")
 	if !ok || podName == "" {
-		return fmt.Errorf("polecat %s has no associated pod (may be in local mode)", name)
+		return fmt.Errorf("polecat %s has no associated pod", name)
 	}
 
 	// Use kubectl to stream logs (simpler than implementing streaming ourselves)

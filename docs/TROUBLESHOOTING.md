@@ -60,8 +60,8 @@ curl -k https://localhost:8443/metrics
 # Check polecat status
 kubectl get polecat <name> -o yaml
 
-# For local execution mode, check tmux session
-tmux capture-pane -t gt-<rig>-<polecat> -p | tail -50
+# Check pod logs
+kubectl logs polecat-<name> -c claude --tail=50
 
 # Check operator logs for errors
 kubectl logs -n gastown-operator-system -l control-plane=controller-manager | grep <polecat-name>
