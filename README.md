@@ -24,12 +24,12 @@ The operator just gives you more compute - as much as your cluster can handle.
 
 | On Your Laptop | With the Operator |
 |----------------|-------------------|
-| ~20-30 polecats | **Hundreds** |
-| Your RAM ceiling | **Cluster resources** |
-| Laptop stays on | **Fire and forget** |
+| ~20-30 polecats (CPU bound) | **Hundreds** |
+| Laptop stays open | **Close your laptop** |
+| You're online | **Town runs 24/7** |
 | One machine | **Horizontal scale** |
 
-**That's it.** Same `gt sling`. Same `bd` issues. Same handoffs. Just... more.
+**That's it.** Same `gt sling`. Same `bd` issues. Same handoffs. Your town just runs in the cloud now.
 
 ```bash
 # This command works the same whether you're local or on Kubernetes
