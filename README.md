@@ -1,28 +1,39 @@
 <div align="center">
 
 ```
- ██████╗  █████╗ ███████╗  ████████╗ ██████╗ ██╗    ██╗███╗   ██╗
-██╔════╝ ██╔══██╗██╔════╝  ╚══██╔══╝██╔═══██╗██║    ██║████╗  ██║
-██║  ███╗███████║███████╗     ██║   ██║   ██║██║ █╗ ██║██╔██╗ ██║
-██║   ██║██╔══██║╚════██║     ██║   ██║   ██║██║███╗██║██║╚██╗██║
-╚██████╔╝██║  ██║███████║     ██║   ╚██████╔╝╚███╔███╔╝██║ ╚████║
- ╚═════╝ ╚═╝  ╚═╝╚══════╝     ╚═╝    ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═══╝
+   ██████╗  █████╗ ███████╗    ████████╗ ██████╗ ██╗    ██╗███╗   ██╗
+  ██╔════╝ ██╔══██╗██╔════╝    ╚══██╔══╝██╔═══██╗██║    ██║████╗  ██║
+  ██║  ███╗███████║███████╗       ██║   ██║   ██║██║ █╗ ██║██╔██╗ ██║
+  ██║   ██║██╔══██║╚════██║       ██║   ██║   ██║██║███╗██║██║╚██╗██║
+  ╚██████╔╝██║  ██║███████║       ██║   ╚██████╔╝╚███╔███╔╝██║ ╚████║
+   ╚═════╝ ╚═╝  ╚═╝╚══════╝       ╚═╝    ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═══╝
 ```
 
-### ⚡ WITNESS ME! Shiny and Chrome. ⚡
+**Run Claude Code agents as Kubernetes pods.**
 
-**AI agent orchestration for Kubernetes**
+</div>
+
+---
+
+## What You Get
+
+| Without Gas Town | With Gas Town |
+|------------------|---------------|
+| One agent on your laptop | **Unlimited agents** across your cluster |
+| Context limits halt progress | Agents **hand off work** and keep going |
+| Manual issue assignment | **Dispatch work** with one command |
+| Babysitting agent sessions | **Fire and forget** - check results later |
+
+**The pitch:** You have 50 issues to implement. Instead of working them one-by-one on your laptop, dispatch 10 polecats in parallel. Go to lunch. Come back to PRs.
+
+<div align="center">
 
 [![Release](https://img.shields.io/github/v/release/boshu2/gastown-operator?logo=github&label=Release)](https://github.com/boshu2/gastown-operator/releases/latest)
 [![kubectl-gt](https://img.shields.io/badge/kubectl--gt-CLI-FF6B35?logo=kubernetes&logoColor=white)](https://github.com/boshu2/gastown-operator/releases/latest)
 [![Helm](https://img.shields.io/badge/Helm-OCI-0F1689?logo=helm)](https://ghcr.io/boshu2/charts/gastown-operator)
 [![OpenShift](https://img.shields.io/badge/OpenShift-Native-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
 
----
-
-*Scale your AI agent army beyond the laptop.*
-
-**Dispatch work. Spawn polecats. Ride eternal.**
+*⚡ WITNESS ME! Shiny and Chrome. ⚡*
 
 </div>
 
