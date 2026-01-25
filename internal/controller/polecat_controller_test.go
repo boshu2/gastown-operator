@@ -271,6 +271,178 @@ var _ = Describe("Polecat Controller", func() {
 			Expect(k8sClient.Delete(ctx, &pod)).To(Succeed())
 		})
 
+		It("should set Available condition when Pod succeeds", func() {
+			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{
+				Name:      testPolecat.Name,
+				Namespace: testPolecat.Namespace,
+			}}
+
+			// First reconcile creates the Pod
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Get the created Pod and update its status to Succeeded
+			var pod corev1.Pod
+			podName := "polecat-" + testPolecat.Name
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      podName,
+					Namespace: testPolecat.Namespace,
+				}, &pod)
+			}).Should(Succeed())
+
+			pod.Status.Phase = corev1.PodSucceeded
+			Expect(k8sClient.Status().Update(ctx, &pod)).To(Succeed())
+
+			// Reconcile again to sync status
+			_, err = reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify standard conditions are set correctly
+			var updated gastownv1alpha1.Polecat
+			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
+
+			// Available=True signals merge readiness (this is what Witness/Refinery look for)
+			var availableCondition, progressingCondition, degradedCondition *metav1.Condition
+			for i := range updated.Status.Conditions {
+				switch updated.Status.Conditions[i].Type {
+				case ConditionAvailable:
+					availableCondition = &updated.Status.Conditions[i]
+				case ConditionProgressing:
+					progressingCondition = &updated.Status.Conditions[i]
+				case ConditionDegraded:
+					degradedCondition = &updated.Status.Conditions[i]
+				}
+			}
+
+			Expect(availableCondition).NotTo(BeNil(), "Available condition should exist")
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue), "Available should be True")
+			Expect(availableCondition.Reason).To(Equal("WorkComplete"))
+
+			Expect(progressingCondition).NotTo(BeNil(), "Progressing condition should exist")
+			Expect(progressingCondition.Status).To(Equal(metav1.ConditionFalse), "Progressing should be False")
+
+			Expect(degradedCondition).NotTo(BeNil(), "Degraded condition should exist")
+			Expect(degradedCondition.Status).To(Equal(metav1.ConditionFalse), "Degraded should be False")
+
+			// Cleanup
+			Expect(k8sClient.Delete(ctx, &pod)).To(Succeed())
+		})
+
+		It("should set Degraded condition when Pod fails", func() {
+			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{
+				Name:      testPolecat.Name,
+				Namespace: testPolecat.Namespace,
+			}}
+
+			// First reconcile creates the Pod
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Get the created Pod and update its status to Failed
+			var pod corev1.Pod
+			podName := "polecat-" + testPolecat.Name
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      podName,
+					Namespace: testPolecat.Namespace,
+				}, &pod)
+			}).Should(Succeed())
+
+			pod.Status.Phase = corev1.PodFailed
+			Expect(k8sClient.Status().Update(ctx, &pod)).To(Succeed())
+
+			// Reconcile again to sync status
+			_, err = reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify standard conditions are set correctly
+			var updated gastownv1alpha1.Polecat
+			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
+
+			var availableCondition, degradedCondition *metav1.Condition
+			for i := range updated.Status.Conditions {
+				switch updated.Status.Conditions[i].Type {
+				case ConditionAvailable:
+					availableCondition = &updated.Status.Conditions[i]
+				case ConditionDegraded:
+					degradedCondition = &updated.Status.Conditions[i]
+				}
+			}
+
+			Expect(availableCondition).NotTo(BeNil(), "Available condition should exist")
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse), "Available should be False")
+
+			Expect(degradedCondition).NotTo(BeNil(), "Degraded condition should exist")
+			Expect(degradedCondition.Status).To(Equal(metav1.ConditionTrue), "Degraded should be True")
+			Expect(degradedCondition.Reason).To(Equal("PodFailed"))
+
+			// Cleanup
+			Expect(k8sClient.Delete(ctx, &pod)).To(Succeed())
+		})
+
+		It("should set Progressing condition when Pod is running", func() {
+			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{
+				Name:      testPolecat.Name,
+				Namespace: testPolecat.Namespace,
+			}}
+
+			// First reconcile creates the Pod
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Get the created Pod and update its status to Running
+			var pod corev1.Pod
+			podName := "polecat-" + testPolecat.Name
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      podName,
+					Namespace: testPolecat.Namespace,
+				}, &pod)
+			}).Should(Succeed())
+
+			pod.Status.Phase = corev1.PodRunning
+			Expect(k8sClient.Status().Update(ctx, &pod)).To(Succeed())
+
+			// Reconcile again to sync status
+			_, err = reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify standard conditions are set correctly
+			var updated gastownv1alpha1.Polecat
+			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
+
+			var availableCondition, progressingCondition, degradedCondition *metav1.Condition
+			for i := range updated.Status.Conditions {
+				switch updated.Status.Conditions[i].Type {
+				case ConditionAvailable:
+					availableCondition = &updated.Status.Conditions[i]
+				case ConditionProgressing:
+					progressingCondition = &updated.Status.Conditions[i]
+				case ConditionDegraded:
+					degradedCondition = &updated.Status.Conditions[i]
+				}
+			}
+
+			Expect(progressingCondition).NotTo(BeNil(), "Progressing condition should exist")
+			Expect(progressingCondition.Status).To(Equal(metav1.ConditionTrue), "Progressing should be True")
+
+			Expect(availableCondition).NotTo(BeNil(), "Available condition should exist")
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse), "Available should be False")
+
+			Expect(degradedCondition).NotTo(BeNil(), "Degraded condition should exist")
+			Expect(degradedCondition.Status).To(Equal(metav1.ConditionFalse), "Degraded should be False")
+
+			// Cleanup
+			Expect(k8sClient.Delete(ctx, &pod)).To(Succeed())
+		})
+
 		It("should mark polecat as Stuck when Pod fails", func() {
 			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
 

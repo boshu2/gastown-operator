@@ -153,20 +153,31 @@ func (r *WitnessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 // calculateSummary aggregates Polecat states.
+// Checks both new standard conditions (Available, Progressing, Degraded) and
+// falls back to old conditions (Ready, Working) for backward compatibility.
 func (r *WitnessReconciler) calculateSummary(polecats *gastownv1alpha1.PolecatList, stuckThreshold time.Duration) gastownv1alpha1.PolecatsSummary {
 	summary := gastownv1alpha1.PolecatsSummary{}
 
 	for _, polecat := range polecats.Items {
 		summary.Total++
 
-		// Check conditions for state
+		// Track what we find for this polecat
+		var hasAvailable, hasProgressing, hasDegraded bool
+		var hasOldReady, hasOldWorking bool
+		var progressingCond, workingCond metav1.Condition
+
+		// Check all conditions
 		for _, cond := range polecat.Status.Conditions {
 			switch cond.Type {
-			case "Available":
+			// New standard conditions
+			case ConditionAvailable:
+				hasAvailable = true
 				if cond.Status == metav1.ConditionTrue {
 					summary.Succeeded++
 				}
-			case "Progressing":
+			case ConditionProgressing:
+				hasProgressing = true
+				progressingCond = cond
 				if cond.Status == metav1.ConditionTrue {
 					summary.Running++
 					// Check if stuck (no update for too long)
@@ -174,12 +185,41 @@ func (r *WitnessReconciler) calculateSummary(polecats *gastownv1alpha1.PolecatLi
 						summary.Stuck++
 					}
 				}
-			case "Degraded":
+			case ConditionDegraded:
+				hasDegraded = true
 				if cond.Status == metav1.ConditionTrue {
 					summary.Failed++
 				}
+			// Old conditions (backward compatibility)
+			case "Ready":
+				hasOldReady = true
+				// Only use Ready as fallback for Available if Available isn't present
+				if cond.Status == metav1.ConditionTrue && cond.Reason == "PodSucceeded" {
+					// This is a completed polecat using old conditions
+					if !hasAvailable {
+						summary.Succeeded++
+					}
+				}
+			case "Working":
+				hasOldWorking = true
+				workingCond = cond
 			}
 		}
+
+		// Fallback: if new conditions aren't present, use old ones
+		if !hasProgressing && hasOldWorking && workingCond.Status == metav1.ConditionTrue {
+			summary.Running++
+			// Check if stuck using old Working condition
+			if time.Since(workingCond.LastTransitionTime.Time) > stuckThreshold {
+				summary.Stuck++
+			}
+		}
+
+		// Note: If neither new nor old conditions are present, polecat is not counted
+		// in running/succeeded/failed - this is expected for newly created polecats
+		_ = hasOldReady     // Suppress unused warning (used in switch case)
+		_ = hasDegraded     // Suppress unused warning (used in switch case)
+		_ = progressingCond // Suppress unused warning (used in switch case)
 	}
 
 	return summary
@@ -188,7 +228,7 @@ func (r *WitnessReconciler) calculateSummary(polecats *gastownv1alpha1.PolecatLi
 // determinePhase returns the Witness phase based on summary.
 func (r *WitnessReconciler) determinePhase(summary gastownv1alpha1.PolecatsSummary) string {
 	if summary.Stuck > 0 || summary.Failed > 0 {
-		return "Degraded"
+		return ConditionDegraded // Phase matches condition name
 	}
 	if summary.Running > 0 {
 		return "Active"

@@ -72,6 +72,19 @@ type RigStatus struct {
 	// ActiveConvoys is the number of convoys currently in progress
 	ActiveConvoys int `json:"activeConvoys,omitempty"`
 
+	// WitnessCreated indicates if the Witness CR has been auto-provisioned
+	// +optional
+	WitnessCreated bool `json:"witnessCreated,omitempty"`
+
+	// RefineryCreated indicates if the Refinery CR has been auto-provisioned
+	// +optional
+	RefineryCreated bool `json:"refineryCreated,omitempty"`
+
+	// ChildNamespace is the namespace where child resources (Witness, Refinery) are created
+	// Defaults to the operator namespace (gastown-system)
+	// +optional
+	ChildNamespace string `json:"childNamespace,omitempty"`
+
 	// Conditions represent the current state of the Rig resource
 	// +listType=map
 	// +listMapKey=type

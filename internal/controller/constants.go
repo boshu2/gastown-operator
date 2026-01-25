@@ -81,6 +81,11 @@ const (
 	// This is the primary "health" condition for most resources.
 	ConditionReady = "Ready"
 
+	// ConditionAvailable indicates work is complete and ready for downstream processing.
+	// For Polecats: work complete, ready for Refinery merge.
+	// This is the signal Witness and Refinery look for.
+	ConditionAvailable = "Available"
+
 	// ConditionDegraded indicates the resource is operational but impaired.
 	// Use when the resource can function but with reduced capability.
 	ConditionDegraded = "Degraded"

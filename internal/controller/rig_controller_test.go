@@ -55,9 +55,24 @@ var _ = Describe("Rig Controller", func() {
 	})
 
 	AfterEach(func() {
-		// Clean up test rig
+		// Clean up test rig - remove finalizer first
 		if testRig != nil {
+			var current gastownv1alpha1.Rig
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: testRig.Name}, &current); err == nil {
+				current.Finalizers = nil
+				_ = k8sClient.Update(ctx, &current)
+			}
 			_ = k8sClient.Delete(ctx, testRig)
+
+			// Clean up any created Witness/Refinery
+			witness := &gastownv1alpha1.Witness{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: testRig.Name + "-witness", Namespace: "default"}, witness); err == nil {
+				_ = k8sClient.Delete(ctx, witness)
+			}
+			refinery := &gastownv1alpha1.Refinery{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: testRig.Name + "-refinery", Namespace: "default"}, refinery); err == nil {
+				_ = k8sClient.Delete(ctx, refinery)
+			}
 		}
 	})
 
@@ -69,6 +84,121 @@ var _ = Describe("Rig Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
+		})
+	})
+
+	Context("When auto-provisioning children", func() {
+		BeforeEach(func() {
+			// Set the namespace env var for tests
+			GinkgoT().Setenv("GASTOWN_NAMESPACE", "default")
+		})
+
+		It("should add finalizer on first reconcile", func() {
+			Expect(k8sClient.Create(ctx, testRig)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{Name: testRig.Name}}
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify finalizer was added
+			var updated gastownv1alpha1.Rig
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testRig.Name}, &updated)).To(Succeed())
+			Expect(updated.Finalizers).To(ContainElement("gastown.io/rig-cleanup"))
+		})
+
+		It("should create Witness CR for rig", func() {
+			Expect(k8sClient.Create(ctx, testRig)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{Name: testRig.Name}}
+
+			// First reconcile adds finalizer
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Second reconcile creates children
+			_, err = reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify Witness was created
+			witness := &gastownv1alpha1.Witness{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      testRig.Name + "-witness",
+					Namespace: "default",
+				}, witness)
+			}).Should(Succeed())
+
+			Expect(witness.Spec.RigRef).To(Equal(testRig.Name))
+			Expect(witness.Labels["gastown.io/rig-owner"]).To(Equal(testRig.Name))
+		})
+
+		It("should create Refinery CR for rig", func() {
+			Expect(k8sClient.Create(ctx, testRig)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{Name: testRig.Name}}
+
+			// First reconcile adds finalizer
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Second reconcile creates children
+			_, err = reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify Refinery was created
+			refinery := &gastownv1alpha1.Refinery{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      testRig.Name + "-refinery",
+					Namespace: "default",
+				}, refinery)
+			}).Should(Succeed())
+
+			Expect(refinery.Spec.RigRef).To(Equal(testRig.Name))
+			Expect(refinery.Spec.TargetBranch).To(Equal("main"))
+			Expect(refinery.Labels["gastown.io/rig-owner"]).To(Equal(testRig.Name))
+		})
+
+		It("should update status after creating children", func() {
+			Expect(k8sClient.Create(ctx, testRig)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{Name: testRig.Name}}
+
+			// Reconcile until children are created
+			for i := 0; i < 3; i++ {
+				_, err := reconciler.Reconcile(ctx, req)
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			// Verify status was updated
+			var updated gastownv1alpha1.Rig
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testRig.Name}, &updated)).To(Succeed())
+			Expect(updated.Status.WitnessCreated).To(BeTrue())
+			Expect(updated.Status.RefineryCreated).To(BeTrue())
+			Expect(updated.Status.ChildNamespace).To(Equal("default"))
+		})
+
+		It("should not recreate children if already created", func() {
+			Expect(k8sClient.Create(ctx, testRig)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{Name: testRig.Name}}
+
+			// Reconcile multiple times
+			for i := 0; i < 5; i++ {
+				_, err := reconciler.Reconcile(ctx, req)
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			// Verify only one Witness exists
+			witnessList := &gastownv1alpha1.WitnessList{}
+			Expect(k8sClient.List(ctx, witnessList)).To(Succeed())
+			witnessCount := 0
+			for _, w := range witnessList.Items {
+				if w.Spec.RigRef == testRig.Name {
+					witnessCount++
+				}
+			}
+			Expect(witnessCount).To(Equal(1))
 		})
 	})
 

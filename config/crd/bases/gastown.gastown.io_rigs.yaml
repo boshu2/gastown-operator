@@ -86,6 +86,11 @@ spec:
               activeConvoys:
                 description: ActiveConvoys is the number of convoys currently in progress
                 type: integer
+              childNamespace:
+                description: |-
+                  ChildNamespace is the namespace where child resources (Witness, Refinery) are created
+                  Defaults to the operator namespace (gastown-system)
+                type: string
               conditions:
                 description: Conditions represent the current state of the Rig resource
                 items:
@@ -158,6 +163,13 @@ spec:
                 description: PolecatCount is the current number of polecats in this
                   rig
                 type: integer
+              refineryCreated:
+                description: RefineryCreated indicates if the Refinery CR has been
+                  auto-provisioned
+                type: boolean
+              witnessCreated:
+                description: WitnessCreated indicates if the Witness CR has been auto-provisioned
+                type: boolean
             type: object
         type: object
     served: true

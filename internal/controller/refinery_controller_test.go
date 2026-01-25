@@ -203,6 +203,115 @@ var _ = Describe("Refinery Controller", func() {
 			ready := r.findMergeReadyPolecats(polecats)
 			Expect(ready).To(BeEmpty())
 		})
+
+		It("should fallback to old Ready condition with PodSucceeded reason", func() {
+			r := &RefineryReconciler{}
+
+			polecats := &gastownv1alpha1.PolecatList{
+				Items: []gastownv1alpha1.Polecat{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "old-style-polecat"},
+						Status: gastownv1alpha1.PolecatStatus{
+							Conditions: []metav1.Condition{
+								{
+									Type:   "Ready",
+									Status: metav1.ConditionTrue,
+									Reason: "PodSucceeded",
+								},
+							},
+						},
+					},
+				},
+			}
+
+			ready := r.findMergeReadyPolecats(polecats)
+			Expect(ready).To(HaveLen(1))
+			Expect(ready[0].Name).To(Equal("old-style-polecat"))
+		})
+
+		It("should not use Ready condition if Available is present", func() {
+			r := &RefineryReconciler{}
+
+			polecats := &gastownv1alpha1.PolecatList{
+				Items: []gastownv1alpha1.Polecat{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "transition-polecat"},
+						Status: gastownv1alpha1.PolecatStatus{
+							Conditions: []metav1.Condition{
+								{
+									Type:   "Available",
+									Status: metav1.ConditionFalse, // Not ready
+								},
+								{
+									Type:   "Ready",
+									Status: metav1.ConditionTrue,
+									Reason: "PodSucceeded",
+								},
+							},
+						},
+					},
+				},
+			}
+
+			// Should NOT be in ready list because Available is present (even though false)
+			// and we prefer new conditions over old ones
+			ready := r.findMergeReadyPolecats(polecats)
+			Expect(ready).To(BeEmpty())
+		})
+
+		It("should prefer Available over Ready when both are true", func() {
+			r := &RefineryReconciler{}
+
+			polecats := &gastownv1alpha1.PolecatList{
+				Items: []gastownv1alpha1.Polecat{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "both-conditions-polecat"},
+						Status: gastownv1alpha1.PolecatStatus{
+							Conditions: []metav1.Condition{
+								{
+									Type:   "Available",
+									Status: metav1.ConditionTrue,
+								},
+								{
+									Type:   "Ready",
+									Status: metav1.ConditionTrue,
+									Reason: "PodSucceeded",
+								},
+							},
+						},
+					},
+				},
+			}
+
+			// Should be in ready list (counted once, not twice)
+			ready := r.findMergeReadyPolecats(polecats)
+			Expect(ready).To(HaveLen(1))
+		})
+
+		It("should not use Ready condition with other reasons", func() {
+			r := &RefineryReconciler{}
+
+			polecats := &gastownv1alpha1.PolecatList{
+				Items: []gastownv1alpha1.Polecat{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "non-succeeded-polecat"},
+						Status: gastownv1alpha1.PolecatStatus{
+							Conditions: []metav1.Condition{
+								{
+									Type:   "Ready",
+									Status: metav1.ConditionTrue,
+									Reason: "PodRunning", // Not PodSucceeded
+								},
+							},
+						},
+					},
+				},
+			}
+
+			// Should NOT be in ready list because Ready reason is not PodSucceeded
+			ready := r.findMergeReadyPolecats(polecats)
+			Expect(ready).To(BeEmpty())
+		})
 	})
 
 	Context("When processing merges", func() {

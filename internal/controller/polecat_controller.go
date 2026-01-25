@@ -187,10 +187,18 @@ func (r *PolecatReconciler) ensureWorking(ctx context.Context, polecat *gastownv
 	polecat.Status.PodName = podName
 	polecat.Status.Phase = gastownv1alpha1.PolecatPhaseWorking
 	polecat.Status.AssignedBead = polecat.Spec.BeadID
+	// Old conditions (backward compatibility)
 	r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "PodCreated",
 		"Pod created successfully")
 	r.setCondition(polecat, ConditionPolecatWorking, metav1.ConditionTrue, "Working",
 		"Polecat is working on assigned bead")
+	// New standard conditions
+	r.setCondition(polecat, ConditionProgressing, metav1.ConditionTrue, "PodCreated",
+		"Pod created, work starting")
+	r.setCondition(polecat, ConditionAvailable, metav1.ConditionFalse, "NotReady",
+		"Work in progress")
+	r.setCondition(polecat, ConditionDegraded, metav1.ConditionFalse, "Healthy",
+		"No issues detected")
 
 	if err := r.Status().Update(ctx, polecat); err != nil {
 		timer.RecordResult(metrics.ResultError)
@@ -202,41 +210,77 @@ func (r *PolecatReconciler) ensureWorking(ctx context.Context, polecat *gastownv
 	return ctrl.Result{RequeueAfter: PolecatSyncInterval}, nil
 }
 
-// syncStatusFromPod updates Polecat status based on Pod status
+// syncStatusFromPod updates Polecat status based on Pod status.
+// Sets both old conditions (Ready, Working) and new standard conditions (Available, Progressing, Degraded)
+// during the transition period. Witness and Refinery look for the new conditions.
 func (r *PolecatReconciler) syncStatusFromPod(ctx context.Context, polecat *gastownv1alpha1.Polecat, p *corev1.Pod, timer *metrics.ReconcileTimer) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	polecat.Status.PodName = p.Name
 	polecat.Status.AssignedBead = polecat.Spec.BeadID
 
-	// Map Pod phase to Polecat phase
+	// Map Pod phase to Polecat phase and set conditions.
+	// We set BOTH old conditions (Ready, Working) and new standard conditions
+	// (Available, Progressing, Degraded) for backward compatibility during transition.
 	switch p.Status.Phase {
 	case corev1.PodPending:
 		polecat.Status.Phase = gastownv1alpha1.PolecatPhaseWorking
 		polecat.Status.PodActive = false
+		// Old conditions (backward compatibility)
 		r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "PodPending",
 			"Pod is pending")
+		// New standard conditions
+		r.setCondition(polecat, ConditionProgressing, metav1.ConditionTrue, "PodPending",
+			"Pod is pending")
+		r.setCondition(polecat, ConditionAvailable, metav1.ConditionFalse, "NotReady",
+			"Work in progress")
+		r.setCondition(polecat, ConditionDegraded, metav1.ConditionFalse, "Healthy",
+			"No issues detected")
 	case corev1.PodRunning:
 		polecat.Status.Phase = gastownv1alpha1.PolecatPhaseWorking
 		polecat.Status.PodActive = true
+		// Old conditions (backward compatibility)
 		r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "PodRunning",
 			"Pod is running")
 		r.setCondition(polecat, ConditionPolecatWorking, metav1.ConditionTrue, "Working",
 			"Agent is working")
+		// New standard conditions
+		r.setCondition(polecat, ConditionProgressing, metav1.ConditionTrue, "PodRunning",
+			"Pod is running")
+		r.setCondition(polecat, ConditionAvailable, metav1.ConditionFalse, "NotReady",
+			"Work in progress")
+		r.setCondition(polecat, ConditionDegraded, metav1.ConditionFalse, "Healthy",
+			"No issues detected")
 	case corev1.PodSucceeded:
 		polecat.Status.Phase = gastownv1alpha1.PolecatPhaseDone
 		polecat.Status.PodActive = false
+		// Old conditions (backward compatibility)
 		r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "PodSucceeded",
 			"Pod completed successfully")
 		r.setCondition(polecat, ConditionPolecatWorking, metav1.ConditionFalse, "Completed",
 			"Work completed")
+		// New standard conditions - Available=True signals merge readiness
+		r.setCondition(polecat, ConditionProgressing, metav1.ConditionFalse, "Completed",
+			"Work completed")
+		r.setCondition(polecat, ConditionAvailable, metav1.ConditionTrue, "WorkComplete",
+			"Work complete, ready for merge")
+		r.setCondition(polecat, ConditionDegraded, metav1.ConditionFalse, "Healthy",
+			"No issues detected")
 	case corev1.PodFailed:
 		polecat.Status.Phase = gastownv1alpha1.PolecatPhaseStuck
 		polecat.Status.PodActive = false
+		// Old conditions (backward compatibility)
 		r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionFalse, "PodFailed",
 			"Pod failed")
 		r.setCondition(polecat, ConditionPolecatWorking, metav1.ConditionFalse, "Failed",
 			"Work failed")
+		// New standard conditions - Degraded=True signals failure
+		r.setCondition(polecat, ConditionProgressing, metav1.ConditionFalse, "Failed",
+			"Work failed")
+		r.setCondition(polecat, ConditionAvailable, metav1.ConditionFalse, "Failed",
+			"Work failed")
+		r.setCondition(polecat, ConditionDegraded, metav1.ConditionTrue, "PodFailed",
+			"Pod failed")
 	}
 
 	// Update last activity from Pod start time
@@ -291,10 +335,18 @@ func (r *PolecatReconciler) ensureIdle(ctx context.Context, polecat *gastownv1al
 	polecat.Status.PodActive = false
 	polecat.Status.PodName = ""
 	polecat.Status.AssignedBead = ""
+	// Old conditions (backward compatibility)
 	r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "Idle",
 		"Polecat is idle and ready for work")
 	r.setCondition(polecat, ConditionPolecatWorking, metav1.ConditionFalse, "Idle",
 		"No work assigned")
+	// New standard conditions
+	r.setCondition(polecat, ConditionProgressing, metav1.ConditionFalse, "Idle",
+		"No work assigned")
+	r.setCondition(polecat, ConditionAvailable, metav1.ConditionFalse, "Idle",
+		"Idle, no work to merge")
+	r.setCondition(polecat, ConditionDegraded, metav1.ConditionFalse, "Healthy",
+		"No issues detected")
 
 	if err := r.Status().Update(ctx, polecat); err != nil {
 		timer.RecordResult(metrics.ResultError)
@@ -338,8 +390,16 @@ func (r *PolecatReconciler) ensureTerminated(ctx context.Context, polecat *gasto
 	polecat.Status.Phase = gastownv1alpha1.PolecatPhaseTerminated
 	polecat.Status.PodActive = false
 	polecat.Status.PodName = ""
+	// Old conditions (backward compatibility)
 	r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "Terminated",
 		"Polecat has been terminated")
+	// New standard conditions
+	r.setCondition(polecat, ConditionProgressing, metav1.ConditionFalse, "Terminated",
+		"Polecat terminated")
+	r.setCondition(polecat, ConditionAvailable, metav1.ConditionFalse, "Terminated",
+		"Polecat terminated")
+	r.setCondition(polecat, ConditionDegraded, metav1.ConditionFalse, "Terminated",
+		"Polecat terminated gracefully")
 
 	if err := r.Status().Update(ctx, polecat); err != nil {
 		timer.RecordResult(metrics.ResultError)

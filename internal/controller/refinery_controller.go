@@ -167,16 +167,34 @@ func (r *RefineryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 // findMergeReadyPolecats finds polecats that have completed successfully and are ready for merge.
+// Checks for new Available condition first, falls back to old Ready condition with PodSucceeded reason.
 func (r *RefineryReconciler) findMergeReadyPolecats(polecats *gastownv1alpha1.PolecatList) []gastownv1alpha1.Polecat {
 	var ready []gastownv1alpha1.Polecat
 
 	for _, polecat := range polecats.Items {
-		// Check for Available condition (succeeded)
+		var hasAvailable, hasOldReady bool
+		var availableTrue, oldReadySucceeded bool
+
+		// Check all conditions
 		for _, cond := range polecat.Status.Conditions {
-			if cond.Type == "Available" && cond.Status == metav1.ConditionTrue {
-				ready = append(ready, polecat)
-				break
+			switch cond.Type {
+			case ConditionAvailable:
+				hasAvailable = true
+				if cond.Status == metav1.ConditionTrue {
+					availableTrue = true
+				}
+			case "Ready":
+				hasOldReady = true
+				// Old Ready with PodSucceeded reason indicates completion
+				if cond.Status == metav1.ConditionTrue && cond.Reason == "PodSucceeded" {
+					oldReadySucceeded = true
+				}
 			}
+		}
+
+		// Prefer new Available condition, fallback to old Ready
+		if availableTrue || (!hasAvailable && hasOldReady && oldReadySucceeded) {
+			ready = append(ready, polecat)
 		}
 	}
 

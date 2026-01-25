@@ -243,6 +243,118 @@ var _ = Describe("Witness Controller", func() {
 			Expect(summary.Total).To(Equal(int32(1)))
 			Expect(summary.Failed).To(Equal(int32(1)))
 		})
+
+		It("should fallback to old Ready condition for succeeded polecats", func() {
+			r := &WitnessReconciler{}
+			stuckThreshold := 15 * time.Minute
+
+			// Polecat using old condition style (Ready with PodSucceeded reason)
+			polecats := &gastownv1alpha1.PolecatList{
+				Items: []gastownv1alpha1.Polecat{
+					{
+						Status: gastownv1alpha1.PolecatStatus{
+							Conditions: []metav1.Condition{
+								{
+									Type:   "Ready",
+									Status: metav1.ConditionTrue,
+									Reason: "PodSucceeded",
+								},
+							},
+						},
+					},
+				},
+			}
+
+			summary := r.calculateSummary(polecats, stuckThreshold)
+			Expect(summary.Total).To(Equal(int32(1)))
+			Expect(summary.Succeeded).To(Equal(int32(1)))
+		})
+
+		It("should fallback to old Working condition for running polecats", func() {
+			r := &WitnessReconciler{}
+			stuckThreshold := 15 * time.Minute
+			recentTime := metav1.NewTime(time.Now())
+
+			// Polecat using old condition style (Working)
+			polecats := &gastownv1alpha1.PolecatList{
+				Items: []gastownv1alpha1.Polecat{
+					{
+						Status: gastownv1alpha1.PolecatStatus{
+							Conditions: []metav1.Condition{
+								{
+									Type:               "Working",
+									Status:             metav1.ConditionTrue,
+									LastTransitionTime: recentTime,
+								},
+							},
+						},
+					},
+				},
+			}
+
+			summary := r.calculateSummary(polecats, stuckThreshold)
+			Expect(summary.Total).To(Equal(int32(1)))
+			Expect(summary.Running).To(Equal(int32(1)))
+		})
+
+		It("should prefer new conditions over old when both present", func() {
+			r := &WitnessReconciler{}
+			stuckThreshold := 15 * time.Minute
+
+			// Polecat with BOTH new and old conditions (transition state)
+			polecats := &gastownv1alpha1.PolecatList{
+				Items: []gastownv1alpha1.Polecat{
+					{
+						Status: gastownv1alpha1.PolecatStatus{
+							Conditions: []metav1.Condition{
+								{
+									Type:   "Available",
+									Status: metav1.ConditionTrue,
+								},
+								{
+									Type:   "Ready",
+									Status: metav1.ConditionTrue,
+									Reason: "PodSucceeded",
+								},
+							},
+						},
+					},
+				},
+			}
+
+			summary := r.calculateSummary(polecats, stuckThreshold)
+			Expect(summary.Total).To(Equal(int32(1)))
+			// Should only count once, not double-count
+			Expect(summary.Succeeded).To(Equal(int32(1)))
+		})
+
+		It("should detect stuck polecats using old Working condition", func() {
+			r := &WitnessReconciler{}
+			stuckThreshold := 15 * time.Minute
+			oldTime := metav1.NewTime(time.Now().Add(-20 * time.Minute))
+
+			// Polecat using old condition style (Working) that's stuck
+			polecats := &gastownv1alpha1.PolecatList{
+				Items: []gastownv1alpha1.Polecat{
+					{
+						Status: gastownv1alpha1.PolecatStatus{
+							Conditions: []metav1.Condition{
+								{
+									Type:               "Working",
+									Status:             metav1.ConditionTrue,
+									LastTransitionTime: oldTime,
+								},
+							},
+						},
+					},
+				},
+			}
+
+			summary := r.calculateSummary(polecats, stuckThreshold)
+			Expect(summary.Total).To(Equal(int32(1)))
+			Expect(summary.Running).To(Equal(int32(1)))
+			Expect(summary.Stuck).To(Equal(int32(1)))
+		})
 	})
 
 	Context("When escalating issues", func() {
