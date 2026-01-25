@@ -11,7 +11,7 @@
 
 **Run Claude Code agents as Kubernetes pods.**
 
-[![Release](https://img.shields.io/github/v/release/boshu2/gastown-operator?logo=github&label=Release)](https://github.com/boshu2/gastown-operator/releases/latest) [![kubectl-gt](https://img.shields.io/badge/kubectl--gt-CLI-FF6B35?logo=kubernetes&logoColor=white)](https://github.com/boshu2/gastown-operator/releases/latest) [![Helm](https://img.shields.io/badge/Helm-OCI-0F1689?logo=helm)](https://ghcr.io/boshu2/charts/gastown-operator) [![OpenShift](https://img.shields.io/badge/OpenShift-Native-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
+[![Release](https://img.shields.io/github/v/release/boshu2/gastown-operator?logo=github&label=Release)](https://github.com/boshu2/gastown-operator/releases/latest) [![kubectl-gt](https://img.shields.io/badge/kubectl--gt-CLI-FF6B35?logo=kubernetes&logoColor=white)](https://github.com/boshu2/gastown-operator/releases/latest) [![Helm](https://img.shields.io/badge/Helm-OCI-0F1689?logo=helm)](https://ghcr.io/boshu2/charts/gastown-operator) [![OpenShift](https://img.shields.io/badge/OpenShift-Native-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift) [![FIPS](https://img.shields.io/badge/FIPS-Compliant-2ea44f)](#editions)
 
 *⚡ WITNESS ME! Shiny and Chrome. ⚡*
 
@@ -33,7 +33,39 @@ The operator just gives you more compute - as much as your cluster can handle.
 | You're online | **Town runs 24/7** |
 | One machine | **Horizontal scale** |
 
-**The unlock:** 50 issues → 10 polecats → lunch → PRs.
+**The unlock:** Queue 50 issues. Dispatch 50 polecats. Close your laptop. Come back to PRs.
+
+```mermaid
+flowchart LR
+    subgraph Local["Your Laptop"]
+        GT[gt CLI]
+        Issues[(Beads Issues)]
+    end
+
+    subgraph K8s["Kubernetes Cluster"]
+        OP[Gas Town Operator]
+        subgraph Polecats["Polecat Pods"]
+            P1[🦨 furiosa]
+            P2[🦨 nux]
+            P3[🦨 capable]
+        end
+    end
+
+    subgraph Git["Git Remote"]
+        Repo[(Your Repo)]
+        PRs[Pull Requests]
+    end
+
+    GT -->|"kubectl gt sling"| OP
+    Issues -->|work items| OP
+    OP -->|creates| Polecats
+    Polecats -->|clone/push| Repo
+    Polecats -->|create| PRs
+
+    style Local fill:#1a1a2e,color:#fff
+    style K8s fill:#0d47a1,color:#fff
+    style Git fill:#238636,color:#fff
+```
 
 ---
 
@@ -60,14 +92,6 @@ If you want standalone K8s agents without the Gas Town workflow, see [Advanced: 
 | **Beads** | Git-based issue tracker ([separate project](https://github.com/steveyegge/beads)) |
 
 ---
-
-### Who Is This For?
-
-Gas Town users who want to scale beyond their laptop:
-
-- Your laptop runs 20-30 polecats max, but you have 100 issues
-- You want polecats to keep working while you sleep
-- Your team needs shared agent infrastructure
 
 ## Quick Start
 
