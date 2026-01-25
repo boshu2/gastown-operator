@@ -7,7 +7,7 @@ Thanks for your interest in contributing! This operator extends Gas Town to Kube
 1. Fork the repository
 2. Clone your fork
 3. Install prerequisites:
-   - Go 1.24+
+   - Go 1.25+ (see go.mod for exact version)
    - kubectl
    - kind or minikube (for local testing)
 4. Build and test: `make build && make test`

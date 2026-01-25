@@ -71,6 +71,33 @@ spec:
 
 Supports **Claude Code** agents running as Kubernetes pods.
 
+### Terminology
+
+New to Gas Town? Here's the jargon:
+
+| Term | What It Is | Required? |
+|------|------------|-----------|
+| **Polecat** | An AI worker pod that executes tasks | Yes |
+| **Rig** | A project workspace (cluster-scoped) | Yes |
+| **Convoy** | A batch of tasks for parallel execution | Optional |
+| **Witness** | Health monitor for polecats | Optional |
+| **Refinery** | Merge queue processor | Optional |
+| **Beads** | Git-based issue tracker ([separate project](https://github.com/steveyegge/beads)) | Optional |
+
+### Standalone Mode
+
+You can use this operator **without** the full Gas Town ecosystem. Just provide a task description:
+
+```yaml
+spec:
+  taskDescription: "Implement feature X"  # No beadID needed
+  kubernetes:
+    gitRepository: "git@github.com:org/repo.git"
+    # ...
+```
+
+The operator works standalone with just Kubernetes + Claude Code credentials.
+
 ## How It Works
 
 The operator is **CRD-driven**. You create a Polecat custom resource, and the operator handles the rest.
@@ -318,6 +345,12 @@ PRs welcome. Please:
 1. Run `make validate` before pushing
 2. Add tests for new controllers
 3. Keep the Mad Max references tasteful
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## License
 

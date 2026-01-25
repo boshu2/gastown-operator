@@ -5,9 +5,9 @@
 If you discover a security vulnerability, please report it responsibly:
 
 1. **Do not** open a public issue for security vulnerabilities
-2. Email the maintainers directly with details
+2. Use GitHub's [private security advisory](https://github.com/boshu2/gastown-operator/security/advisories/new) feature
 3. Include steps to reproduce the vulnerability
-4. Allow reasonable time for a fix before public disclosure
+4. Allow reasonable time for a fix before public disclosure (typically 90 days)
 
 ## Scope
 
@@ -49,7 +49,9 @@ When deploying:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
+| 0.4.x   | :white_check_mark: |
+| 0.3.x   | :white_check_mark: |
+| < 0.3   | :x:                |
 
 ## Updates
 
