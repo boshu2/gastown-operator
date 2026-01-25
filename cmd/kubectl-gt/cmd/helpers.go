@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+// Output format constants
+const (
+	OutputFormatTable = "table"
+	OutputFormatJSON  = "json"
+	OutputFormatYAML  = "yaml"
+)
+
 // truncate shortens a string to maxLen, adding "..." if truncated
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {

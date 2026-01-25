@@ -60,16 +60,23 @@ func newRigListCmd() *cobra.Command {
 }
 
 func newRigStatusCmd() *cobra.Command {
+	var outputFormat string
+
 	cmd := &cobra.Command{
 		Use:   "status <name>",
 		Short: "Show rig details",
 		Args:  cobra.ExactArgs(1),
 		Example: `  # Show rig status
-  kubectl gt rig status my-rig`,
+  kubectl gt rig status my-rig
+
+  # Output as JSON
+  kubectl gt rig status my-rig -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRigStatus(args[0])
+			return runRigStatus(args[0], outputFormat)
 		},
 	}
+
+	cmd.Flags().StringVarP(&outputFormat, "output", "o", "table", "Output format (table, json, yaml)")
 
 	return cmd
 }
@@ -121,7 +128,7 @@ func runRigList(outputFormat string) error {
 	}
 
 	switch outputFormat {
-	case "yaml":
+	case OutputFormatYAML:
 		for i, item := range list.Items {
 			if i > 0 {
 				fmt.Println("---")
@@ -132,7 +139,7 @@ func runRigList(outputFormat string) error {
 			}
 			fmt.Print(string(data))
 		}
-	case "json":
+	case OutputFormatJSON:
 		for _, item := range list.Items {
 			data, err := json.MarshalIndent(item.Object, "", "  ")
 			if err != nil {
@@ -159,7 +166,7 @@ func runRigList(outputFormat string) error {
 	return nil
 }
 
-func runRigStatus(name string) error {
+func runRigStatus(name, outputFormat string) error {
 	config, err := KubeFlags.ToRESTConfig()
 	if err != nil {
 		return fmt.Errorf("failed to get kubeconfig: %w", err)
@@ -175,38 +182,53 @@ func runRigStatus(name string) error {
 		return fmt.Errorf("failed to get rig %s: %w", name, err)
 	}
 
-	// Print rig details
-	fmt.Printf("Name:        %s\n", rig.GetName())
+	switch outputFormat {
+	case OutputFormatYAML:
+		data, err := yaml.Marshal(rig.Object)
+		if err != nil {
+			return fmt.Errorf("failed to marshal rig: %w", err)
+		}
+		fmt.Print(string(data))
+	case OutputFormatJSON:
+		data, err := json.MarshalIndent(rig.Object, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal rig: %w", err)
+		}
+		fmt.Println(string(data))
+	default:
+		// Print rig details
+		fmt.Printf("Name:        %s\n", rig.GetName())
 
-	if prefix, ok, _ := unstructured.NestedString(rig.Object, "spec", "beadsPrefix"); ok {
-		fmt.Printf("Prefix:      %s\n", prefix)
-	}
-	if gitURL, ok, _ := unstructured.NestedString(rig.Object, "spec", "gitURL"); ok {
-		fmt.Printf("Git URL:     %s\n", gitURL)
-	}
-	if localPath, ok, _ := unstructured.NestedString(rig.Object, "spec", "localPath"); ok {
-		fmt.Printf("Local Path:  %s\n", localPath)
-	}
+		if prefix, ok, _ := unstructured.NestedString(rig.Object, "spec", "beadsPrefix"); ok {
+			fmt.Printf("Prefix:      %s\n", prefix)
+		}
+		if gitURL, ok, _ := unstructured.NestedString(rig.Object, "spec", "gitURL"); ok {
+			fmt.Printf("Git URL:     %s\n", gitURL)
+		}
+		if localPath, ok, _ := unstructured.NestedString(rig.Object, "spec", "localPath"); ok {
+			fmt.Printf("Local Path:  %s\n", localPath)
+		}
 
-	fmt.Println()
+		fmt.Println()
 
-	// Status
-	if phase, ok, _ := unstructured.NestedString(rig.Object, "status", "phase"); ok {
-		fmt.Printf("Phase:       %s\n", phase)
-	}
+		// Status
+		if phase, ok, _ := unstructured.NestedString(rig.Object, "status", "phase"); ok {
+			fmt.Printf("Phase:       %s\n", phase)
+		}
 
-	// Conditions
-	if conditions, ok, _ := unstructured.NestedSlice(rig.Object, "status", "conditions"); ok && len(conditions) > 0 {
-		fmt.Println("\nConditions:")
-		for _, c := range conditions {
-			cond, _ := c.(map[string]any)
-			condType, _ := cond["type"].(string)
-			status, _ := cond["status"].(string)
-			reason, _ := cond["reason"].(string)
-			message, _ := cond["message"].(string)
-			fmt.Printf("  %s: %s (%s)\n", condType, status, reason)
-			if message != "" {
-				fmt.Printf("    %s\n", message)
+		// Conditions
+		if conditions, ok, _ := unstructured.NestedSlice(rig.Object, "status", "conditions"); ok && len(conditions) > 0 {
+			fmt.Println("\nConditions:")
+			for _, c := range conditions {
+				cond, _ := c.(map[string]any)
+				condType, _ := cond["type"].(string)
+				status, _ := cond["status"].(string)
+				reason, _ := cond["reason"].(string)
+				message, _ := cond["message"].(string)
+				fmt.Printf("  %s: %s (%s)\n", condType, status, reason)
+				if message != "" {
+					fmt.Printf("    %s\n", message)
+				}
 			}
 		}
 	}

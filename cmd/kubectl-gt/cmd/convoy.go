@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	"sigs.k8s.io/yaml"
 )
 
 var convoyGVR = schema.GroupVersionResource{
@@ -35,30 +37,44 @@ func newConvoyCmd() *cobra.Command {
 }
 
 func newConvoyListCmd() *cobra.Command {
+	var outputFormat string
+
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all convoys",
 		Example: `  # List all convoys
-  kubectl gt convoy list`,
+  kubectl gt convoy list
+
+  # Output as JSON
+  kubectl gt convoy list -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runConvoyList()
+			return runConvoyList(outputFormat)
 		},
 	}
+
+	cmd.Flags().StringVarP(&outputFormat, "output", "o", "table", "Output format (table, json, yaml)")
 
 	return cmd
 }
 
 func newConvoyStatusCmd() *cobra.Command {
+	var outputFormat string
+
 	cmd := &cobra.Command{
 		Use:   "status <id>",
 		Short: "Show convoy details",
 		Args:  cobra.ExactArgs(1),
 		Example: `  # Show convoy status
-  kubectl gt convoy status cv-abc123`,
+  kubectl gt convoy status cv-abc123
+
+  # Output as JSON
+  kubectl gt convoy status cv-abc123 -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runConvoyStatus(args[0])
+			return runConvoyStatus(args[0], outputFormat)
 		},
 	}
+
+	cmd.Flags().StringVarP(&outputFormat, "output", "o", "table", "Output format (table, json, yaml)")
 
 	return cmd
 }
@@ -80,7 +96,7 @@ func newConvoyCreateCmd() *cobra.Command {
 	return cmd
 }
 
-func runConvoyList() error {
+func runConvoyList(outputFormat string) error {
 	config, err := KubeFlags.ToRESTConfig()
 	if err != nil {
 		return fmt.Errorf("failed to get kubeconfig: %w", err)
@@ -98,31 +114,64 @@ func runConvoyList() error {
 	}
 
 	if len(list.Items) == 0 {
+		if outputFormat == OutputFormatJSON {
+			fmt.Println("[]")
+			return nil
+		}
+		if outputFormat == OutputFormatYAML {
+			fmt.Println("items: []")
+			return nil
+		}
 		fmt.Println("No convoys found")
 		return nil
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "ID\tDESCRIPTION\tCOMPLETED\tPENDING\tPHASE\tAGE")
-	for _, item := range list.Items {
-		name := item.GetName()
-		description, _, _ := unstructured.NestedString(item.Object, "spec", "description")
-		phase, _, _ := unstructured.NestedString(item.Object, "status", "phase")
-		age := item.GetCreationTimestamp().Time
+	switch outputFormat {
+	case OutputFormatYAML:
+		for i, item := range list.Items {
+			if i > 0 {
+				fmt.Println("---")
+			}
+			data, err := yaml.Marshal(item.Object)
+			if err != nil {
+				return fmt.Errorf("failed to marshal convoy: %w", err)
+			}
+			fmt.Print(string(data))
+		}
+	case OutputFormatJSON:
+		// Output as JSON array
+		objects := make([]map[string]any, len(list.Items))
+		for i, item := range list.Items {
+			objects[i] = item.Object
+		}
+		data, err := json.MarshalIndent(objects, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal convoys: %w", err)
+		}
+		fmt.Println(string(data))
+	default:
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		_, _ = fmt.Fprintln(w, "ID\tDESCRIPTION\tCOMPLETED\tPENDING\tPHASE\tAGE")
+		for _, item := range list.Items {
+			name := item.GetName()
+			description, _, _ := unstructured.NestedString(item.Object, "spec", "description")
+			phase, _, _ := unstructured.NestedString(item.Object, "status", "phase")
+			age := item.GetCreationTimestamp().Time
 
-		// Count beads
-		completed, _, _ := unstructured.NestedSlice(item.Object, "status", "completedBeads")
-		pending, _, _ := unstructured.NestedSlice(item.Object, "status", "pendingBeads")
+			// Count beads
+			completed, _, _ := unstructured.NestedSlice(item.Object, "status", "completedBeads")
+			pending, _, _ := unstructured.NestedSlice(item.Object, "status", "pendingBeads")
 
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%s\t%s\n",
-			name, truncate(description, 30), len(completed), len(pending), phase, formatAge(age))
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%s\t%s\n",
+				name, truncate(description, 30), len(completed), len(pending), phase, formatAge(age))
+		}
+		_ = w.Flush()
 	}
-	_ = w.Flush()
 
 	return nil
 }
 
-func runConvoyStatus(id string) error {
+func runConvoyStatus(id, outputFormat string) error {
 	config, err := KubeFlags.ToRESTConfig()
 	if err != nil {
 		return fmt.Errorf("failed to get kubeconfig: %w", err)
@@ -139,51 +188,66 @@ func runConvoyStatus(id string) error {
 		return fmt.Errorf("failed to get convoy %s: %w", id, err)
 	}
 
-	// Print convoy details
-	fmt.Printf("ID:          %s\n", convoy.GetName())
+	switch outputFormat {
+	case OutputFormatYAML:
+		data, err := yaml.Marshal(convoy.Object)
+		if err != nil {
+			return fmt.Errorf("failed to marshal convoy: %w", err)
+		}
+		fmt.Print(string(data))
+	case OutputFormatJSON:
+		data, err := json.MarshalIndent(convoy.Object, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal convoy: %w", err)
+		}
+		fmt.Println(string(data))
+	default:
+		// Print convoy details
+		fmt.Printf("ID:          %s\n", convoy.GetName())
 
-	if desc, ok, _ := unstructured.NestedString(convoy.Object, "spec", "description"); ok {
-		fmt.Printf("Description: %s\n", desc)
-	}
+		if desc, ok, _ := unstructured.NestedString(convoy.Object, "spec", "description"); ok {
+			fmt.Printf("Description: %s\n", desc)
+		}
 
-	// Tracked beads from spec
-	if beads, ok, _ := unstructured.NestedSlice(convoy.Object, "spec", "trackedBeads"); ok {
-		beadIDs := make([]string, 0, len(beads))
-		for _, b := range beads {
-			if id, ok := b.(string); ok {
-				beadIDs = append(beadIDs, id)
+		// Tracked beads from spec
+		if beads, ok, _ := unstructured.NestedSlice(convoy.Object, "spec", "trackedBeads"); ok {
+			beadIDs := make([]string, 0, len(beads))
+			for _, b := range beads {
+				if beadID, ok := b.(string); ok {
+					beadIDs = append(beadIDs, beadID)
+				}
+			}
+			fmt.Printf("Beads:       %s\n", strings.Join(beadIDs, ", "))
+		}
+
+		fmt.Println()
+
+		// Status
+		if phase, ok, _ := unstructured.NestedString(convoy.Object, "status", "phase"); ok {
+			fmt.Printf("Phase:       %s\n", phase)
+		}
+
+		// Progress
+		completed, _, _ := unstructured.NestedSlice(convoy.Object, "status", "completedBeads")
+		pending, _, _ := unstructured.NestedSlice(convoy.Object, "status", "pendingBeads")
+		total := len(completed) + len(pending)
+		if total > 0 {
+			pct := float64(len(completed)) / float64(total) * 100
+			fmt.Printf("Progress:    %d/%d (%.0f%%)\n", len(completed), total, pct)
+		}
+
+		if len(completed) > 0 {
+			fmt.Println("\nCompleted:")
+			for _, b := range completed {
+				fmt.Printf("  ✓ %v\n", b)
 			}
 		}
-		fmt.Printf("Beads:       %s\n", strings.Join(beadIDs, ", "))
-	}
 
-	fmt.Println()
-
-	// Status
-	if phase, ok, _ := unstructured.NestedString(convoy.Object, "status", "phase"); ok {
-		fmt.Printf("Phase:       %s\n", phase)
-	}
-
-	// Progress
-	completed, _, _ := unstructured.NestedSlice(convoy.Object, "status", "completedBeads")
-	pending, _, _ := unstructured.NestedSlice(convoy.Object, "status", "pendingBeads")
-	total := len(completed) + len(pending)
-	if total > 0 {
-		pct := float64(len(completed)) / float64(total) * 100
-		fmt.Printf("Progress:    %d/%d (%.0f%%)\n", len(completed), total, pct)
-	}
-
-	if len(completed) > 0 {
-		fmt.Println("\nCompleted:")
-		for _, b := range completed {
-			fmt.Printf("  ✓ %v\n", b)
-		}
-	}
-
-	if len(pending) > 0 {
-		fmt.Println("\nPending:")
-		for _, b := range pending {
-			fmt.Printf("  ○ %v\n", b)
+		if len(pending) > 0 {
+			fmt.Println("\nPending:")
+			for _, b := range pending {
+				fmt.Printf("  ○ %v\n", b)
+			}
 		}
 	}
 

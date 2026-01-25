@@ -201,6 +201,20 @@ build-gt-fips: ## Build gt CLI with FIPS-compliant crypto (for Dockerfile.fips).
 	@test -f "$(CURDIR)/gt" || { echo "ERROR: gt binary not found at $(CURDIR)/gt"; exit 1; }
 	@echo "gt CLI (FIPS) built at $(CURDIR)/gt"
 
+.PHONY: kubectl-gt
+kubectl-gt: ## Build kubectl-gt plugin binary.
+	go build -o bin/kubectl-gt ./cmd/kubectl-gt
+
+.PHONY: kubectl-gt-test
+kubectl-gt-test: ## Run kubectl-gt unit tests.
+	go test ./cmd/kubectl-gt/...
+
+.PHONY: kubectl-gt-install
+kubectl-gt-install: kubectl-gt ## Install kubectl-gt plugin to GOBIN.
+	cp bin/kubectl-gt "$(GOBIN)/kubectl-gt"
+	@echo "kubectl-gt installed to $(GOBIN)/kubectl-gt"
+	@echo "Run 'kubectl gt --help' to verify"
+
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go

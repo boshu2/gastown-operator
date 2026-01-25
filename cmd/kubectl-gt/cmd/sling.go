@@ -7,14 +7,20 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 func newSlingCmd() *cobra.Command {
 	var wait bool
+	var waitReady bool
 	var timeout time.Duration
+	var polecatName string
+	var nameTheme string
 
 	cmd := &cobra.Command{
 		Use:   "sling <bead-id> <rig>",
@@ -30,20 +36,29 @@ The operator will reconcile the Polecat and create a Pod to execute the work.`,
   # Sling and wait for scheduling
   kubectl gt sling dm-0001 my-rig --wait
 
-  # Sling with custom timeout
-  kubectl gt sling dm-0001 my-rig --wait --timeout=5m`,
+  # Sling with a specific name
+  kubectl gt sling dm-0001 my-rig --name furiosa
+
+  # Sling with themed name
+  kubectl gt sling dm-0001 my-rig --theme mad-max
+
+  # Sling and wait for pod to be ready
+  kubectl gt sling dm-0001 my-rig --wait-ready --timeout=5m`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSling(args[0], args[1], wait, timeout)
+			return runSling(args[0], args[1], wait, waitReady, timeout, polecatName, nameTheme)
 		},
 	}
 
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for polecat to be scheduled")
-	cmd.Flags().DurationVar(&timeout, "timeout", 2*time.Minute, "Timeout for --wait")
+	cmd.Flags().BoolVar(&waitReady, "wait-ready", false, "Wait for pod to be running and ready")
+	cmd.Flags().DurationVar(&timeout, "timeout", 2*time.Minute, "Timeout for --wait or --wait-ready")
+	cmd.Flags().StringVar(&polecatName, "name", "", "Explicit polecat name (e.g., furiosa)")
+	cmd.Flags().StringVar(&nameTheme, "theme", "", "Naming theme (mad-max, minerals, wasteland)")
 
 	return cmd
 }
 
-func runSling(beadID, rig string, wait bool, timeout time.Duration) error {
+func runSling(beadID, rig string, wait, waitReady bool, timeout time.Duration, explicitName, theme string) error {
 	config, err := KubeFlags.ToRESTConfig()
 	if err != nil {
 		return fmt.Errorf("failed to get kubeconfig: %w", err)
@@ -60,8 +75,15 @@ func runSling(beadID, rig string, wait bool, timeout time.Duration) error {
 		return fmt.Errorf("rig %s not found: %w", rig, err)
 	}
 
-	// Generate polecat name
-	polecatName := generatePolecatName(rig)
+	// Generate polecat name based on flags
+	var polecatName string
+	if explicitName != "" {
+		polecatName = explicitName
+	} else if theme != "" {
+		polecatName = generateThemedName(rig, theme)
+	} else {
+		polecatName = generatePolecatName(rig)
+	}
 	namespace := GetNamespace()
 
 	// Create Polecat CR
@@ -95,11 +117,20 @@ func runSling(beadID, rig string, wait bool, timeout time.Duration) error {
 
 	fmt.Printf("Polecat %s created for bead %s in rig %s\n", created.GetName(), beadID, rig)
 
-	if wait {
+	if wait || waitReady {
 		fmt.Printf("Waiting for polecat to be scheduled (timeout: %s)...\n", timeout)
-		err = waitForPolecat(client, namespace, polecatName, timeout)
+		podName, err := waitForPolecatScheduled(client, namespace, polecatName, timeout)
 		if err != nil {
 			return err
+		}
+
+		if waitReady && podName != "" {
+			fmt.Printf("Waiting for pod %s to be ready...\n", podName)
+			err = waitForPodReady(config, namespace, podName, timeout)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Pod %s is ready\n", podName)
 		}
 	}
 
@@ -108,14 +139,46 @@ func runSling(beadID, rig string, wait bool, timeout time.Duration) error {
 
 func generatePolecatName(rig string) string {
 	// Simple name generation: rig-<random>
-	// In production, this would use a name pool like the gt CLI does
 	b := make([]byte, 2)
 	_, _ = rand.Read(b)
 	suffix := fmt.Sprintf("%04x", b)
 	return fmt.Sprintf("%s-%s", rig, suffix)
 }
 
-func waitForPolecat(client dynamic.Interface, namespace, name string, timeout time.Duration) error {
+// Themed name pools for polecat naming
+var nameThemes = map[string][]string{
+	"mad-max": {
+		"furiosa", "nux", "slit", "rictus", "capable", "toast", "dag", "cheedo",
+		"angharad", "immortan", "keeper", "valkyrie", "ace", "morsov", "corpus",
+		"war-boy", "doof", "coma", "organic", "prime", "scrotus", "hope", "glory",
+	},
+	"minerals": {
+		"obsidian", "quartz", "jasper", "onyx", "opal", "topaz", "amber", "jade",
+		"ruby", "sapphire", "emerald", "diamond", "garnet", "pearl", "coral",
+		"crystal", "flint", "granite", "marble", "slate", "basalt", "pumice",
+	},
+	"wasteland": {
+		"rust", "chrome", "nitro", "guzzle", "witness", "shiny", "fury", "road",
+		"thunder", "dust", "storm", "blade", "spike", "chain", "gear", "bolt",
+		"piston", "diesel", "vapor", "scrap", "iron", "steel",
+	},
+}
+
+func generateThemedName(rig, theme string) string {
+	names, ok := nameThemes[theme]
+	if !ok {
+		// Fall back to random if theme not found
+		return generatePolecatName(rig)
+	}
+
+	// Pick a random name from the theme
+	b := make([]byte, 1)
+	_, _ = rand.Read(b)
+	idx := int(b[0]) % len(names)
+	return names[idx]
+}
+
+func waitForPolecatScheduled(client dynamic.Interface, namespace, name string, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -125,7 +188,7 @@ func waitForPolecat(client dynamic.Interface, namespace, name string, timeout ti
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for polecat %s", name)
+			return "", fmt.Errorf("timeout waiting for polecat %s", name)
 		case <-ticker.C:
 			polecat, err := client.Resource(polecatGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 			if err != nil {
@@ -137,7 +200,7 @@ func waitForPolecat(client dynamic.Interface, namespace, name string, timeout ti
 			case "Working":
 				podName, _, _ := unstructured.NestedString(polecat.Object, "status", "podName")
 				fmt.Printf("Polecat %s is working (pod: %s)\n", name, podName)
-				return nil
+				return podName, nil
 			case "Stuck", "Failed":
 				conditions, _, _ := unstructured.NestedSlice(polecat.Object, "status", "conditions")
 				msg := "unknown reason"
@@ -149,10 +212,55 @@ func waitForPolecat(client dynamic.Interface, namespace, name string, timeout ti
 						}
 					}
 				}
-				return fmt.Errorf("polecat %s is %s: %s", name, phase, msg)
+				return "", fmt.Errorf("polecat %s is %s: %s", name, phase, msg)
 			default:
 				fmt.Printf("  Phase: %s...\n", phase)
 			}
+		}
+	}
+}
+
+func waitForPodReady(config *rest.Config, namespace, podName string, timeout time.Duration) error {
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("failed to create kubernetes client: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for pod %s to be ready", podName)
+		case <-ticker.C:
+			pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+			if err != nil {
+				continue
+			}
+
+			// Check if pod is running
+			if pod.Status.Phase != corev1.PodRunning {
+				fmt.Printf("  Pod phase: %s...\n", pod.Status.Phase)
+				continue
+			}
+
+			// Check if all containers are ready
+			allReady := true
+			for _, cond := range pod.Status.Conditions {
+				if cond.Type == corev1.PodReady && cond.Status != corev1.ConditionTrue {
+					allReady = false
+					break
+				}
+			}
+
+			if allReady {
+				return nil
+			}
+			fmt.Printf("  Pod running, waiting for Ready condition...\n")
 		}
 	}
 }
