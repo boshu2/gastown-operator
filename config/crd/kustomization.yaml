@@ -5,6 +5,9 @@ resources:
 - bases/gastown.gastown.io_rigs.yaml
 - bases/gastown.gastown.io_polecats.yaml
 - bases/gastown.gastown.io_convoys.yaml
+- bases/gastown.gastown.io_refineries.yaml
+- bases/gastown.gastown.io_witnesses.yaml
+- bases/gastown.gastown.io_beadstores.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:
