@@ -17,14 +17,134 @@
 
 ## Quick Start
 
+### 1. Install the Operator
+
 ```bash
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.4.0 \
+  --version 0.4.1 \
   --namespace gastown-system \
   --create-namespace
 ```
 
-Then create your first polecat:
+### 2. Install the kubectl Plugin
+
+```bash
+# Download from releases
+curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)
+chmod +x kubectl-gt-* && sudo mv kubectl-gt-* /usr/local/bin/kubectl-gt
+```
+
+### 3. Create a Rig and Dispatch Work
+
+```bash
+# Create a project rig
+kubectl gt rig create my-project \
+  --git-url https://github.com/org/repo.git \
+  --prefix mp \
+  -n gastown-system
+
+# Sync your Claude credentials
+kubectl gt auth sync -n gastown-system
+
+# Dispatch a polecat to work on an issue
+kubectl gt sling issue-123 my-project --name furiosa -n gastown-system
+
+# Watch it work
+kubectl gt polecat logs my-project/furiosa -f -n gastown-system
+```
+
+**For AI Agents:** See [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md) for setup instructions.
+
+---
+
+## kubectl-gt CLI (New in v0.4.1)
+
+**The recommended way to interact with Gas Town.** AI-native interface designed for both humans and agents.
+
+### Core Commands
+
+| Command | Description |
+|---------|-------------|
+| `kubectl gt rig list` | List all rigs |
+| `kubectl gt rig status <name>` | Show rig details |
+| `kubectl gt rig create <name>` | Create a new rig |
+| `kubectl gt polecat list [rig]` | List polecats |
+| `kubectl gt polecat status <rig>/<name>` | Show polecat details |
+| `kubectl gt polecat logs <rig>/<name>` | Stream polecat logs |
+| `kubectl gt polecat nuke <rig>/<name>` | Terminate a polecat |
+| `kubectl gt sling <bead-id> <rig>` | Dispatch work to a polecat |
+| `kubectl gt convoy list` | List convoy batches |
+| `kubectl gt convoy create <desc> <beads...>` | Create convoy |
+| `kubectl gt auth sync` | Sync Claude creds to cluster |
+| `kubectl gt auth status` | Check credential status |
+
+### AI-Native Features
+
+**JSON/YAML Output** - All commands support `-o json` and `-o yaml` for machine parsing:
+
+```bash
+# Parse polecat list in scripts
+kubectl gt polecat list -o json | jq '.[] | .metadata.name'
+
+# Get rig status as YAML
+kubectl gt rig status my-rig -o yaml
+```
+
+**Themed Naming** - Memorable names for your polecats:
+
+```bash
+# Named polecat
+kubectl gt sling at-1234 athena --name furiosa
+
+# Random themed name (mad-max, minerals, wasteland)
+kubectl gt sling at-1234 athena --theme mad-max
+# → Creates polecat named "capable" or "toast" etc.
+```
+
+**Wait for Ready** - Block until polecat pod is running:
+
+```bash
+# Wait for pod to be scheduled and ready
+kubectl gt sling at-1234 athena --wait-ready --timeout 5m
+```
+
+**Native Log Streaming** - Stream logs directly without kubectl delegation:
+
+```bash
+# Follow logs
+kubectl gt polecat logs athena/furiosa -f
+
+# Specific container
+kubectl gt polecat logs athena/furiosa -c claude -f
+```
+
+### Installation
+
+**From Release:**
+```bash
+# macOS (Apple Silicon)
+curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-darwin-arm64
+chmod +x kubectl-gt-darwin-arm64 && sudo mv kubectl-gt-darwin-arm64 /usr/local/bin/kubectl-gt
+
+# macOS (Intel)
+curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-darwin-amd64
+chmod +x kubectl-gt-darwin-amd64 && sudo mv kubectl-gt-darwin-amd64 /usr/local/bin/kubectl-gt
+
+# Linux (amd64)
+curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-linux-amd64
+chmod +x kubectl-gt-linux-amd64 && sudo mv kubectl-gt-linux-amd64 /usr/local/bin/kubectl-gt
+```
+
+**From Source:**
+```bash
+make kubectl-gt-install
+```
+
+---
+
+## YAML Templates (Alternative)
+
+If you prefer declarative YAML over the CLI:
 
 ```yaml
 apiVersion: gastown.gastown.io/v1alpha1
@@ -44,7 +164,7 @@ spec:
     description: "Implement feature X"
 ```
 
-**For AI Agents:** See [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md) for setup instructions and [templates/](templates/) for all resource examples.
+See [templates/](templates/) for all resource examples.
 
 ## What You Get
 
@@ -168,7 +288,7 @@ You                          Kubernetes                      Git
 ```bash
 # Standard Kubernetes
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.4.0 \
+  --version 0.4.1 \
   --namespace gastown-system \
   --create-namespace
 ```
@@ -179,7 +299,7 @@ OpenShift requires stricter security settings:
 
 ```bash
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.4.0 \
+  --version 0.4.1 \
   --namespace gastown-system \
   --create-namespace \
   --set securityContext.allowPrivilegeEscalation=false \
@@ -193,10 +313,10 @@ Or use the FIPS-compliant image for regulated environments:
 
 ```bash
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.4.0 \
+  --version 0.4.1 \
   --namespace gastown-system \
   --create-namespace \
-  --set image.tag=0.4.0-fips \
+  --set image.tag=0.4.1-fips \
   --set securityContext.allowPrivilegeEscalation=false \
   --set securityContext.runAsNonRoot=true \
   --set securityContext.runAsUser=null \
@@ -208,7 +328,7 @@ helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
 
 ```bash
 make install      # Install CRDs
-make deploy IMG=ghcr.io/boshu2/gastown-operator:0.4.0
+make deploy IMG=ghcr.io/boshu2/gastown-operator:0.4.1
 ```
 
 ## Custom Resources
@@ -251,7 +371,7 @@ See [FRICTION_POINTS.md](FRICTION_POINTS.md) for common mistakes and fixes.
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `image.repository` | `ghcr.io/boshu2/gastown-operator` | Container image |
-| `image.tag` | `0.4.0` | Image tag |
+| `image.tag` | `0.4.1` | Image tag |
 | `replicaCount` | `1` | Number of replicas |
 
 See [values.yaml](helm/gastown-operator/values.yaml) for full configuration.
@@ -290,16 +410,16 @@ All images are published to GHCR with SBOM, Trivy scans, and provenance attestat
 
 | Image | Purpose | Tags |
 |-------|---------|------|
-| `ghcr.io/boshu2/gastown-operator` | Kubernetes operator | `0.4.0`, `latest`, `0.4.0-fips` |
-| `ghcr.io/boshu2/polecat-agent` | Pre-built polecat agent | `0.4.0`, `latest` |
-| `ghcr.io/boshu2/charts/gastown-operator` | Helm chart (OCI) | `0.4.0` |
+| `ghcr.io/boshu2/gastown-operator` | Kubernetes operator | `0.4.1`, `latest`, `0.4.1-fips` |
+| `ghcr.io/boshu2/polecat-agent` | Pre-built polecat agent | `0.4.1`, `latest` |
+| `ghcr.io/boshu2/charts/gastown-operator` | Helm chart (OCI) | `0.4.1` |
 
 ### Polecat Agent Image
 
 The `polecat-agent` image comes with Claude Code pre-installed:
 
 ```bash
-docker pull ghcr.io/boshu2/polecat-agent:0.4.0
+docker pull ghcr.io/boshu2/polecat-agent:0.4.1
 ```
 
 **Benefits:**
@@ -331,7 +451,7 @@ See [images/polecat-agent/](images/polecat-agent/) for build details and [CUSTOM
 | **Target** | Vanilla Kubernetes | OpenShift / Regulated |
 | **Base Image** | `distroless` | Red Hat UBI9 |
 | **Crypto** | Standard Go | FIPS-validated (BoringCrypto) |
-| **Image Tag** | `0.4.0` | `0.4.0-fips` |
+| **Image Tag** | `0.4.1` | `0.4.1-fips` |
 
 ## Related Projects
 

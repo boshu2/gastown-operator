@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1](https://github.com/boshu2/gastown-operator/compare/v0.4.0...v0.4.1) (2026-01-25) - kubectl-gt AI-Native CLI
+
+### Highlights
+
+- **kubectl-gt CLI**: AI-native kubectl plugin for managing Gas Town resources
+- **JSON/YAML output**: Machine-parseable output for automation and scripting
+- **Themed polecat naming**: Mad Max, minerals, and wasteland themes for memorable names
+- **Native log streaming**: Direct pod log streaming via client-go (no kubectl delegation)
+- **Wait for ready**: Block until polecat pod is running with `--wait-ready`
+
+### Features
+
+* **cli:** add `kubectl gt rig list|status|create` commands with `-o json/yaml` output
+* **cli:** add `kubectl gt polecat list|status|logs|nuke` commands with JSON/YAML output
+* **cli:** add `kubectl gt convoy list|status|create` commands for batch tracking
+* **cli:** add `kubectl gt sling` command with `--name`, `--theme`, `--wait-ready` flags
+* **cli:** add `kubectl gt auth sync|status` for Claude credential management
+* **cli:** themed name pools: mad-max (furiosa, nux, etc.), minerals, wasteland
+* **cli:** native log streaming via client-go instead of shelling to kubectl
+* **ci:** add `kubectl-gt` build/test steps to CI workflow
+* **release:** multi-arch kubectl-gt binaries in GitHub releases (linux/darwin amd64/arm64, windows)
+
+### Bug Fixes
+
+* **cli:** fetch gitRepository from Rig spec for polecat creation (was missing required field)
+* **cli:** add `--git-secret` flag to sling command (default: git-creds)
+
+### Installation
+
+```bash
+# Install operator
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.4.1 \
+  --namespace gastown-system \
+  --create-namespace
+
+# Install kubectl plugin
+curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-darwin-arm64
+chmod +x kubectl-gt-darwin-arm64 && sudo mv kubectl-gt-darwin-arm64 /usr/local/bin/kubectl-gt
+```
+
+### CLI Quick Start
+
+```bash
+# Create a rig
+kubectl gt rig create my-project --git-url https://github.com/org/repo.git --prefix mp
+
+# Sync Claude credentials
+kubectl gt auth sync
+
+# Dispatch work with a themed name
+kubectl gt sling issue-123 my-project --theme mad-max --wait-ready
+
+# Stream logs
+kubectl gt polecat logs my-project/furiosa -f
+```
+
+---
+
 ## [0.4.0](https://github.com/boshu2/gastown-operator/compare/v0.3.2...v0.4.0) (2026-01-24) - Local CI/CD Pipeline
 
 ### Highlights

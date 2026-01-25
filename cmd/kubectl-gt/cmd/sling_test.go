@@ -16,7 +16,7 @@ func TestNewSlingCmd(t *testing.T) {
 	}
 
 	// Check flags exist
-	flags := []string{"wait", "wait-ready", "timeout", "name", "theme"}
+	flags := []string{"wait", "wait-ready", "timeout", "name", "theme", "git-secret"}
 	for _, flag := range flags {
 		if cmd.Flags().Lookup(flag) == nil {
 			t.Errorf("expected flag --%s to exist", flag)

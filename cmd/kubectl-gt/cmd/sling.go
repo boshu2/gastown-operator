@@ -21,6 +21,7 @@ func newSlingCmd() *cobra.Command {
 	var timeout time.Duration
 	var polecatName string
 	var nameTheme string
+	var gitSecret string
 
 	cmd := &cobra.Command{
 		Use:   "sling <bead-id> <rig>",
@@ -28,7 +29,9 @@ func newSlingCmd() *cobra.Command {
 		Long: `Dispatch a bead to be worked on by a polecat in the specified rig.
 
 This creates a Polecat CR with the given bead ID and desiredState=Working.
-The operator will reconcile the Polecat and create a Pod to execute the work.`,
+The operator will reconcile the Polecat and create a Pod to execute the work.
+
+The git repository URL is automatically fetched from the Rig's gitURL field.`,
 		Args: cobra.ExactArgs(2),
 		Example: `  # Sling a bead to a rig
   kubectl gt sling dm-0001 my-rig
@@ -43,9 +46,12 @@ The operator will reconcile the Polecat and create a Pod to execute the work.`,
   kubectl gt sling dm-0001 my-rig --theme mad-max
 
   # Sling and wait for pod to be ready
-  kubectl gt sling dm-0001 my-rig --wait-ready --timeout=5m`,
+  kubectl gt sling dm-0001 my-rig --wait-ready --timeout=5m
+
+  # Sling with custom git secret
+  kubectl gt sling dm-0001 my-rig --git-secret my-git-creds`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSling(args[0], args[1], wait, waitReady, timeout, polecatName, nameTheme)
+			return runSling(args[0], args[1], wait, waitReady, timeout, polecatName, nameTheme, gitSecret)
 		},
 	}
 
@@ -54,11 +60,13 @@ The operator will reconcile the Polecat and create a Pod to execute the work.`,
 	cmd.Flags().DurationVar(&timeout, "timeout", 2*time.Minute, "Timeout for --wait or --wait-ready")
 	cmd.Flags().StringVar(&polecatName, "name", "", "Explicit polecat name (e.g., furiosa)")
 	cmd.Flags().StringVar(&nameTheme, "theme", "", "Naming theme (mad-max, minerals, wasteland)")
+	cmd.Flags().StringVar(&gitSecret, "git-secret", "git-creds", "Name of Secret containing git credentials")
 
 	return cmd
 }
 
-func runSling(beadID, rig string, wait, waitReady bool, timeout time.Duration, explicitName, theme string) error {
+func runSling(beadID, rigName string, wait, waitReady bool, timeout time.Duration,
+	explicitName, theme, gitSecret string) error {
 	config, err := KubeFlags.ToRESTConfig()
 	if err != nil {
 		return fmt.Errorf("failed to get kubeconfig: %w", err)
@@ -69,10 +77,15 @@ func runSling(beadID, rig string, wait, waitReady bool, timeout time.Duration, e
 		return fmt.Errorf("failed to create client: %w", err)
 	}
 
-	// Verify rig exists
-	_, err = client.Resource(rigGVR).Get(context.Background(), rig, metav1.GetOptions{})
+	// Fetch rig to get gitURL
+	rig, err := client.Resource(rigGVR).Get(context.Background(), rigName, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("rig %s not found: %w", rig, err)
+		return fmt.Errorf("rig %s not found: %w", rigName, err)
+	}
+
+	gitURL, _, err := unstructured.NestedString(rig.Object, "spec", "gitURL")
+	if err != nil || gitURL == "" {
+		return fmt.Errorf("rig %s has no gitURL configured", rigName)
 	}
 
 	// Generate polecat name based on flags
@@ -80,9 +93,9 @@ func runSling(beadID, rig string, wait, waitReady bool, timeout time.Duration, e
 	if explicitName != "" {
 		polecatName = explicitName
 	} else if theme != "" {
-		polecatName = generateThemedName(rig, theme)
+		polecatName = generateThemedName(rigName, theme)
 	} else {
-		polecatName = generatePolecatName(rig)
+		polecatName = generatePolecatName(rigName)
 	}
 	namespace := GetNamespace()
 
@@ -96,11 +109,15 @@ func runSling(beadID, rig string, wait, waitReady bool, timeout time.Duration, e
 				"namespace": namespace,
 			},
 			"spec": map[string]any{
-				"rig":           rig,
+				"rig":           rigName,
 				"beadID":        beadID,
 				"desiredState":  "Working",
 				"executionMode": "kubernetes",
 				"kubernetes": map[string]any{
+					"gitRepository": gitURL,
+					"gitSecretRef": map[string]any{
+						"name": gitSecret,
+					},
 					"claudeCredsSecretRef": map[string]any{
 						"name": "claude-creds",
 					},
@@ -115,7 +132,7 @@ func runSling(beadID, rig string, wait, waitReady bool, timeout time.Duration, e
 		return fmt.Errorf("failed to create polecat: %w", err)
 	}
 
-	fmt.Printf("Polecat %s created for bead %s in rig %s\n", created.GetName(), beadID, rig)
+	fmt.Printf("Polecat %s created for bead %s in rig %s\n", created.GetName(), beadID, rigName)
 
 	if wait || waitReady {
 		fmt.Printf("Waiting for polecat to be scheduled (timeout: %s)...\n", timeout)
