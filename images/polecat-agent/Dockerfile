@@ -25,7 +25,7 @@
 ARG CLAUDE_CODE_VERSION=2.0.22
 # Gas Town CLI: https://github.com/steveyegge/gastown
 ARG GT_VERSION=main
-ARG GOLANG_VERSION=1.23
+ARG GOLANG_VERSION=1.24
 # Base image - Debian slim for glibc compatibility
 ARG DEBIAN_VERSION=bookworm-slim
 
@@ -72,8 +72,13 @@ RUN groupadd -r polecat && useradd -r -g polecat -d /home/polecat -m polecat
 # Pin to specific version for reproducibility
 ARG CLAUDE_CODE_VERSION
 RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION} && \
+    # Copy actual binary (not symlink) to system-wide location
+    cp -L /root/.local/bin/claude /usr/local/bin/claude && \
+    chmod +x /usr/local/bin/claude && \
+    # Cleanup root's installation to save space
+    rm -rf /root/.local && \
     # Verify installation
-    claude --version
+    /usr/local/bin/claude --version
 
 # Copy gt CLI from builder
 COPY --from=gt-builder /out/gt /usr/local/bin/gt
