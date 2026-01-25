@@ -59,6 +59,12 @@ IMAGES=(
 
   # Skopeo (for image push)
   "quay.io/skopeo/stable:latest|ci-images/skopeo:latest"
+
+  # Docker-in-Docker (for buildx multi-arch builds)
+  "docker.io/library/docker:24-dind|ci-images/docker:24-dind"
+
+  # QEMU binfmt (for cross-arch builds - arm64 on amd64)
+  "docker.io/tonistiigi/binfmt:latest|ci-images/binfmt:latest"
 )
 
 # ============================================================================

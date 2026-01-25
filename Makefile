@@ -139,6 +139,11 @@ release-e2e-full: ## Run E2E validation and create real GitHub release.
 release-e2e-skip-kind: ## Run E2E validation without Kind E2E (when CI already ran it).
 	./scripts/e2e-release-validation.sh --skip-kind
 
+.PHONY: release-ghcr
+release-ghcr: ## Build and push multi-arch image to GHCR (run after CI passes).
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make release-ghcr VERSION=x.y.z"; exit 1; fi
+	./scripts/release-ghcr.sh $(VERSION)
+
 .PHONY: setup-hooks
 setup-hooks: ## Install git hooks for pre-push validation
 	@chmod +x .githooks/*

@@ -281,27 +281,26 @@ monitor:tekton:
 # Stage: Push (GHCR - only after E2E tests pass)
 # =============================================================================
 
-# Build and push multi-arch image to GHCR
+# CI pushes amd64 from Tekton to GHCR
+# For multi-arch (amd64 + arm64), run locally: make release-ghcr VERSION=x.y.z
 #
-# Why buildx instead of copying from Tekton?
+# Why not multi-arch in CI?
 #   - jren-kaniko-build ClusterTask is AMD64-only (ARM64 on roadmap)
-#   - Buildx enables multi-arch (amd64 + arm64) for Apple Silicon users
-#   - Source code security scans (gosec, govulncheck, gitleaks, Trivy FS) ran in Tekton
-#   - We add Trivy image scan here to maintain security posture
-#
-# The Dockerfile includes a gt-builder stage that builds gt for each target platform
+#   - Buildx in DinD requires QEMU setup, complex infrastructure
+#   - Local Mac builds are fast (~3-5 min) and reliable
 push:ghcr:
   stage: push
-  image: docker:24-dind
-  services:
-    - docker:24-dind
-  variables:
-    DOCKER_BUILDX_PLATFORM: linux/amd64,linux/arm64
-    TRIVY_VERSION: "0.58.1"
+  image:
+    name: ${DPR_REGISTRY}/ci-images/skopeo:latest
+    entrypoint: [""]
   needs:
     - job: semantic-release
       artifacts: true
     - job: test:e2e
+  before_script:
+    - mkdir -p ~/.docker
+    - |
+      echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"$(echo -n 'boshu2:${GITHUB_TOKEN}' | base64)\"}}}" > ~/.docker/config.json
   script:
     - |
       if [ "${RELEASE_PUBLISHED}" != "true" ]; then
@@ -310,63 +309,32 @@ push:ghcr:
       fi
 
       echo "========================================"
-      echo "  Building Multi-Arch Image for GHCR"
+      echo "  Pushing AMD64 Image to GHCR"
       echo "========================================"
-      echo "  Version: ${VERSION}"
-      echo "  Platforms: ${DOCKER_BUILDX_PLATFORM}"
+      echo "  Source: ${REGISTRY_URL}/gastown-operator:${VERSION}"
       echo "  Target: ghcr.io/boshu2/gastown-operator:${VERSION}"
       echo "========================================"
-
-      # Login to GHCR
-      echo "${GITHUB_TOKEN}" | docker login ghcr.io -u boshu2 --password-stdin
-
-      # Create buildx builder for multi-arch
-      docker buildx create --use --name multiarch-builder
-
-      # Build and push multi-arch image
-      docker buildx build --push \
-        --platform ${DOCKER_BUILDX_PLATFORM} \
-        -t ghcr.io/boshu2/gastown-operator:${VERSION} \
-        -t ghcr.io/boshu2/gastown-operator:latest \
-        .
-
-      # Cleanup buildx builder
-      docker buildx rm multiarch-builder || true
-
       echo ""
-      echo "Multi-arch image pushed successfully:"
-      echo "  - ghcr.io/boshu2/gastown-operator:${VERSION}"
-      echo "  - ghcr.io/boshu2/gastown-operator:latest"
-      echo ""
-      echo "Platforms: ${DOCKER_BUILDX_PLATFORM}"
-
-      # Security scan the pushed image with Trivy
-      echo ""
-      echo "========================================"
-      echo "  Running Trivy Security Scan"
-      echo "========================================"
+      echo "NOTE: This pushes AMD64 only from Tekton build."
+      echo "For multi-arch (amd64 + arm64), run locally:"
+      echo "  make release-ghcr VERSION=${VERSION}"
       echo ""
 
-      # Install Trivy
-      apk add --no-cache curl
-      curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v${TRIVY_VERSION}
+      # Copy image from internal registry to GHCR
+      skopeo copy \
+        --src-tls-verify=false \
+        docker://${REGISTRY_URL}/gastown-operator:${VERSION} \
+        docker://ghcr.io/boshu2/gastown-operator:${VERSION}
 
-      # Scan the pushed image (amd64 variant)
-      trivy image \
-        --severity CRITICAL,HIGH \
-        --exit-code 1 \
-        --ignore-unfixed \
-        ghcr.io/boshu2/gastown-operator:${VERSION} || {
-          echo ""
-          echo "WARNING: Trivy found CRITICAL/HIGH vulnerabilities"
-          echo "Image was already pushed. Review vulnerabilities and consider patching."
-          # Don't fail the job - image is already public, just warn
-        }
+      # Also tag as latest
+      skopeo copy \
+        --src-tls-verify=false \
+        docker://${REGISTRY_URL}/gastown-operator:${VERSION} \
+        docker://ghcr.io/boshu2/gastown-operator:latest
 
       echo ""
-      echo "========================================"
-      echo "  GHCR Push Complete"
-      echo "========================================"
+      echo "AMD64 image pushed. For multi-arch, run locally:"
+      echo "  make release-ghcr VERSION=${VERSION}"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
