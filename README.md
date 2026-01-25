@@ -17,7 +17,7 @@
 
 ## What You Get
 
-**Same Gas Town. Kubernetes scale.**
+You run Gas Town locally. This operator runs your polecats as Kubernetes pods.
 
 Your workflow doesn't change. The `gt` CLI you already use works exactly the same.
 The operator just gives you more compute - as much as your cluster can handle.
@@ -29,14 +29,41 @@ The operator just gives you more compute - as much as your cluster can handle.
 | You're online | **Town runs 24/7** |
 | One machine | **Horizontal scale** |
 
-**That's it.** Same `gt sling`. Same `bd` issues. Same handoffs. Your town just runs in the cloud now.
+**The unlock:** 50 issues → 10 polecats → lunch → PRs.
 
-```bash
-# This command works the same whether you're local or on Kubernetes
-gt sling issue-123 my-rig --theme mad-max
-```
+---
 
-**The unlock:** You have 50 issues. Sling 10 polecats. Go to lunch. Come back to PRs.
+### Prerequisites
+
+This operator extends Gas Town to Kubernetes. You'll need:
+
+1. **Gas Town installed locally** - The `gt` CLI ([github.com/steveyegge/gastown](https://github.com/steveyegge/gastown))
+2. **Claude Code configured** - `~/.claude/` directory with your settings
+3. **A rig initialized** - At least one project workspace in `~/gt/`
+4. **Kubernetes cluster** - Any cluster you can deploy to (local or cloud)
+
+If you want standalone K8s agents without the Gas Town workflow, see [Advanced: Standalone Mode](#advanced-standalone-mode) below.
+
+---
+
+### Terminology
+
+| Term | What It Is |
+|------|------------|
+| **Polecat** | An AI worker (runs as a pod) that executes coding tasks |
+| **Rig** | A project workspace - one repo, many polecats |
+| **Convoy** | A batch of tasks for parallel execution |
+| **Beads** | Git-based issue tracker ([separate project](https://github.com/steveyegge/beads)) |
+
+---
+
+### Who Is This For?
+
+Gas Town users who want to scale beyond their laptop:
+
+- Your laptop runs 20-30 polecats max, but you have 100 issues
+- You want polecats to keep working while you sleep
+- Your team needs shared agent infrastructure
 
 <div align="center">
 
@@ -63,8 +90,9 @@ helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
 ### 2. Install the kubectl Plugin
 
 ```bash
-# Download from releases
-curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)
+# Download for your platform (auto-detects OS and architecture)
+ARCH=$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')
+curl -LO "https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-$(uname -s | tr '[:upper:]' '[:lower:]')-${ARCH}"
 chmod +x kubectl-gt-* && sudo mv kubectl-gt-* /usr/local/bin/kubectl-gt
 ```
 
@@ -77,7 +105,9 @@ kubectl gt rig create my-project \
   --prefix mp \
   -n gastown-system
 
-# Sync your Claude credentials
+# Sync your Claude configuration to the cluster
+# This uploads your entire ~/.claude/ directory as a K8s Secret
+# so polecat pods can run Claude with your skills, hooks, and settings
 kubectl gt auth sync -n gastown-system
 
 # Dispatch a polecat to work on an issue
@@ -109,7 +139,7 @@ kubectl gt polecat logs my-project/furiosa -f -n gastown-system
 | `kubectl gt sling <bead-id> <rig>` | Dispatch work to a polecat |
 | `kubectl gt convoy list` | List convoy batches |
 | `kubectl gt convoy create <desc> <beads...>` | Create convoy |
-| `kubectl gt auth sync` | Sync Claude creds to cluster |
+| `kubectl gt auth sync` | Sync ~/.claude/ to cluster (skills, hooks, settings) |
 | `kubectl gt auth status` | Check credential status |
 
 ### AI-Native Features
@@ -154,22 +184,8 @@ kubectl gt polecat logs athena/furiosa -c claude -f
 
 ### Installation
 
-**From Release:**
-```bash
-# macOS (Apple Silicon)
-curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-darwin-arm64
-chmod +x kubectl-gt-darwin-arm64 && sudo mv kubectl-gt-darwin-arm64 /usr/local/bin/kubectl-gt
+See [Quick Start](#2-install-the-kubectl-plugin) for the one-liner, or build from source:
 
-# macOS (Intel)
-curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-darwin-amd64
-chmod +x kubectl-gt-darwin-amd64 && sudo mv kubectl-gt-darwin-amd64 /usr/local/bin/kubectl-gt
-
-# Linux (amd64)
-curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-linux-amd64
-chmod +x kubectl-gt-linux-amd64 && sudo mv kubectl-gt-linux-amd64 /usr/local/bin/kubectl-gt
-```
-
-**From Source:**
 ```bash
 make kubectl-gt-install
 ```
@@ -200,7 +216,7 @@ spec:
 
 See [templates/](templates/) for all resource examples.
 
-## What You Get
+## Features
 
 | Feature | What It Means |
 |---------|---------------|
@@ -213,44 +229,11 @@ See [templates/](templates/) for all resource examples.
 | **Multi-arch** | Runs on amd64 and arm64. Your infra, your choice. |
 | **Supply chain security** | SBOM, Trivy scans, provenance attestations on every image |
 
-## What Is This?
-
-[Gas Town](https://github.com/steveyegge/gastown) runs AI agents (polecats) locally via tmux. This operator extends that to Kubernetes - **polecats run as pods instead of local processes**.
-
-**Why Kubernetes?**
-- **Horizontal scale**: Your laptop runs 4-8 agents. A cluster runs hundreds.
+**Why Kubernetes over local?**
+- **Horizontal scale**: Your laptop runs 20-30 agents. A cluster runs hundreds.
 - **Zero infrastructure**: No tmux, no screen, no SSH. Just pods.
 - **Built-in resilience**: Kubernetes restarts failed agents automatically.
 - **Resource isolation**: Each polecat gets dedicated CPU/memory.
-
-Supports **Claude Code** agents running as Kubernetes pods.
-
-### Terminology
-
-New to Gas Town? Here's the jargon:
-
-| Term | What It Is | Required? |
-|------|------------|-----------|
-| **Polecat** | An AI worker pod that executes tasks | Yes |
-| **Rig** | A project workspace (cluster-scoped) | Yes |
-| **Convoy** | A batch of tasks for parallel execution | Optional |
-| **Witness** | Health monitor for polecats | Optional |
-| **Refinery** | Merge queue processor | Optional |
-| **Beads** | Git-based issue tracker ([separate project](https://github.com/steveyegge/beads)) | Optional |
-
-### Standalone Mode
-
-You can use this operator **without** the full Gas Town ecosystem. Just provide a task description:
-
-```yaml
-spec:
-  taskDescription: "Implement feature X"  # No beadID needed
-  kubernetes:
-    gitRepository: "git@github.com:org/repo.git"
-    # ...
-```
-
-The operator works standalone with just Kubernetes + Claude Code credentials.
 
 ## How It Works
 
@@ -492,6 +475,73 @@ See [images/polecat-agent/](images/polecat-agent/) for build details and [CUSTOM
 - [Gas Town](https://github.com/steveyegge/gastown) - The multi-agent orchestration framework
 - [Claude Code](https://github.com/anthropics/claude-code) - AI coding agent from Anthropic
 - [Beads](https://github.com/steveyegge/beads) - Git-based issue tracking
+
+## Advanced: Standalone Mode
+
+**Not using Gas Town?** You can run the operator standalone - just Kubernetes and Claude credentials. This is useful for CI/CD pipelines or teams that want K8s agents without the Gas Town workflow.
+
+### What You Lose
+
+Standalone mode skips the Gas Town orchestration layer:
+
+| Feature | With Gas Town | Standalone |
+|---------|---------------|------------|
+| Beads issue tracking | Yes | No |
+| Inter-agent mail | Yes | No |
+| Convoy batching | Yes | Manual only |
+| Skills/hooks from ~/.claude/ | Synced automatically | Mount manually |
+| `gt sling` dispatch | Yes | kubectl apply |
+
+### Standalone YAML Example
+
+```yaml
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: standalone-task
+  namespace: gastown-system
+spec:
+  rig: standalone
+  executionMode: kubernetes
+  desiredState: Working
+  kubernetes:
+    gitRepository: "git@github.com:your-org/your-repo.git"
+    gitSecretRef:
+      name: git-ssh-key
+    claudeCredsSecretRef:
+      name: claude-creds
+  task:
+    description: |
+      Implement feature X. Requirements:
+      - Add new endpoint /api/v1/feature
+      - Include tests
+      - Update API documentation
+```
+
+Create the secrets first:
+
+```bash
+# Claude API key
+kubectl create secret generic claude-creds \
+  --from-literal=ANTHROPIC_API_KEY=sk-ant-xxx \
+  -n gastown-system
+
+# Git SSH key
+kubectl create secret generic git-ssh-key \
+  --from-file=ssh-privatekey=$HOME/.ssh/id_ed25519 \
+  -n gastown-system
+```
+
+Then apply:
+
+```bash
+kubectl apply -f polecat.yaml
+kubectl logs -f -l gastown.io/polecat=standalone-task -n gastown-system
+```
+
+For the full Gas Town experience (beads, mail, skills), install Gas Town first: [github.com/steveyegge/gastown](https://github.com/steveyegge/gastown)
+
+---
 
 ## Contributing
 
