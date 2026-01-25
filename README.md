@@ -36,14 +36,16 @@ The operator just gives you more compute - as much as your cluster can handle.
 **The unlock:** Queue 50 issues. Dispatch 50 polecats. Close your laptop. Come back to PRs.
 
 ```mermaid
-flowchart LR
-    subgraph Local["Your Laptop"]
+flowchart TB
+    subgraph Local["Your Laptop (Optional)"]
+        Mayor["🎩 Mayor<br/>Orchestrates"]
         GT[gt CLI]
-        Issues[(Beads Issues)]
     end
 
     subgraph K8s["Kubernetes Cluster"]
         OP[Gas Town Operator]
+        Witness["👁️ Witness<br/>Monitors health"]
+        Refinery["⚙️ Refinery<br/>Merges PRs"]
         subgraph Polecats["Polecat Pods"]
             P1[🦨 furiosa]
             P2[🦨 nux]
@@ -54,18 +56,24 @@ flowchart LR
     subgraph Git["Git Remote"]
         Repo[(Your Repo)]
         PRs[Pull Requests]
+        Main[main branch]
     end
 
+    Mayor -->|"gt sling"| GT
     GT -->|"kubectl gt sling"| OP
-    Issues -->|work items| OP
-    OP -->|creates| Polecats
-    Polecats -->|clone/push| Repo
+    OP -->|spawns| Polecats
+    Witness -->|monitors| Polecats
+    Polecats -->|push branches| Repo
     Polecats -->|create| PRs
+    Refinery -->|rebase + test| PRs
+    Refinery -->|merge| Main
 
     style Local fill:#1a1a2e,color:#fff
     style K8s fill:#0d47a1,color:#fff
     style Git fill:#238636,color:#fff
 ```
+
+**Full Gas Town functionality.** Mayor dispatches work, Witness monitors polecat health, Refinery merges PRs after testing. Same workflow you use locally - the operator just gives you more compute.
 
 ---
 
