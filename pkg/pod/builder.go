@@ -59,10 +59,10 @@ const (
 	// Default images (community edition - vanilla Kubernetes)
 	// For enterprise/FIPS, set env vars to UBI images:
 	//   GASTOWN_GIT_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:9.3
-	//   GASTOWN_CLAUDE_IMAGE=registry.access.redhat.com/ubi9/nodejs-20:1
+	//   GASTOWN_CLAUDE_IMAGE=ghcr.io/boshu2/polecat-agent:0.4.0-fips
 	//   GASTOWN_TELEMETRY_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:9.3
 	DefaultGitImage       = "alpine/git:2.43.0"
-	DefaultClaudeImage    = "node:20-slim"
+	DefaultClaudeImage    = "ghcr.io/boshu2/polecat-agent:0.4.0"
 	DefaultTelemetryImage = "alpine:latest"
 
 	// Default resource values
@@ -358,12 +358,9 @@ fi
 git config --global user.name "Gas Town Polecat"
 git config --global user.email "polecat@gastown.io"
 
-# Install Claude Code CLI and gh
-echo "Installing Claude Code CLI..."
-npm install -g @anthropic-ai/claude-code
-
-# Verify installation
-claude --version || echo "Claude CLI installed"
+# Verify Claude Code is available (pre-installed in polecat-agent image)
+echo "Verifying Claude Code CLI..."
+claude --version || { echo "ERROR: Claude CLI not found. Use ghcr.io/boshu2/polecat-agent image."; exit 1; }
 
 # SECURITY: --dangerously-skip-permissions is required for headless operation.
 # This grants elevated privileges to the Claude agent. Mitigations:

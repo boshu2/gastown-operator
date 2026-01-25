@@ -354,6 +354,17 @@ define gomodver
 $(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
 endef
 
+##@ Polecat Agent Image
+
+.PHONY: polecat-agent-build
+polecat-agent-build: ## Build polecat-agent image locally (single arch).
+	docker build -t polecat-agent:local images/polecat-agent/
+
+.PHONY: polecat-agent-release
+polecat-agent-release: ## Build and push polecat-agent with SBOM and Trivy scan.
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make polecat-agent-release VERSION=x.y.z"; exit 1; fi
+	./scripts/release-polecat-agent.sh $(VERSION)
+
 ##@ CI/CD (Local Pipeline)
 
 .PHONY: ci-validate

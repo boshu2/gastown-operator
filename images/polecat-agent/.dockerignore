@@ -1,0 +1,5 @@
+# Ignore everything not needed for build
+*.md
+!README.md
+.git
+.gitignore

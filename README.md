@@ -26,7 +26,7 @@
 
 ```bash
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.3.2 \
+  --version 0.4.0 \
   --namespace gastown-system \
   --create-namespace
 ```
@@ -64,7 +64,7 @@ Supports: **claude-code** (default), **opencode**, **aider**, or **custom** agen
 ```bash
 # Standard Kubernetes
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.3.2 \
+  --version 0.4.0 \
   --namespace gastown-system \
   --create-namespace
 ```
@@ -75,7 +75,7 @@ OpenShift requires stricter security settings:
 
 ```bash
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.3.2 \
+  --version 0.4.0 \
   --namespace gastown-system \
   --create-namespace \
   --set securityContext.allowPrivilegeEscalation=false \
@@ -89,10 +89,10 @@ Or use the FIPS-compliant image for regulated environments:
 
 ```bash
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.3.2 \
+  --version 0.4.0 \
   --namespace gastown-system \
   --create-namespace \
-  --set image.tag=0.3.2-fips \
+  --set image.tag=0.4.0-fips \
   --set securityContext.allowPrivilegeEscalation=false \
   --set securityContext.runAsNonRoot=true \
   --set securityContext.runAsUser=null \
@@ -104,7 +104,7 @@ helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
 
 ```bash
 make install      # Install CRDs
-make deploy IMG=ghcr.io/boshu2/gastown-operator:0.3.2
+make deploy IMG=ghcr.io/boshu2/gastown-operator:0.4.0
 ```
 
 ## Custom Resources
@@ -147,7 +147,7 @@ See [FRICTION_POINTS.md](FRICTION_POINTS.md) for common mistakes and fixes.
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `image.repository` | `ghcr.io/boshu2/gastown-operator` | Container image |
-| `image.tag` | `0.3.2` | Image tag |
+| `image.tag` | `0.4.0` | Image tag |
 | `replicaCount` | `1` | Number of replicas |
 | `volumes.enabled` | `false` | Mount host path (for local execution mode only) |
 | `volumes.hostPath` | `/home/core/gt` | Path to Gas Town on host |
@@ -156,7 +156,7 @@ See [FRICTION_POINTS.md](FRICTION_POINTS.md) for common mistakes and fixes.
 
 ```bash
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.3.2 \
+  --version 0.4.0 \
   --namespace gastown-system \
   --create-namespace \
   --set volumes.enabled=true \
@@ -201,6 +201,39 @@ See [values.yaml](helm/gastown-operator/values.yaml) for full configuration.
 
 The operator is a **view layer** - `gt` CLI remains authoritative. Kubernetes handles scheduling, scaling, and lifecycle.
 
+## Container Images
+
+All images are published to GHCR with SBOM, Trivy scans, and provenance attestations.
+
+| Image | Purpose | Tags |
+|-------|---------|------|
+| `ghcr.io/boshu2/gastown-operator` | Kubernetes operator | `0.4.0`, `latest`, `0.4.0-fips` |
+| `ghcr.io/boshu2/polecat-agent` | Pre-built polecat agent | `0.4.0`, `latest` |
+| `ghcr.io/boshu2/charts/gastown-operator` | Helm chart (OCI) | `0.4.0` |
+
+### Polecat Agent Image
+
+The `polecat-agent` image comes with Claude Code pre-installed:
+
+```bash
+docker pull ghcr.io/boshu2/polecat-agent:0.4.0
+```
+
+**Benefits:**
+- Instant startup (no runtime npm install)
+- Pinned, documented component versions
+- Security-scanned (Trivy) with SBOM
+- No external network dependencies at runtime
+
+**Included components:**
+| Component | Version |
+|-----------|---------|
+| Claude Code | 2.0.22 (native binary) |
+| gt CLI | latest |
+| git, ssh, jq | system |
+
+See [images/polecat-agent/](images/polecat-agent/) for build details.
+
 ## Requirements
 
 - Kubernetes 1.26+ or OpenShift 4.13+
@@ -215,7 +248,7 @@ The operator is a **view layer** - `gt` CLI remains authoritative. Kubernetes ha
 | **Target** | Vanilla Kubernetes | OpenShift / Regulated |
 | **Base Image** | `distroless` | Red Hat UBI9 |
 | **Crypto** | Standard Go | FIPS-validated (BoringCrypto) |
-| **Image Tag** | `0.3.2` | `0.3.2-fips` |
+| **Image Tag** | `0.4.0` | `0.4.0-fips` |
 
 ## Related Projects
 
