@@ -117,19 +117,14 @@ This prevents MITM (Man-in-the-Middle) attacks on first connection (TOFU vulnera
 
 #### SSHStrictHostKeyChecking
 
-Controls SSH host key verification behavior:
+Controls SSH host key verification. Only `yes` is supported for security:
 
 | Value | Behavior | Security Level |
 |-------|----------|----------------|
-| `yes` (default) | Only connect to hosts in known_hosts | Highest |
-| `accept-new` | Accept and save new host keys, reject changed keys | Medium |
-| `no` | Accept any key (**NOT RECOMMENDED**) | Low |
+| `yes` (default, only option) | Only connect to hosts in known_hosts | Highest |
 
-```yaml
-spec:
-  kubernetes:
-    sshStrictHostKeyChecking: "yes"  # Default, most secure
-```
+The operator enforces strict host key checking to prevent MITM attacks. For private
+Git servers, you must provide verified host keys via `SSHKnownHostsConfigMapRef`.
 
 #### SSHKnownHostsConfigMapRef
 
@@ -154,9 +149,9 @@ spec:
 
 ### Security Recommendation
 
-1. Always use `sshStrictHostKeyChecking: yes` (default)
+1. The default `sshStrictHostKeyChecking: yes` is enforced (only valid option)
 2. For private Git servers, create a ConfigMap with verified host keys
-3. Never use `sshStrictHostKeyChecking: no` in production
+3. Never bypass SSH host key verification - it protects against MITM attacks
 
 ---
 

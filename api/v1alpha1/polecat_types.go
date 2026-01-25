@@ -192,10 +192,9 @@ type KubernetesSpec struct {
 	SSHKnownHostsConfigMapRef *corev1.LocalObjectReference `json:"sshKnownHostsConfigMapRef,omitempty"`
 
 	// SSHStrictHostKeyChecking controls SSH host key verification behavior.
-	// - "yes" (default): Only connect to hosts in known_hosts (most secure)
-	// - "accept-new": Accept and save new host keys, reject changed keys
-	// - "no": Disable verification (NOT RECOMMENDED - vulnerable to MITM)
-	// +kubebuilder:validation:Enum=yes;accept-new;no
+	// Only "yes" is supported - hosts must be in known_hosts (most secure).
+	// For private Git servers, provide host keys via SSHKnownHostsConfigMapRef.
+	// +kubebuilder:validation:Enum=yes
 	// +kubebuilder:default=yes
 	// +optional
 	SSHStrictHostKeyChecking string `json:"sshStrictHostKeyChecking,omitempty"`

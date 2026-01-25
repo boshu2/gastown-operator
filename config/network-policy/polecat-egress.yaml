@@ -1,0 +1,37 @@
+# NetworkPolicy for Polecat agent pods.
+# Restricts egress to essential services only:
+# - DNS for name resolution
+# - HTTPS for API calls (Claude API, GitHub API)
+# - SSH for git operations
+#
+# Note: This policy is applied to pods created by the operator when they have
+# the 'gastown.io/polecat' label. The operator adds this label automatically.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: polecat-egress
+  namespace: system
+spec:
+  podSelector:
+    matchLabels:
+      gastown.io/polecat: "true"
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution (required for all network operations)
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Allow HTTPS for Claude API and GitHub API
+    - ports:
+        - port: 443
+          protocol: TCP
+    # Allow SSH for git operations (port 22)
+    - ports:
+        - port: 22
+          protocol: TCP

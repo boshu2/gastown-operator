@@ -209,8 +209,7 @@ fi
 	} else {
 		// Pre-verified known_hosts for common Git hosts
 		// SECURITY: Using pre-verified keys prevents MITM attacks on first connection.
-		// For private Git servers not in the pre-verified list, we allow ssh-keyscan
-		// only when StrictHostKeyChecking is "accept-new" or "no".
+		// For private Git servers, users must provide host keys via SSHKnownHostsConfigMapRef.
 		knownHostsSetup = fmt.Sprintf(`
 # SECURITY: Pre-verified SSH host keys for common Git hosting providers.
 # These keys are verified from official documentation to prevent MITM attacks.
@@ -220,21 +219,15 @@ cat > ~/.ssh/known_hosts << 'KNOWN_HOSTS_EOF'
 KNOWN_HOSTS_EOF
 chmod 644 ~/.ssh/known_hosts
 
-# For private Git servers not in the pre-verified list, behavior depends on StrictHostKeyChecking:
-# - "yes": Connection will fail if host not in known_hosts (secure, default)
-# - "accept-new": Will accept and save new keys, reject changed keys
-# - "no": Will accept any key (NOT RECOMMENDED)
+# Check if the Git host is in known_hosts
 HOSTNAME=$(echo "%s" | sed -E 's/.*@([^:\/]+).*/\1/' | sed -E 's/.*\/\/([^\/]+).*/\1/')
 if [ -n "$HOSTNAME" ] && ! grep -q "^$HOSTNAME " ~/.ssh/known_hosts; then
-    if [ "%s" != "yes" ]; then
-        echo "Host $HOSTNAME not in pre-verified known_hosts, using ssh-keyscan..."
-        ssh-keyscan "$HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null || true
-    else
-        echo "WARNING: Host $HOSTNAME not in pre-verified known_hosts. Connection may fail."
-        echo "For private Git servers, use SSHKnownHostsConfigMapRef to provide verified host keys."
-    fi
+    echo "ERROR: Host $HOSTNAME not in pre-verified known_hosts."
+    echo "For private Git servers, use SSHKnownHostsConfigMapRef to provide verified host keys."
+    echo "See: https://github.com/boshu2/gastown-operator/blob/main/docs/SECURITY.md"
+    exit 1
 fi
-`, PreVerifiedSSHKnownHosts, k8sSpec.GitRepository, strictHostKeyChecking)
+`, PreVerifiedSSHKnownHosts, k8sSpec.GitRepository)
 	}
 
 	gitScript := fmt.Sprintf(`

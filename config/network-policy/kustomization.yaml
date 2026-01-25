@@ -1,3 +1,4 @@
 resources:
 - allow-metrics-traffic.yaml
 - deny-all-egress.yaml
+- polecat-egress.yaml

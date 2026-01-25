@@ -452,13 +452,10 @@ spec:
                     default: "yes"
                     description: |-
                       SSHStrictHostKeyChecking controls SSH host key verification behavior.
-                      - "yes" (default): Only connect to hosts in known_hosts (most secure)
-                      - "accept-new": Accept and save new host keys, reject changed keys
-                      - "no": Disable verification (NOT RECOMMENDED - vulnerable to MITM)
+                      Only "yes" is supported - hosts must be in known_hosts (most secure).
+                      For private Git servers, provide host keys via SSHKnownHostsConfigMapRef.
                     enum:
                     - "yes"
-                    - accept-new
-                    - "no"
                     type: string
                   workBranch:
                     description: WorkBranch is the branch name to create for work
