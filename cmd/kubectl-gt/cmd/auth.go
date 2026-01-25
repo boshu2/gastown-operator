@@ -94,6 +94,7 @@ func runAuthSync(claudeDir string, force bool) error {
 			return nil
 		}
 		relPath, _ := filepath.Rel(claudeDir, path)
+		// nolint:gosec // G304: path is constrained to claudeDir by filepath.Walk
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return err

@@ -69,6 +69,7 @@ func TestEnsureKnownHosts(t *testing.T) {
 	}
 
 	// Verify file exists and contains expected content
+	// nolint:gosec // G304: path1 is from ensureKnownHosts() temp file in test
 	content, err := os.ReadFile(path1)
 	if err != nil {
 		t.Fatalf("Failed to read known_hosts file: %v", err)
@@ -273,7 +274,7 @@ func TestIsClean(t *testing.T) {
 
 	// Add a file
 	testFile := filepath.Join(repoDir, "test.txt")
-	if err := os.WriteFile(testFile, []byte("hello"), 0o644); err != nil {
+	if err := os.WriteFile(testFile, []byte("hello"), 0o600); err != nil {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 

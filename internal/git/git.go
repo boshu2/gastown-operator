@@ -147,7 +147,7 @@ func (c *Client) runGit(ctx context.Context, args ...string) (string, error) {
 func (c *Client) Clone(ctx context.Context) error {
 	// Ensure parent directory exists
 	parentDir := filepath.Dir(c.RepoDir)
-	if err := os.MkdirAll(parentDir, 0o755); err != nil {
+	if err := os.MkdirAll(parentDir, 0o750); err != nil {
 		return fmt.Errorf("failed to create parent directory: %w", err)
 	}
 

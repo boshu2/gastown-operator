@@ -10,6 +10,7 @@ linters:
     - ginkgolinter
     - goconst
     - gocyclo
+    - gosec
     - govet
     - ineffassign
     - lll
@@ -22,6 +23,10 @@ linters:
     - unparam
     - unused
   settings:
+    gosec:
+      excludes:
+        - G204  # Subprocess with variable - intentional for git/gt/kubectl commands
+      exclude-generated: true
     revive:
       rules:
         - name: comment-spacings
