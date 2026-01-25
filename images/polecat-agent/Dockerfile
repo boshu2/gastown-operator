@@ -65,8 +65,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for security
-RUN groupadd -r polecat && useradd -r -g polecat -d /home/polecat -m polecat
+# Create non-root user for security (UID 65532 matches operator's security context)
+RUN groupadd -r -g 65532 polecat && useradd -r -u 65532 -g polecat -d /home/nonroot -m polecat
 
 # Install Claude Code via native installer script
 # Pin to specific version for reproducibility
@@ -85,13 +85,13 @@ COPY --from=gt-builder /out/gt /usr/local/bin/gt
 RUN chmod +x /usr/local/bin/gt
 
 # Setup SSH directory with proper permissions
-RUN mkdir -p /home/polecat/.ssh && \
-    chmod 700 /home/polecat/.ssh && \
-    chown -R polecat:polecat /home/polecat/.ssh
+RUN mkdir -p /home/nonroot/.ssh && \
+    chmod 700 /home/nonroot/.ssh && \
+    chown -R polecat:polecat /home/nonroot/.ssh
 
 # Setup Claude config directory
-RUN mkdir -p /home/polecat/.claude && \
-    chown -R polecat:polecat /home/polecat/.claude
+RUN mkdir -p /home/nonroot/.claude && \
+    chown -R polecat:polecat /home/nonroot/.claude
 
 # Setup git config defaults
 RUN git config --system user.email "polecat@gastown.local" && \

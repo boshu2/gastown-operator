@@ -57,11 +57,12 @@ const (
 	EnvTelemetryImage = "GASTOWN_TELEMETRY_IMAGE"
 
 	// Default images (community edition - vanilla Kubernetes)
+	// Note: Git init uses polecat-agent because it has proper non-root user setup (UID 65532)
 	// For enterprise/FIPS, set env vars to UBI images:
-	//   GASTOWN_GIT_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:9.3
+	//   GASTOWN_GIT_IMAGE=ghcr.io/boshu2/polecat-agent:0.4.0-fips
 	//   GASTOWN_CLAUDE_IMAGE=ghcr.io/boshu2/polecat-agent:0.4.0-fips
 	//   GASTOWN_TELEMETRY_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:9.3
-	DefaultGitImage       = "alpine/git:2.43.0"
+	DefaultGitImage       = "ghcr.io/boshu2/polecat-agent:0.4.0"
 	DefaultClaudeImage    = "ghcr.io/boshu2/polecat-agent:0.4.0"
 	DefaultTelemetryImage = "alpine:latest"
 
@@ -181,7 +182,12 @@ func (b *Builder) buildGitInitContainer() corev1.Container {
 	// Determine work branch name
 	workBranch := k8sSpec.WorkBranch
 	if workBranch == "" {
-		workBranch = fmt.Sprintf("feature/%s", b.polecat.Spec.BeadID)
+		if b.polecat.Spec.BeadID != "" {
+			workBranch = fmt.Sprintf("feature/%s", b.polecat.Spec.BeadID)
+		} else {
+			// Fallback to polecat name if no BeadID
+			workBranch = fmt.Sprintf("polecat/%s", b.polecat.Name)
+		}
 	}
 
 	// Determine SSH strict host key checking mode
