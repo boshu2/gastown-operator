@@ -48,10 +48,10 @@ if ! docker buildx version &> /dev/null; then
     exit 1
 fi
 
-# Check logged into GHCR
-if ! docker pull $REGISTRY/$IMAGE:latest &> /dev/null 2>&1; then
+# Check logged into GHCR (verify credentials file or try gh auth)
+if ! grep -q "ghcr.io" ~/.docker/config.json 2>/dev/null; then
     echo "Not logged into GHCR. Run:"
-    echo "  echo \$GITHUB_TOKEN | docker login ghcr.io -u boshu2 --password-stdin"
+    echo "  gh auth token | docker login ghcr.io -u boshu2 --password-stdin"
     exit 1
 fi
 
