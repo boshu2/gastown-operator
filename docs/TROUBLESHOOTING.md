@@ -2,14 +2,35 @@
 
 This guide helps diagnose and resolve common issues with the Gas Town Operator.
 
+**Use the kubectl-gt CLI** for most troubleshooting tasks.
+
 ## Table of Contents
 
+- [Quick Diagnostics](#quick-diagnostics)
 - [Operator Issues](#operator-issues)
 - [Polecat Issues](#polecat-issues)
 - [Rig Issues](#rig-issues)
 - [Convoy Issues](#convoy-issues)
-- [gt CLI Connectivity](#gt-cli-connectivity)
+- [Authentication Issues](#authentication-issues)
 - [Merge Conflicts](#merge-conflicts)
+
+---
+
+## Quick Diagnostics
+
+```bash
+# Check operator health
+kubectl get pods -n gastown-system
+
+# Check all resources via CLI
+kubectl gt rig list -n gastown-system
+kubectl gt polecat list -n gastown-system
+kubectl gt convoy list -n gastown-system
+kubectl gt auth status -n gastown-system
+
+# Check CRDs installed
+kubectl get crds | grep gastown
+```
 
 ---
 
@@ -21,8 +42,8 @@ This guide helps diagnose and resolve common issues with the Gas Town Operator.
 
 **Diagnosis**:
 ```bash
-kubectl describe pod -n gastown-operator-system -l control-plane=controller-manager
-kubectl logs -n gastown-operator-system -l control-plane=controller-manager
+kubectl describe pod -n gastown-system -l control-plane=controller-manager
+kubectl logs -n gastown-system -l control-plane=controller-manager
 ```
 
 **Common Causes**:
@@ -38,7 +59,7 @@ kubectl logs -n gastown-operator-system -l control-plane=controller-manager
 
 **Diagnosis**:
 ```bash
-kubectl port-forward -n gastown-operator-system svc/gastown-operator-controller-manager-metrics-service 8443:8443
+kubectl port-forward -n gastown-system svc/gastown-operator-controller-manager-metrics-service 8443:8443
 curl -k https://localhost:8443/metrics
 ```
 
@@ -57,22 +78,25 @@ curl -k https://localhost:8443/metrics
 
 **Diagnosis**:
 ```bash
-# Check polecat status
-kubectl get polecat <name> -o yaml
+# Check polecat status via CLI
+kubectl gt polecat status <rig>/<name> -n gastown-system
 
-# Check pod logs
-kubectl logs polecat-<name> -c claude --tail=50
+# Stream logs
+kubectl gt polecat logs <rig>/<name> -n gastown-system
 
-# Check operator logs for errors
-kubectl logs -n gastown-operator-system -l control-plane=controller-manager | grep <polecat-name>
+# Check operator logs
+kubectl logs -n gastown-system -l control-plane=controller-manager | grep <polecat-name>
 ```
 
 **Resolution**:
-1. Check if the underlying bead is actually being worked on
-2. Verify gt CLI connectivity (see below)
-3. If truly stuck, reset the polecat:
+1. Check logs for Claude activity
+2. If truly stuck, terminate with nuke:
    ```bash
-   kubectl patch polecat <name> --type=merge -p '{"spec":{"desiredState":"Terminated"}}'
+   kubectl gt polecat nuke <rig>/<name> -n gastown-system
+   ```
+3. Re-dispatch work:
+   ```bash
+   kubectl gt sling <bead-id> <rig> -n gastown-system
    ```
 
 ### Polecat Shows "Stuck" Phase
@@ -81,39 +105,51 @@ kubectl logs -n gastown-operator-system -l control-plane=controller-manager | gr
 
 **Diagnosis**:
 ```bash
-kubectl describe polecat <name>
+kubectl gt polecat status <rig>/<name> -n gastown-system
 # Check conditions for "Stuck" reason
 ```
 
 **Resolution**:
-1. Check tmux session for Claude usage limits
-2. Nudge the polecat:
+1. Check logs for Claude usage limits:
    ```bash
-   tmux send-keys -t gt-<rig>-<polecat> "continue with your task" Enter
+   kubectl gt polecat logs <rig>/<name> --tail 50 -n gastown-system
    ```
-3. If unrecoverable, terminate and re-dispatch:
+2. If unrecoverable, terminate and re-dispatch:
    ```bash
-   kubectl patch polecat <name> --type=merge -p '{"spec":{"desiredState":"Terminated"}}'
-   gt sling <bead-id> <rig>
+   kubectl gt polecat nuke <rig>/<name> -n gastown-system
+   kubectl gt sling <bead-id> <rig> -n gastown-system
    ```
 
-### Polecat Pod Fails (Kubernetes Mode)
+### Polecat Pod Fails to Start
 
 **Diagnosis**:
 ```bash
-kubectl describe pod polecat-<name> -n <namespace>
-kubectl logs polecat-<name> -n <namespace> -c git-init  # Init container
-kubectl logs polecat-<name> -n <namespace> -c claude     # Main container
+kubectl gt polecat status <rig>/<name> -n gastown-system
+kubectl describe pod polecat-<name> -n gastown-system
+kubectl gt polecat logs <rig>/<name> -n gastown-system
 ```
 
 **Common Causes**:
 
 | Cause | Solution |
 |-------|----------|
-| Git clone failed | Verify gitSecretRef has valid SSH key |
-| Claude auth failed | Verify claudeCredsSecretRef has valid credentials |
-| Resource exhaustion | Increase resource limits in spec.kubernetes.resources |
+| Git clone failed | Verify git-creds secret has valid SSH key |
+| Claude auth failed | Re-sync credentials: `kubectl gt auth sync --force` |
+| Resource exhaustion | Increase resource limits in polecat spec |
 | Security context | Ensure pod runs as nonroot (UID 65532) |
+
+### Missing gitRepository Error
+
+**Symptoms**: `sling` command creates polecat but pod fails with missing gitRepository.
+
+**This was fixed in v0.4.1**. The sling command now fetches gitURL from the Rig spec.
+
+If you see this error on v0.4.0:
+```bash
+# Upgrade kubectl-gt to v0.4.1
+curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-darwin-arm64
+chmod +x kubectl-gt-darwin-arm64 && sudo mv kubectl-gt-darwin-arm64 /usr/local/bin/kubectl-gt
+```
 
 ---
 
@@ -125,7 +161,7 @@ kubectl logs polecat-<name> -n <namespace> -c claude     # Main container
 
 **Diagnosis**:
 ```bash
-kubectl describe rig <name>
+kubectl gt rig status <name> -n gastown-system
 # Check conditions for specific failure reason
 ```
 
@@ -133,22 +169,22 @@ kubectl describe rig <name>
 
 | Condition Reason | Cause | Solution |
 |------------------|-------|----------|
-| `PathNotFound` | localPath doesn't exist on operator host | Verify path exists |
+| `PathNotFound` | localPath doesn't exist | Verify path exists |
 | `GTCLIError` | gt CLI not responding | Check gt CLI connectivity |
-| `RigNotRegistered` | Rig not in gt town | Run `gt rig add <name>` |
+| `RigNotRegistered` | Rig not in gt town | Create rig: `kubectl gt rig create <name> --git-url ...` |
 
-### Rig Not Syncing Beads
+### Rig Creation Fails
 
 **Diagnosis**:
 ```bash
-kubectl get beadstore -n <namespace>
-kubectl describe beadstore <name>
+kubectl gt rig create <name> --git-url git@github.com:org/repo.git --prefix xx
+# Check error message
 ```
 
-**Resolution**:
-1. Verify BeadStore is configured for the rig
-2. Check gitSecretRef is valid
-3. Manually sync: `bd sync` in the rig directory
+**Common Causes**:
+- Git URL unreachable
+- Prefix already in use by another rig
+- Invalid rig name (must be DNS-compatible)
 
 ---
 
@@ -158,13 +194,13 @@ kubectl describe beadstore <name>
 
 **Diagnosis**:
 ```bash
-kubectl describe convoy <name>
-# Check status.pendingBeads vs status.completedBeads
+kubectl gt convoy list -n gastown-system
+# Find the failed convoy and check status
 ```
 
 **Resolution**:
-1. Identify which beads failed: check `status.pendingBeads`
-2. Investigate individual bead issues
+1. Identify which beads failed
+2. Investigate individual polecat issues
 3. Re-dispatch failed beads or close convoy if partial success is acceptable
 
 ### Convoy Progress Not Updating
@@ -173,50 +209,59 @@ kubectl describe convoy <name>
 
 **Diagnosis**:
 - Check operator logs for convoy reconciliation errors
-- Verify gt CLI can query convoy status
+- Verify polecats are making progress
 
 **Resolution**:
 ```bash
 # Manually trigger reconciliation
-kubectl annotate convoy <name> trigger-reconcile=$(date +%s)
+kubectl annotate convoy <name> trigger-reconcile=$(date +%s) -n gastown-system
 ```
 
 ---
 
-## gt CLI Connectivity
+## Authentication Issues
 
-### Verifying gt CLI Works
+### Claude Credentials Not Working
 
-From the operator pod:
-```bash
-kubectl exec -n gastown-operator-system deploy/gastown-operator-controller-manager -- gt rig list --json
-```
-
-### Common gt CLI Errors
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `command not found: gt` | gt binary not installed | Set GT_PATH env var or install gt |
-| `GT_TOWN_ROOT not set` | Missing configuration | Set GT_TOWN_ROOT env var |
-| `permission denied` | File permissions | Ensure operator has access to town root |
-| `timeout` | gt command hung | Check circuit breaker state, increase timeout |
-
-### Circuit Breaker Tripped
-
-When gt CLI fails repeatedly, the circuit breaker opens to prevent cascading failures.
-
-**Symptoms**: Errors containing "circuit breaker is open"
+**Symptoms**: Polecat pod fails with authentication error.
 
 **Diagnosis**:
 ```bash
-# Check metrics
-curl -k https://localhost:8443/metrics | grep gastown_gt_cli
+kubectl gt auth status -n gastown-system
+kubectl gt polecat logs <rig>/<name> -n gastown-system | grep -i auth
 ```
 
 **Resolution**:
-1. Wait for reset timeout (default 30s)
-2. Fix underlying gt CLI issue
-3. The circuit will close automatically on successful calls
+```bash
+# Re-sync credentials (force refresh)
+kubectl gt auth sync --force -n gastown-system
+```
+
+### OAuth Token Expired
+
+OAuth tokens expire after ~24 hours.
+
+**Resolution**:
+```bash
+# 1. Re-login on your laptop
+claude /login
+
+# 2. Re-sync to cluster
+kubectl gt auth sync --force -n gastown-system
+```
+
+### Git Clone Fails
+
+**Diagnosis**:
+```bash
+kubectl gt polecat logs <rig>/<name> -n gastown-system
+```
+
+**Verify SSH key**:
+```bash
+kubectl get secret git-creds -n gastown-system -o jsonpath='{.data.ssh-privatekey}' | base64 -d | head -1
+# Should show: -----BEGIN OPENSSH PRIVATE KEY-----
+```
 
 ---
 
@@ -228,7 +273,7 @@ curl -k https://localhost:8443/metrics | grep gastown_gt_cli
 
 **Diagnosis**:
 ```bash
-kubectl describe refinery <name>
+kubectl describe refinery <name> -n gastown-system
 # Check status.lastError
 ```
 
@@ -246,7 +291,7 @@ git add .
 git commit -m "merge: resolve conflict"
 
 # Retry refinery
-kubectl annotate refinery <name> retry=$(date +%s)
+kubectl annotate refinery <name> retry=$(date +%s) -n gastown-system
 ```
 
 ### Beads Conflicts
@@ -266,11 +311,16 @@ git commit -m "merge: resolve beads conflict"
 
 If issues persist:
 
-1. Check operator logs for detailed error messages
-2. Review metrics for patterns (error rates, durations)
+1. Check operator logs for detailed error messages:
+   ```bash
+   kubectl logs -n gastown-system -l control-plane=controller-manager --tail 100
+   ```
+2. Get resource status in JSON for detailed analysis:
+   ```bash
+   kubectl gt polecat status <rig>/<name> -o json -n gastown-system
+   ```
 3. File an issue with:
-   - Operator version
-   - Kubernetes version
-   - Relevant CRD manifests
+   - Operator version (`kubectl get deployment -n gastown-system -o jsonpath='{.items[0].spec.template.spec.containers[0].image}'`)
+   - Kubernetes version (`kubectl version`)
+   - Relevant CLI output
    - Operator logs
-   - `kubectl describe` output for affected resources

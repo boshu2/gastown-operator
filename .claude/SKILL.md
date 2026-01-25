@@ -34,6 +34,8 @@ context-budget:
 
 Create Gas Town Kubernetes resources quickly and correctly.
 
+**Use the kubectl-gt CLI** for normal workflows. YAML templates are for GitOps.
+
 ---
 
 ## Critical Facts
@@ -42,43 +44,72 @@ Create Gas Town Kubernetes resources quickly and correctly.
 |------|-------|
 | API Group | `gastown.gastown.io/v1alpha1` |
 | Operator NS | `gastown-system` |
-| Workers NS | `gastown-workers` |
 | CRDs | Rig, Polecat, Convoy, Witness, Refinery, BeadStore |
+| CLI Plugin | `kubectl-gt` |
 
 ---
 
-## Golden Command: Create Polecat
+## Golden Commands (CLI-First)
+
+### Create Rig
 
 ```bash
-kubectl apply -f - <<EOF
-apiVersion: gastown.gastown.io/v1alpha1
-kind: Polecat
-metadata:
-  name: {{NAME}}
-  namespace: gastown-system
-spec:
-  rig: {{RIG}}
-  desiredState: Working
-  beadID: "{{BEAD_ID}}"
-  executionMode: kubernetes
-  kubernetes:
-    gitRepository: "git@github.com:org/repo.git"
-    gitSecretRef:
-      name: git-credentials
-    apiKeySecretRef:
-      name: claude-credentials
-      key: api-key
-    activeDeadlineSeconds: 3600
-EOF
+kubectl gt rig create {{RIG}} \
+  --git-url git@github.com:org/repo.git \
+  --prefix {{PREFIX}} \
+  -n gastown-system
 ```
 
-**Variables:** `{{NAME}}` (e.g., furiosa), `{{RIG}}` (e.g., athena), `{{BEAD_ID}}` (e.g., at-1234)
+### Dispatch Work (Sling)
+
+```bash
+# With explicit name
+kubectl gt sling {{BEAD_ID}} {{RIG}} --name {{NAME}} -n gastown-system
+
+# With themed name (mad-max, minerals, wasteland)
+kubectl gt sling {{BEAD_ID}} {{RIG}} --theme mad-max -n gastown-system
+
+# Wait for pod ready
+kubectl gt sling {{BEAD_ID}} {{RIG}} --wait-ready --timeout 5m -n gastown-system
+```
+
+**Variables:** `{{BEAD_ID}}` (e.g., at-1234), `{{RIG}}` (e.g., athena), `{{NAME}}` (e.g., furiosa)
+
+### Convoy (Batch Tracking)
+
+```bash
+kubectl gt convoy create "Wave 1" {{BEAD1}} {{BEAD2}} {{BEAD3}} -n gastown-system
+```
+
+### Monitor
+
+```bash
+kubectl gt polecat list -n gastown-system
+kubectl gt polecat logs {{RIG}}/{{NAME}} -f -n gastown-system
+kubectl gt polecat status {{RIG}}/{{NAME}} -n gastown-system
+```
 
 ---
 
-## Templates
+## CLI Commands
 
-All in `templates/` with `{{VARIABLE}}` markers:
+| Command | Description |
+|---------|-------------|
+| `kubectl gt rig list` | List rigs |
+| `kubectl gt rig create <name>` | Create rig |
+| `kubectl gt polecat list` | List polecats |
+| `kubectl gt polecat logs <rig>/<name>` | Stream logs |
+| `kubectl gt sling <bead> <rig>` | Dispatch work |
+| `kubectl gt convoy list` | List convoys |
+| `kubectl gt auth sync` | Sync Claude creds |
+
+All commands support `-o json` and `-o yaml` output.
+
+---
+
+## Templates (YAML Alternative)
+
+If you need declarative YAML (GitOps), templates are in `templates/`:
 
 | Template | Use |
 |----------|-----|
@@ -94,9 +125,10 @@ All in `templates/` with `{{VARIABLE}}` markers:
 ## Quick Checks
 
 ```bash
-kubectl get polecats -n gastown-system     # List polecats
-kubectl get rig {{RIG}}                     # Verify rig exists
-kubectl get secrets -n gastown-workers      # Check secrets (K8s mode)
+kubectl gt rig list -n gastown-system          # List rigs
+kubectl gt polecat list -n gastown-system      # List polecats
+kubectl gt auth status -n gastown-system       # Check creds
+kubectl get secrets -n gastown-system          # Check secrets
 ```
 
 ---
@@ -105,9 +137,10 @@ kubectl get secrets -n gastown-workers      # Check secrets (K8s mode)
 
 | Error | Fix |
 |-------|-----|
-| `rig not found` | Create rig first: `kubectl apply -f templates/rig.yaml` |
-| `secret not found` | Create secrets in `gastown-workers` namespace |
-| Stuck in Working | Check pod logs: `kubectl logs -n gastown-workers -l polecat={{NAME}}` |
+| `rig not found` | Create rig first: `kubectl gt rig create <name> --git-url ...` |
+| `secret not found` | Create secrets: `kubectl create secret generic git-creds ...` |
+| `missing gitRepository` | Fixed in v0.4.1 - sling now fetches from Rig |
+| Stuck in Working | Check logs: `kubectl gt polecat logs <rig>/<name>` |
 
 ---
 
