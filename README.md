@@ -1,17 +1,26 @@
 <div align="center">
 
-# Gas Town Operator
+```
+   ___   _   ___   _____ _____      ___  _
+  / __| /_\ / __| |_   _/ _ \ \    / / \| |
+ | (_ |/ _ \\__ \   | || (_) \ \/\/ /| .' |
+  \___/_/ \_\___/   |_| \___/ \_/\_/ |_|\_|
+```
 
-**Kubernetes operator for Gas Town polecats**
+### WITNESS ME! Shiny and Chrome.
 
-[![Release](https://img.shields.io/github/v/release/boshu2/gastown-operator?logo=github)](https://github.com/boshu2/gastown-operator/releases/latest)
-[![Helm](https://img.shields.io/badge/Helm-OCI-blue?logo=helm)](https://ghcr.io/boshu2/charts/gastown-operator)
-[![GHCR](https://img.shields.io/badge/GHCR-Container-purple?logo=github)](https://ghcr.io/boshu2/gastown-operator)
+**AI agent orchestration for Kubernetes**
+
+[![Release](https://img.shields.io/github/v/release/boshu2/gastown-operator?logo=github&label=Release)](https://github.com/boshu2/gastown-operator/releases/latest)
+[![kubectl-gt](https://img.shields.io/badge/kubectl--gt-CLI-FF6B35?logo=kubernetes&logoColor=white)](https://github.com/boshu2/gastown-operator/releases/latest)
+[![Helm](https://img.shields.io/badge/Helm-OCI-0F1689?logo=helm)](https://ghcr.io/boshu2/charts/gastown-operator)
 [![OpenShift](https://img.shields.io/badge/OpenShift-Native-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-*A Kubernetes operator that runs [Gas Town](https://github.com/steveyegge/gastown) polecats as pods.*
+---
+
 *Scale your AI agent army beyond the laptop.*
+
+**Dispatch work. Spawn polecats. Ride eternal.**
 
 </div>
 

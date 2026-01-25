@@ -15,6 +15,17 @@ var (
 	BuildDate = "unknown"
 )
 
+// Banner is the Gas Town ASCII art logo
+const Banner = `
+   ___   _   ___   _____ _____      ___  _
+  / __| /_\ / __| |_   _/ _ \ \    / / \| |
+ | (_ |/ _ \\__ \   | || (_) \ \/\/ /| .' |
+  \___/_/ \_\___/   |_| \___/ \_/\_/ |_|\_|
+  ═══════════════════════════════════════════
+       WITNESS ME! Shiny and Chrome.
+  ═══════════════════════════════════════════
+`
+
 // KubeFlags holds the kubernetes configuration flags
 var KubeFlags *genericclioptions.ConfigFlags
 
@@ -22,24 +33,33 @@ var KubeFlags *genericclioptions.ConfigFlags
 var rootCmd = &cobra.Command{
 	Use:   "kubectl-gt",
 	Short: "kubectl plugin for Gas Town operator",
-	Long: `kubectl-gt is a kubectl plugin for managing Gas Town resources in Kubernetes.
+	Long: Banner + `
+  AI agent orchestration for Kubernetes.
+  Dispatch work. Scale your agent army.
 
-It provides commands to manage Rigs, Polecats, Convoys, and authentication
-for the Gas Town operator. Following the CNPG pattern, this CLI creates
-CRDs that the operator reconciles into actual workloads.
+  ` + "\033[1mCOMMANDS\033[0m" + `
+    rig       Manage project rigs (workspaces)
+    polecat   Manage worker pods
+    sling     Dispatch work to a polecat
+    convoy    Track batch operations
+    auth      Manage Claude credentials
 
-Examples:
-  # List all rigs
-  kubectl gt rig list
+  ` + "\033[1mQUICK START\033[0m" + `
+    # Create a rig for your project
+    kubectl gt rig create my-project --git-url git@github.com:org/repo --prefix mp
 
-  # Dispatch work to a polecat
-  kubectl gt sling dm-0001 my-rig
+    # Dispatch work (spawns a polecat)
+    kubectl gt sling issue-123 my-project --theme mad-max
 
-  # Check polecat status
-  kubectl gt polecat status my-rig/toast-001
+    # Watch it work
+    kubectl gt polecat logs my-project/furiosa -f
 
-  # Sync Claude credentials
-  kubectl gt auth sync`,
+  ` + "\033[1mTHEMES\033[0m" + `
+    --theme mad-max    Furiosa, Nux, Toast, Capable...
+    --theme minerals   Obsidian, Quartz, Jasper...
+    --theme wasteland  Rust, Chrome, Nitro...
+
+  Ride eternal, shiny and chrome.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }

@@ -132,22 +132,27 @@ func runSling(beadID, rigName string, wait, waitReady bool, timeout time.Duratio
 		return fmt.Errorf("failed to create polecat: %w", err)
 	}
 
-	fmt.Printf("Polecat %s created for bead %s in rig %s\n", created.GetName(), beadID, rigName)
+	// Themed success message
+	fmt.Println()
+	fmt.Printf("  \033[1m⚡ WITNESSED!\033[0m\n")
+	fmt.Printf("  Polecat \033[36m%s\033[0m dispatched to rig \033[33m%s\033[0m\n", created.GetName(), rigName)
+	fmt.Printf("  Bead: %s\n", beadID)
+	fmt.Println()
 
 	if wait || waitReady {
-		fmt.Printf("Waiting for polecat to be scheduled (timeout: %s)...\n", timeout)
+		fmt.Printf("  Awaiting the Fury Road (timeout: %s)...\n", timeout)
 		podName, err := waitForPolecatScheduled(client, namespace, polecatName, timeout)
 		if err != nil {
 			return err
 		}
 
 		if waitReady && podName != "" {
-			fmt.Printf("Waiting for pod %s to be ready...\n", podName)
+			fmt.Printf("  Waiting for pod %s to be battle-ready...\n", podName)
 			err = waitForPodReady(config, namespace, podName, timeout)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Pod %s is ready\n", podName)
+			fmt.Printf("  \033[32m✓ RIDE ETERNAL!\033[0m Pod %s is ready\n", podName)
 		}
 	}
 
@@ -216,7 +221,7 @@ func waitForPolecatScheduled(client dynamic.Interface, namespace, name string, t
 			switch phase {
 			case "Working":
 				podName, _, _ := unstructured.NestedString(polecat.Object, "status", "podName")
-				fmt.Printf("Polecat %s is working (pod: %s)\n", name, podName)
+				fmt.Printf("  \033[32m✓ SHINY AND CHROME!\033[0m Polecat %s is working (pod: %s)\n", name, podName)
 				return podName, nil
 			case "Stuck", "Failed":
 				conditions, _, _ := unstructured.NestedSlice(polecat.Object, "status", "conditions")
