@@ -26,7 +26,7 @@ spec:
   taskDescription: string   # Natural language instructions (if no beadID)
 
   # Optional - Execution
-  executionMode: string     # local (default) | kubernetes
+  executionMode: string     # kubernetes (only supported mode)
   agent: string             # claude-code (default) | opencode | aider | custom
 
   # Optional - Agent Config
@@ -66,8 +66,7 @@ status:
   currentState: string      # Actual state (may lag desiredState)
   beadID: string            # Currently assigned bead
   message: string           # Human-readable status
-  podName: string           # Pod name (kubernetes mode)
-  tmuxSession: string       # Tmux session (local mode)
+  podName: string           # Pod name
   startTime: timestamp
   completionTime: timestamp
   conditions:

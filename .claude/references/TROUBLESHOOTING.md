@@ -68,12 +68,10 @@ kubectl logs -n gastown-system -l app.kubernetes.io/name=gastown-operator --tail
 
 **Diagnosis:**
 ```bash
-# Local mode - check tmux
-tmux list-sessions | grep gt-
-tmux attach -t gt-<rig>-<polecat>
-
-# Kubernetes mode - check pod
+# Check pod logs
 kubectl logs -n gastown-workers -l polecat=<name> -f
+
+# Exec into pod for debugging
 kubectl exec -it -n gastown-workers -l polecat=<name> -- /bin/sh
 ```
 
@@ -324,51 +322,6 @@ spec:
   kubernetes:
     nodeSelector:
       dedicated: ai-workloads
-```
-
----
-
-## Local Mode Issues
-
-### Tmux Session Not Found
-
-**Symptoms:** Local polecat working but can't attach to tmux.
-
-**Diagnosis:**
-```bash
-tmux list-sessions
-ps aux | grep claude
-```
-
-**Solutions:**
-```bash
-# Session naming convention
-tmux attach -t gt-<rig>-<polecat>
-
-# If session crashed, terminate and recreate
-kubectl patch polecat <name> -n gastown-system \
-  --type=merge -p '{"spec":{"desiredState":"Terminated"}}'
-```
-
----
-
-### Host Path Not Accessible
-
-**Symptoms:** Local mode fails with "path not found".
-
-**Diagnosis:**
-```bash
-# Check rig localPath
-kubectl get rig <name> -o jsonpath='{.spec.localPath}'
-
-# Verify path exists
-ls -la <path>
-```
-
-**Solutions:**
-```bash
-# Update rig with correct path
-kubectl patch rig <name> --type=merge -p '{"spec":{"localPath":"/correct/path"}}'
 ```
 
 ---

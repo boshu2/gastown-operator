@@ -60,7 +60,15 @@ spec:
   rig: {{RIG}}
   desiredState: Working
   beadID: "{{BEAD_ID}}"
-  executionMode: local
+  executionMode: kubernetes
+  kubernetes:
+    gitRepository: "git@github.com:org/repo.git"
+    gitSecretRef:
+      name: git-credentials
+    apiKeySecretRef:
+      name: claude-credentials
+      key: api-key
+    activeDeadlineSeconds: 3600
 EOF
 ```
 
@@ -74,8 +82,8 @@ All in `templates/` with `{{VARIABLE}}` markers:
 
 | Template | Use |
 |----------|-----|
-| `polecat-minimal.yaml` | Local execution (3 vars) |
-| `polecat-kubernetes.yaml` | K8s execution (full) |
+| `polecat-minimal.yaml` | Minimal K8s polecat (5 vars) |
+| `polecat-kubernetes.yaml` | Full K8s polecat (all options) |
 | `convoy.yaml` | Batch tracking |
 | `secret-*.yaml` | Credentials |
 
@@ -99,7 +107,7 @@ kubectl get secrets -n gastown-workers      # Check secrets (K8s mode)
 |-------|-----|
 | `rig not found` | Create rig first: `kubectl apply -f templates/rig.yaml` |
 | `secret not found` | Create secrets in `gastown-workers` namespace |
-| Stuck in Working | Check tmux (`tmux attach -t gt-{{RIG}}-{{NAME}}`) or pod logs |
+| Stuck in Working | Check pod logs: `kubectl logs -n gastown-workers -l polecat={{NAME}}` |
 
 ---
 
