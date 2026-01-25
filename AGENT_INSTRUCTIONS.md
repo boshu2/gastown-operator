@@ -2,7 +2,7 @@
 
 > Run polecats as pods. Scale your AI agent army beyond the laptop.
 
-**Quick Links:** [.claude/SKILL.md](.claude/SKILL.md) (copy-paste templates) | [templates/](templates/) (all resources) | [FRICTION_POINTS.md](FRICTION_POINTS.md) (anti-patterns)
+**Quick Links:** [kubectl-gt CLI](#kubectl-gt-cli) | [templates/](templates/) (YAML examples) | [FRICTION_POINTS.md](FRICTION_POINTS.md) (anti-patterns)
 
 ---
 
@@ -11,6 +11,7 @@
 | Attribute | Value |
 |-----------|-------|
 | **Name** | gastown-operator |
+| **Version** | 0.4.1 |
 | **Role** | Kubernetes execution for Gas Town |
 | **Repository** | boshu2/gastown-operator |
 | **Helm Chart** | `oci://ghcr.io/boshu2/charts/gastown-operator` |
@@ -24,8 +25,102 @@ The gastown-operator extends [Gas Town](https://github.com/steveyegge/gastown) t
 
 **What it provides:**
 1. **Polecat pods** - Claude Code agents running as Kubernetes pods
-2. **CRD-based management** - Rig, Polecat, Convoy, Witness, Refinery, BeadStore
-3. **Git integration** - Clone repos, create branches, push commits
+2. **kubectl-gt CLI** - AI-native interface for managing Gas Town resources
+3. **CRD-based management** - Rig, Polecat, Convoy, Witness, Refinery, BeadStore
+4. **Git integration** - Clone repos, create branches, push commits
+
+---
+
+## Quick Start (CLI-First)
+
+### 1. Install Operator
+
+```bash
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.4.1 \
+  --namespace gastown-system \
+  --create-namespace
+```
+
+### 2. Install kubectl-gt Plugin
+
+```bash
+# macOS (Apple Silicon)
+curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-darwin-arm64
+chmod +x kubectl-gt-darwin-arm64 && sudo mv kubectl-gt-darwin-arm64 /usr/local/bin/kubectl-gt
+
+# Linux
+curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-linux-amd64
+chmod +x kubectl-gt-linux-amd64 && sudo mv kubectl-gt-linux-amd64 /usr/local/bin/kubectl-gt
+```
+
+### 3. Set Up Credentials
+
+```bash
+# Create git credentials secret
+kubectl create secret generic git-creds -n gastown-system \
+  --from-file=ssh-privatekey=$HOME/.ssh/id_ed25519
+
+# Sync Claude credentials from local ~/.claude/
+kubectl gt auth sync -n gastown-system
+```
+
+### 4. Create Rig and Dispatch Work
+
+```bash
+# Create a project rig
+kubectl gt rig create my-project \
+  --git-url git@github.com:myorg/myrepo.git \
+  --prefix mp \
+  -n gastown-system
+
+# Dispatch work to a polecat
+kubectl gt sling issue-123 my-project --name furiosa -n gastown-system
+
+# Watch it work
+kubectl gt polecat logs my-project/furiosa -f -n gastown-system
+```
+
+---
+
+## kubectl-gt CLI
+
+**The recommended way to interact with Gas Town.** AI-native interface designed for both humans and agents.
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `kubectl gt rig list` | List all rigs |
+| `kubectl gt rig status <name>` | Show rig details |
+| `kubectl gt rig create <name>` | Create a new rig |
+| `kubectl gt polecat list [rig]` | List polecats |
+| `kubectl gt polecat status <rig>/<name>` | Show polecat details |
+| `kubectl gt polecat logs <rig>/<name>` | Stream polecat logs |
+| `kubectl gt polecat nuke <rig>/<name>` | Terminate a polecat |
+| `kubectl gt sling <bead-id> <rig>` | Dispatch work to a polecat |
+| `kubectl gt convoy list` | List convoy batches |
+| `kubectl gt convoy create <desc> <beads...>` | Create convoy |
+| `kubectl gt auth sync` | Sync Claude creds to cluster |
+| `kubectl gt auth status` | Check credential status |
+
+### AI-Native Features
+
+**JSON/YAML Output** - All commands support `-o json` and `-o yaml`:
+```bash
+kubectl gt polecat list -o json | jq '.[] | .metadata.name'
+```
+
+**Themed Naming** - Memorable names for polecats:
+```bash
+kubectl gt sling issue-123 my-project --theme mad-max
+# Creates polecat named "furiosa", "nux", "toast", etc.
+```
+
+**Wait for Ready** - Block until pod is running:
+```bash
+kubectl gt sling issue-123 my-project --wait-ready --timeout 5m
+```
 
 ---
 
@@ -57,61 +152,6 @@ The gastown-operator extends [Gas Town](https://github.com/steveyegge/gastown) t
 
 ---
 
-## Installation
-
-```bash
-# Standard Kubernetes
-helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.3.2 \
-  --namespace gastown-system \
-  --create-namespace
-
-# OpenShift (restricted SCC)
-helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.3.2 \
-  --namespace gastown-system \
-  --create-namespace \
-  --set securityContext.allowPrivilegeEscalation=false \
-  --set securityContext.runAsNonRoot=true \
-  --set securityContext.runAsUser=null \
-  --set securityContext.readOnlyRootFilesystem=true
-```
-
----
-
-## Secrets Setup
-
-Polecats need two secrets in the `gastown-workers` namespace:
-
-### Git SSH Key
-
-```bash
-kubectl create namespace gastown-workers
-
-kubectl create secret generic git-credentials -n gastown-workers \
-  --from-file=ssh-privatekey=$HOME/.ssh/id_ed25519
-```
-
-### Claude Credentials
-
-**Option A: API Key (recommended for automation)**
-
-```bash
-kubectl create secret generic claude-credentials -n gastown-workers \
-  --from-literal=api-key=$ANTHROPIC_API_KEY
-```
-
-**Option B: OAuth (from `claude /login`)**
-
-```bash
-# macOS - extract from Keychain
-CREDS=$(security find-generic-password -s "Claude Code-credentials" -w)
-kubectl create secret generic claude-credentials -n gastown-workers \
-  --from-literal=.credentials.json="$CREDS"
-```
-
----
-
 ## Custom Resources
 
 | CRD | Description |
@@ -125,64 +165,6 @@ kubectl create secret generic claude-credentials -n gastown-workers \
 
 ---
 
-## Usage Pattern
-
-**The normal workflow:**
-
-1. Install operator (above)
-2. Create secrets (above)
-3. Apply a Polecat CR (use [templates/polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml))
-4. Operator creates the pod
-5. Watch progress: `kubectl logs -f polecat-<name>` or `kubectl get polecat`
-
-Or tell Claude: "Create a polecat to implement issue-123" and it will generate the CR for you.
-
----
-
-## Templates (Copy-Paste Ready)
-
-All templates are in [templates/](templates/) with `{{VARIABLE}}` markers:
-
-| Template | Variables | Use Case |
-|----------|-----------|----------|
-| [polecat-minimal.yaml](templates/polecat-minimal.yaml) | `POLECAT_NAME`, `RIG_NAME`, `BEAD_ID` | Quick local polecat |
-| [polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml) | All fields | Full K8s execution |
-| [convoy.yaml](templates/convoy.yaml) | `CONVOY_NAME`, `BEAD_IDS` | Batch tracking |
-| [witness.yaml](templates/witness.yaml) | `RIG_NAME` | Health monitoring |
-| [refinery.yaml](templates/refinery.yaml) | `RIG_NAME`, `TARGET_BRANCH` | Merge processing |
-| [secret-git-ssh.yaml](templates/secret-git-ssh.yaml) | `SSH_PRIVATE_KEY` | Git credentials |
-| [secret-claude-creds.yaml](templates/secret-claude-creds.yaml) | `API_KEY` | Claude credentials |
-
-**Validation:** `./scripts/validate-template.sh <file>` checks syntax and required fields.
-
-## Polecat CR Example
-
-Minimal working example (or use [templates/polecat-minimal.yaml](templates/polecat-minimal.yaml)):
-
-```yaml
-apiVersion: gastown.gastown.io/v1alpha1
-kind: Polecat
-metadata:
-  name: my-worker
-  namespace: gastown-workers
-spec:
-  rig: my-project
-  beadID: issue-123
-  desiredState: Working
-  kubernetes:
-    gitRepository: "git@github.com:myorg/myrepo.git"
-    gitBranch: main
-    gitSecretRef:
-      name: git-credentials
-    apiKeySecretRef:
-      name: claude-credentials
-      key: api-key
-```
-
-For full options, see [templates/polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml)
-
----
-
 ## Verification Commands
 
 ```bash
@@ -193,9 +175,10 @@ kubectl logs -f deployment/gastown-operator -n gastown-system
 # Check CRDs
 kubectl get crds | grep gastown
 
-# Check polecats
-kubectl get polecats -A
-kubectl logs -f polecat-<name> -n gastown-workers
+# Check resources via CLI
+kubectl gt rig list -n gastown-system
+kubectl gt polecat list -n gastown-system
+kubectl gt convoy list -n gastown-system
 ```
 
 ---
@@ -205,7 +188,8 @@ kubectl logs -f polecat-<name> -n gastown-workers
 ### Pod stuck in Pending
 
 ```bash
-kubectl describe pod polecat-<name> -n gastown-workers
+kubectl gt polecat status my-rig/my-polecat -n gastown-system
+kubectl describe pod polecat-<name> -n gastown-system
 ```
 
 Common causes: secret doesn't exist, insufficient resources.
@@ -213,18 +197,32 @@ Common causes: secret doesn't exist, insufficient resources.
 ### Git clone fails
 
 ```bash
-kubectl logs polecat-<name> -c git-init -n gastown-workers
+kubectl gt polecat logs my-rig/my-polecat -n gastown-system
 ```
 
-Verify SSH key format: `kubectl get secret git-credentials -n gastown-workers -o jsonpath='{.data.ssh-privatekey}' | base64 -d | head -1`
+Verify SSH key: `kubectl get secret git-creds -n gastown-system -o jsonpath='{.data.ssh-privatekey}' | base64 -d | head -1`
 
 ### Claude auth fails
 
 ```bash
-kubectl logs polecat-<name> -c claude -n gastown-workers
+kubectl gt auth status -n gastown-system
 ```
 
-Check API key is valid or OAuth tokens haven't expired (24hr lifetime).
+Re-sync if stale: `kubectl gt auth sync --force -n gastown-system`
+
+---
+
+## YAML Templates (Alternative)
+
+If you prefer declarative YAML, templates are in [templates/](templates/):
+
+| Template | Use Case |
+|----------|----------|
+| [polecat-minimal.yaml](templates/polecat-minimal.yaml) | Quick polecat |
+| [polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml) | Full K8s execution |
+| [convoy.yaml](templates/convoy.yaml) | Batch tracking |
+
+**Validation:** `./scripts/validate-template.sh <file>`
 
 ---
 
@@ -242,9 +240,7 @@ Check API key is valid or OAuth tokens haven't expired (24hr lifetime).
 
 | Document | Purpose |
 |----------|---------|
-| [.claude/SKILL.md](.claude/SKILL.md) | Agent quick reference with copy-paste templates |
-| [templates/](templates/) | All YAML templates with `{{VARIABLE}}` markers |
+| [README.md](README.md) | Main documentation with CLI reference |
+| [templates/](templates/) | YAML templates with `{{VARIABLE}}` markers |
 | [FRICTION_POINTS.md](FRICTION_POINTS.md) | Anti-patterns and common mistakes |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Complete setup walkthrough |
-| [docs/CRD_REFERENCE.md](docs/CRD_REFERENCE.md) | Full spec/status docs |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues |
