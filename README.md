@@ -39,6 +39,19 @@ Claude will handle the secrets, the Polecat CRs, everything. You don't write YAM
 
 **For AI Agents:** See [.claude/SKILL.md](.claude/SKILL.md) for copy-paste templates and [templates/](templates/) for all resource examples.
 
+## What You Get
+
+| Feature | What It Means |
+|---------|---------------|
+| **Scale to 100+ agents** | Run 10, 50, or 100 polecats in parallel. No tmux limits. |
+| **One-command install** | `helm install` and you're running in 30 seconds |
+| **Instant agent startup** | Pre-built images with Claude Code. No npm install at runtime. |
+| **Enterprise-ready** | OpenShift native, FIPS-compliant edition, security-scanned |
+| **Agent-first docs** | Tell Claude to set it up. It reads the docs and configures itself. |
+| **Full lifecycle management** | Health monitoring, auto-cleanup, merge queue, convoy tracking |
+| **Multi-arch** | Runs on amd64 and arm64. Your infra, your choice. |
+| **Supply chain security** | SBOM, Trivy scans, provenance attestations on every image |
+
 ## What Is This?
 
 [Gas Town](https://github.com/steveyegge/gastown) runs AI agents (polecats) locally via tmux. This operator extends that to Kubernetes - **polecats run as pods instead of local processes**.
@@ -49,11 +62,11 @@ Claude will handle the secrets, the Polecat CRs, everything. You don't write YAM
 3. Sling work: `gt sling issue-123 my-rig --mode kubernetes`
 4. Watch: `gt convoy list` or `kubectl logs -f polecat-issue-123`
 
-**Why?**
-- Scale beyond your laptop's tmux sessions
-- Run agents closer to your infrastructure
-- Parallel execution across a cluster
-- Kubernetes handles scheduling and lifecycle
+**Why Kubernetes?**
+- **Horizontal scale**: Your laptop runs 4-8 agents. A cluster runs hundreds.
+- **Zero infrastructure**: No tmux, no screen, no SSH. Just pods.
+- **Built-in resilience**: Kubernetes restarts failed agents automatically.
+- **Resource isolation**: Each polecat gets dedicated CPU/memory.
 
 Supports: **claude-code** (default), **opencode**, **aider**, or **custom** agents.
 
