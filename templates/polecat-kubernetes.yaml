@@ -3,7 +3,7 @@
 # A Polecat running in Kubernetes mode (as a Pod) for cloud-native execution.
 # This template shows ALL available options with detailed comments.
 #
-# For a minimal template, see: polecat-minimal.yaml
+# For a minimal example, see: polecat-minimal.yaml
 #
 # Variables to replace:
 #   {{POLECAT_NAME}}       - Unique name (e.g., "furiosa", "nux")
@@ -66,8 +66,8 @@ spec:
   # EXECUTION MODE
   # ============================================
 
-  # Where to run: local (tmux) or kubernetes (Pod)
-  # kubernetes mode requires the kubernetes section below
+  # Execution mode: kubernetes (runs as a Pod)
+  # Requires the kubernetes section below
   executionMode: kubernetes
 
   # ============================================
@@ -75,11 +75,11 @@ spec:
   # ============================================
 
   # Agent type (optional, default: claude-code)
-  # Options: claude-code, opencode, aider, custom
+  # Currently only claude-code is supported
   agent: claude-code
 
   # Agent customization (optional)
-  # Use for non-default agents or custom LLM providers
+  # Use for custom LLM providers or gateway endpoints
   # agentConfig:
   #   # LLM provider
   #   provider: litellm  # litellm, anthropic, openai, ollama
@@ -93,15 +93,7 @@ spec:
   #       key: api-key
   #
   #   # Custom container image
-  #   image: ghcr.io/opencode-ai/opencode:v1.0.0
-  #
-  #   # Custom command/args
-  #   command: ["opencode"]
-  #   args: ["--headless", "--task", "$(BEAD_ID)"]
-  #
-  #   # Config from ConfigMap
-  #   configMapRef:
-  #     name: opencode-config
+  #   image: ghcr.io/boshu2/polecat-agent:custom
   #
   #   # Extra environment variables
   #   env:

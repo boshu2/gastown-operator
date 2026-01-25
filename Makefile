@@ -93,6 +93,31 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
 
+.PHONY: demo
+demo: setup-test-e2e docker-build-e2e ## Deploy to Kind and show a sample Polecat.
+	@echo "Loading image into Kind cluster..."
+	$(KIND) load docker-image ${IMG} --name $(KIND_CLUSTER)
+	@echo "Installing CRDs..."
+	$(MAKE) install
+	@echo "Deploying operator..."
+	$(MAKE) deploy IMG=${IMG}
+	@echo ""
+	@echo "=========================================="
+	@echo "  Gas Town Operator is running!"
+	@echo "=========================================="
+	@echo ""
+	@echo "Create a Polecat with:"
+	@echo "  kubectl apply -f templates/polecat-minimal.yaml"
+	@echo ""
+	@echo "Check status:"
+	@echo "  kubectl get polecat -A"
+	@echo ""
+	@echo "View operator logs:"
+	@echo "  kubectl logs -f -n gastown-system deploy/gastown-operator-controller-manager"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  make cleanup-test-e2e"
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	"$(GOLANGCI_LINT)" run
@@ -179,14 +204,6 @@ build-gt-fips: ## Build gt CLI with FIPS-compliant crypto (for Dockerfile.fips).
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go
-
-.PHONY: run-local
-run-local: manifests generate fmt vet ## Run the controller in local development mode.
-	go run ./cmd/local/main.go --town-root=$(HOME)/gt
-
-.PHONY: build-local
-build-local: manifests generate fmt vet ## Build local mode binary.
-	go build -o bin/gastown-operator-local cmd/local/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.

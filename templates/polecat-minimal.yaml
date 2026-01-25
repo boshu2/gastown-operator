@@ -1,19 +1,20 @@
-# Polecat Minimal Template - Quick Local Execution
+# Polecat Minimal Template - Quick Kubernetes Execution
 #
-# The simplest Polecat configuration for local (tmux) execution.
-# Copy, replace 3 variables, and apply.
+# The simplest Polecat configuration for Kubernetes execution.
+# Copy, replace variables, and apply.
 #
-# For full options including Kubernetes mode, see: polecat-kubernetes.yaml
+# For full options, see: polecat-kubernetes.yaml
 #
 # Variables to replace:
 #   {{POLECAT_NAME}} - Unique name (e.g., "furiosa", "nux", "max")
 #   {{RIG_NAME}}     - Parent rig (e.g., "athena", "daedalus")
-#   {{BEAD_ID}}      - Bead to work on (e.g., "at-1234", "gt-5678")
+#   {{GIT_REPO}}     - Git repository URL (SSH format)
+#   {{GIT_SECRET}}   - Name of git SSH secret
+#   {{CLAUDE_SECRET}} - Name of Claude credentials secret
 #
 # Prerequisites:
 #   - Rig exists: kubectl get rig {{RIG_NAME}}
-#   - Bead exists: bd show {{BEAD_ID}}
-#   - tmux installed on host
+#   - Secrets created (see templates/secret-*.yaml)
 #
 # Usage:
 #   kubectl apply -f - <<EOF
@@ -25,8 +26,13 @@
 #   spec:
 #     rig: athena
 #     desiredState: Working
-#     beadID: "at-1234"
-#     executionMode: local
+#     taskDescription: "Implement feature X"
+#     kubernetes:
+#       gitRepository: "git@github.com:org/repo.git"
+#       gitSecretRef:
+#         name: git-ssh-key
+#       claudeCredsSecretRef:
+#         name: claude-creds
 #   EOF
 
 apiVersion: gastown.gastown.io/v1alpha1
@@ -37,22 +43,31 @@ metadata:
 spec:
   rig: {{RIG_NAME}}
   desiredState: Working
-  beadID: "{{BEAD_ID}}"
-  executionMode: local
+  taskDescription: "Implement the assigned task"
+  kubernetes:
+    gitRepository: "{{GIT_REPO}}"
+    gitSecretRef:
+      name: {{GIT_SECRET}}
+    claudeCredsSecretRef:
+      name: {{CLAUDE_SECRET}}
 
 ---
 # Quick start commands:
 #
-# 1. Create polecat
+# 1. Create secrets first (see templates/secret-*.yaml)
+#    kubectl apply -f secret-git-ssh.yaml
+#    kubectl apply -f secret-claude-creds.yaml
+#
+# 2. Create polecat
 #    kubectl apply -f polecat-minimal.yaml
 #
-# 2. Check status
+# 3. Check status
 #    kubectl get polecat {{POLECAT_NAME}} -n gastown-system
 #
-# 3. View tmux session
-#    tmux attach -t gt-{{RIG_NAME}}-{{POLECAT_NAME}}
+# 4. View pod logs
+#    kubectl logs -f polecat-{{POLECAT_NAME}} -n gastown-system
 #
-# 4. Terminate when done
+# 5. Terminate when done
 #    kubectl patch polecat {{POLECAT_NAME}} -n gastown-system \
 #      --type=merge -p '{"spec":{"desiredState":"Terminated"}}'
 
@@ -69,8 +84,13 @@ spec:
 #   spec:
 #     rig: athena
 #     desiredState: Working
-#     beadID: "at-1234"
-#     executionMode: local
+#     taskDescription: "Fix the authentication bug"
+#     kubernetes:
+#       gitRepository: "git@github.com:org/repo.git"
+#       gitSecretRef:
+#         name: git-ssh-key
+#       claudeCredsSecretRef:
+#         name: claude-creds
 #   EOF
 #
 # Create idle polecat (ready for assignment):
@@ -83,9 +103,14 @@ spec:
 #   spec:
 #     rig: athena
 #     desiredState: Idle
-#     executionMode: local
+#     kubernetes:
+#       gitRepository: "git@github.com:org/repo.git"
+#       gitSecretRef:
+#         name: git-ssh-key
+#       claudeCredsSecretRef:
+#         name: claude-creds
 #   EOF
 #
 # Assign work to idle polecat:
 #   kubectl patch polecat nux -n gastown-system --type=merge \
-#     -p '{"spec":{"beadID":"at-5678","desiredState":"Working"}}'
+#     -p '{"spec":{"taskDescription":"Implement feature Y","desiredState":"Working"}}'
