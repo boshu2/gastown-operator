@@ -17,14 +17,26 @@
 
 ## What You Get
 
-| Without Gas Town | With Gas Town |
-|------------------|---------------|
-| One agent on your laptop | **Unlimited agents** across your cluster |
-| Context limits halt progress | Agents **hand off work** and keep going |
-| Manual issue assignment | **Dispatch work** with one command |
-| Babysitting agent sessions | **Fire and forget** - check results later |
+**Same Gas Town. Kubernetes scale.**
 
-**The pitch:** You have 50 issues to implement. Instead of working them one-by-one on your laptop, dispatch 10 polecats in parallel. Go to lunch. Come back to PRs.
+Your workflow doesn't change. The `gt` CLI you already use works exactly the same.
+The operator just gives you more compute - as much as your cluster can handle.
+
+| On Your Laptop | With the Operator |
+|----------------|-------------------|
+| 1 polecat | **100 polecats** |
+| Your CPU | **Cluster CPUs** |
+| Your context window | **Parallel context windows** |
+| You watching it | **Fire and forget** |
+
+**That's it.** Same `gt sling`. Same `bd` issues. Same handoffs. Just... more.
+
+```bash
+# This command works the same whether you're local or on Kubernetes
+gt sling issue-123 my-rig --theme mad-max
+```
+
+**The unlock:** You have 50 issues. Sling 10 polecats. Go to lunch. Come back to PRs.
 
 <div align="center">
 
