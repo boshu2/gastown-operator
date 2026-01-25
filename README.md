@@ -11,6 +11,10 @@
 
 **Run Claude Code agents as Kubernetes pods.**
 
+[![Release](https://img.shields.io/github/v/release/boshu2/gastown-operator?logo=github&label=Release)](https://github.com/boshu2/gastown-operator/releases/latest) [![kubectl-gt](https://img.shields.io/badge/kubectl--gt-CLI-FF6B35?logo=kubernetes&logoColor=white)](https://github.com/boshu2/gastown-operator/releases/latest) [![Helm](https://img.shields.io/badge/Helm-OCI-0F1689?logo=helm)](https://ghcr.io/boshu2/charts/gastown-operator) [![OpenShift](https://img.shields.io/badge/OpenShift-Native-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
+
+*⚡ WITNESS ME! Shiny and Chrome. ⚡*
+
 </div>
 
 ---
@@ -64,17 +68,6 @@ Gas Town users who want to scale beyond their laptop:
 - Your laptop runs 20-30 polecats max, but you have 100 issues
 - You want polecats to keep working while you sleep
 - Your team needs shared agent infrastructure
-
-<div align="center">
-
-[![Release](https://img.shields.io/github/v/release/boshu2/gastown-operator?logo=github&label=Release)](https://github.com/boshu2/gastown-operator/releases/latest)
-[![kubectl-gt](https://img.shields.io/badge/kubectl--gt-CLI-FF6B35?logo=kubernetes&logoColor=white)](https://github.com/boshu2/gastown-operator/releases/latest)
-[![Helm](https://img.shields.io/badge/Helm-OCI-0F1689?logo=helm)](https://ghcr.io/boshu2/charts/gastown-operator)
-[![OpenShift](https://img.shields.io/badge/OpenShift-Native-EE0000?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
-
-*⚡ WITNESS ME! Shiny and Chrome. ⚡*
-
-</div>
 
 ## Quick Start
 
