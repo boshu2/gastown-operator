@@ -21,9 +21,6 @@ spec:
     - jsonPath: .status.progress
       name: Progress
       type: string
-    - jsonPath: .status.beadsConvoyID
-      name: BeadsID
-      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -58,9 +55,6 @@ spec:
                 description: Description is a human-readable description of this convoy
                 minLength: 1
                 type: string
-              notifyOnComplete:
-                description: NotifyOnComplete is the mail address for completion notification
-                type: string
               parallelism:
                 default: 0
                 description: |-
@@ -85,10 +79,6 @@ spec:
           status:
             description: ConvoyStatus defines the observed state of Convoy
             properties:
-              beadsConvoyID:
-                description: BeadsConvoyID is the convoy ID in the beads system (e.g.,
-                  hq-cv-xxx)
-                type: string
               completedAt:
                 description: CompletedAt is when the convoy completed
                 format: date-time
