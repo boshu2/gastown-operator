@@ -32,10 +32,6 @@ type ConvoySpec struct {
 	// +kubebuilder:validation:MinItems=1
 	TrackedBeads []string `json:"trackedBeads"`
 
-	// NotifyOnComplete is the mail address for completion notification
-	// +optional
-	NotifyOnComplete string `json:"notifyOnComplete,omitempty"`
-
 	// Parallelism controls how many Polecats can run concurrently.
 	// Default is 0 (unlimited - run all tasks in parallel).
 	// +kubebuilder:default=0
@@ -77,10 +73,6 @@ type ConvoyStatus struct {
 	// +optional
 	PendingBeads []string `json:"pendingBeads,omitempty"`
 
-	// BeadsConvoyID is the convoy ID in the beads system (e.g., hq-cv-xxx)
-	// +optional
-	BeadsConvoyID string `json:"beadsConvoyID,omitempty"`
-
 	// StartedAt is when the convoy started
 	// +optional
 	StartedAt *metav1.Time `json:"startedAt,omitempty"`
@@ -100,7 +92,6 @@ type ConvoyStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Progress",type="string",JSONPath=".status.progress"
-// +kubebuilder:printcolumn:name="BeadsID",type="string",JSONPath=".status.beadsConvoyID"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // Convoy is the Schema for the convoys API.

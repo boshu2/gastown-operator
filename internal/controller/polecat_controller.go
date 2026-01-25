@@ -34,29 +34,28 @@ import (
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	gterrors "github.com/org/gastown-operator/pkg/errors"
-	"github.com/org/gastown-operator/pkg/gt"
 	"github.com/org/gastown-operator/pkg/metrics"
 	"github.com/org/gastown-operator/pkg/pod"
 )
 
 const (
-	// PolecatSyncInterval is how often we re-sync with gt CLI.
-	// Uses RequeueShort for active polecat monitoring (faster than other controllers).
+	// PolecatSyncInterval is how often we re-sync Pod status.
+	// Uses RequeueShort for active polecat monitoring.
 	PolecatSyncInterval = RequeueShort
 
 	// Condition types for Polecat
 	ConditionPolecatReady   = "Ready"
 	ConditionPolecatWorking = "Working"
 
-	// polecatFinalizer ensures cleanup of external resources
+	// polecatFinalizer ensures cleanup of Pod resources
 	polecatFinalizer = "gastown.io/polecat-cleanup"
 )
 
-// PolecatReconciler reconciles a Polecat object
+// PolecatReconciler reconciles a Polecat object.
+// Polecats run as Pods in the cluster.
 type PolecatReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	GTClient gt.ClientInterface
+	Scheme *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=polecats,verbs=get;list;watch;create;update;patch;delete
@@ -113,23 +112,14 @@ func (r *PolecatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 }
 
-// ensureWorking ensures the polecat is working on a bead.
+// ensureWorking ensures the polecat Pod is running.
 func (r *PolecatReconciler) ensureWorking(ctx context.Context, polecat *gastownv1alpha1.Polecat, timer *metrics.ReconcileTimer) (ctrl.Result, error) {
-	// Route based on execution mode
-	if polecat.Spec.ExecutionMode == gastownv1alpha1.ExecutionModeKubernetes {
-		return r.ensureWorkingKubernetes(ctx, polecat, timer)
-	}
-	return r.ensureWorkingLocal(ctx, polecat, timer)
-}
-
-// ensureWorkingKubernetes handles kubernetes execution mode
-func (r *PolecatReconciler) ensureWorkingKubernetes(ctx context.Context, polecat *gastownv1alpha1.Polecat, timer *metrics.ReconcileTimer) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	// Validate kubernetes spec is present
 	if polecat.Spec.Kubernetes == nil {
 		r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionFalse, "MissingKubernetesSpec",
-			"kubernetes spec is required when executionMode is kubernetes")
+			"kubernetes spec is required")
 		polecat.Status.Phase = gastownv1alpha1.PolecatPhaseStuck
 		if err := r.Status().Update(ctx, polecat); err != nil {
 			timer.RecordResult(metrics.ResultError)
@@ -223,25 +213,26 @@ func (r *PolecatReconciler) syncStatusFromPod(ctx context.Context, polecat *gast
 	switch p.Status.Phase {
 	case corev1.PodPending:
 		polecat.Status.Phase = gastownv1alpha1.PolecatPhaseWorking
+		polecat.Status.PodActive = false
 		r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "PodPending",
 			"Pod is pending")
 	case corev1.PodRunning:
 		polecat.Status.Phase = gastownv1alpha1.PolecatPhaseWorking
-		polecat.Status.SessionActive = true
+		polecat.Status.PodActive = true
 		r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "PodRunning",
 			"Pod is running")
 		r.setCondition(polecat, ConditionPolecatWorking, metav1.ConditionTrue, "Working",
 			"Agent is working")
 	case corev1.PodSucceeded:
 		polecat.Status.Phase = gastownv1alpha1.PolecatPhaseDone
-		polecat.Status.SessionActive = false
+		polecat.Status.PodActive = false
 		r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "PodSucceeded",
 			"Pod completed successfully")
 		r.setCondition(polecat, ConditionPolecatWorking, metav1.ConditionFalse, "Completed",
 			"Work completed")
 	case corev1.PodFailed:
 		polecat.Status.Phase = gastownv1alpha1.PolecatPhaseStuck
-		polecat.Status.SessionActive = false
+		polecat.Status.PodActive = false
 		r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionFalse, "PodFailed",
 			"Pod failed")
 		r.setCondition(polecat, ConditionPolecatWorking, metav1.ConditionFalse, "Failed",
@@ -273,130 +264,33 @@ func (r *PolecatReconciler) syncStatusFromPod(ctx context.Context, polecat *gast
 	return ctrl.Result{RequeueAfter: PolecatSyncInterval}, nil
 }
 
-// ensureWorkingLocal handles local execution mode via gt CLI
-func (r *PolecatReconciler) ensureWorkingLocal(ctx context.Context, polecat *gastownv1alpha1.Polecat, timer *metrics.ReconcileTimer) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	// Check if polecat exists with timeout
-	gtCtx, cancel := WithGTClientTimeout(ctx)
-	exists, err := r.GTClient.PolecatExists(gtCtx, polecat.Spec.Rig, polecat.Name)
-	cancel()
-	if err != nil {
-		timer.RecordResult(metrics.ResultError)
-		return ctrl.Result{}, gterrors.Wrap(err, "failed to check polecat existence")
-	}
-
-	// If polecat doesn't exist and we have a bead to work on, create via sling
-	if !exists && polecat.Spec.BeadID != "" {
-		log.Info("Creating polecat via gt sling",
-			"beadID", polecat.Spec.BeadID,
-			"rig", polecat.Spec.Rig)
-
-		gtCtx, cancel := WithGTClientTimeout(ctx)
-		err := r.GTClient.Sling(gtCtx, polecat.Spec.BeadID, polecat.Spec.Rig)
-		cancel()
-		if err != nil {
-			r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionFalse, "SlingFailed",
-				err.Error())
-			polecat.Status.Phase = gastownv1alpha1.PolecatPhaseStuck
-
-			if updateErr := r.Status().Update(ctx, polecat); updateErr != nil {
-				timer.RecordResult(metrics.ResultError)
-				return ctrl.Result{}, gterrors.Wrap(updateErr, "failed to update polecat status")
-			}
-
-			timer.RecordResult(metrics.ResultRequeue)
-			return ctrl.Result{RequeueAfter: RequeueDefault}, nil
-		}
-	}
-
-	// Sync status from gt CLI with timeout
-	gtCtx, cancel = WithGTClientTimeout(ctx)
-	status, err := r.GTClient.PolecatStatus(gtCtx, polecat.Spec.Rig, polecat.Name)
-	cancel()
-	if err != nil {
-		log.Error(err, "Failed to get polecat status from gt CLI")
-		r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionFalse, "GTCLIError",
-			err.Error())
-
-		if updateErr := r.Status().Update(ctx, polecat); updateErr != nil {
-			timer.RecordResult(metrics.ResultError)
-			return ctrl.Result{}, gterrors.Wrap(updateErr, "failed to update polecat status")
-		}
-
-		timer.RecordResult(metrics.ResultRequeue)
-		return ctrl.Result{RequeueAfter: RequeueDefault}, nil
-	}
-
-	// Update status from gt CLI response
-	r.syncStatusFromGT(polecat, status)
-	r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "Synced",
-		"Successfully synced with gt CLI")
-	r.setCondition(polecat, ConditionPolecatWorking, metav1.ConditionTrue, "Working",
-		"Polecat is working on assigned bead")
-
-	if err := r.Status().Update(ctx, polecat); err != nil {
-		timer.RecordResult(metrics.ResultError)
-		return ctrl.Result{}, gterrors.Wrap(err, "failed to update polecat status")
-	}
-
-	log.Info("Polecat reconciled (working)",
-		"phase", polecat.Status.Phase,
-		"bead", polecat.Status.AssignedBead,
-		"sessionActive", polecat.Status.SessionActive)
-
-	timer.RecordResult(metrics.ResultSuccess)
-	return ctrl.Result{RequeueAfter: PolecatSyncInterval}, nil
-}
-
-// ensureIdle ensures the polecat is in idle state.
+// ensureIdle ensures the polecat is in idle state (no Pod running).
 func (r *PolecatReconciler) ensureIdle(ctx context.Context, polecat *gastownv1alpha1.Polecat, timer *metrics.ReconcileTimer) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	// Check if polecat exists and has work with timeout
-	gtCtx, cancel := WithGTClientTimeout(ctx)
-	exists, err := r.GTClient.PolecatExists(gtCtx, polecat.Spec.Rig, polecat.Name)
-	cancel()
-	if err != nil {
-		timer.RecordResult(metrics.ResultError)
-		return ctrl.Result{}, gterrors.Wrap(err, "failed to check polecat existence")
-	}
+	podName := fmt.Sprintf("polecat-%s", polecat.Name)
 
-	if exists {
-		// Get current status with timeout
-		gtCtx, cancel := WithGTClientTimeout(ctx)
-		status, err := r.GTClient.PolecatStatus(gtCtx, polecat.Spec.Rig, polecat.Name)
-		cancel()
-		if err != nil {
+	// Check if Pod exists and delete it if so
+	var existingPod corev1.Pod
+	err := r.Get(ctx, client.ObjectKey{Name: podName, Namespace: polecat.Namespace}, &existingPod)
+	if err == nil {
+		// Pod exists, delete it
+		log.Info("Deleting Pod to transition to idle", "podName", podName)
+		if err := r.Delete(ctx, &existingPod); err != nil && !apierrors.IsNotFound(err) {
+			log.Error(err, "Failed to delete Pod")
 			timer.RecordResult(metrics.ResultRequeue)
 			return ctrl.Result{RequeueAfter: RequeueDefault}, nil
 		}
-
-		// If polecat is working, reset it to idle
-		if status.Phase == "Working" || status.AssignedBead != "" {
-			log.Info("Resetting polecat to idle")
-			gtCtx, cancel := WithGTClientTimeout(ctx)
-			err := r.GTClient.PolecatReset(gtCtx, polecat.Spec.Rig, polecat.Name)
-			cancel()
-			if err != nil {
-				log.Error(err, "Failed to reset polecat")
-				r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionFalse, "ResetFailed",
-					err.Error())
-
-				if updateErr := r.Status().Update(ctx, polecat); updateErr != nil {
-					timer.RecordResult(metrics.ResultError)
-					return ctrl.Result{}, gterrors.Wrap(updateErr, "failed to update polecat status")
-				}
-
-				timer.RecordResult(metrics.ResultRequeue)
-				return ctrl.Result{RequeueAfter: RequeueDefault}, nil
-			}
-		}
-
-		r.syncStatusFromGT(polecat, status)
+	} else if !apierrors.IsNotFound(err) {
+		timer.RecordResult(metrics.ResultError)
+		return ctrl.Result{}, gterrors.Wrap(err, "failed to check pod existence")
 	}
 
+	// Update status to idle
 	polecat.Status.Phase = gastownv1alpha1.PolecatPhaseIdle
+	polecat.Status.PodActive = false
+	polecat.Status.PodName = ""
+	polecat.Status.AssignedBead = ""
 	r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "Idle",
 		"Polecat is idle and ready for work")
 	r.setCondition(polecat, ConditionPolecatWorking, metav1.ConditionFalse, "Idle",
@@ -407,21 +301,13 @@ func (r *PolecatReconciler) ensureIdle(ctx context.Context, polecat *gastownv1al
 		return ctrl.Result{}, gterrors.Wrap(err, "failed to update polecat status")
 	}
 
+	log.Info("Polecat is idle")
 	timer.RecordResult(metrics.ResultSuccess)
-	return ctrl.Result{RequeueAfter: PolecatSyncInterval}, nil
+	return ctrl.Result{}, nil
 }
 
 // ensureTerminated ensures the polecat is terminated.
 func (r *PolecatReconciler) ensureTerminated(ctx context.Context, polecat *gastownv1alpha1.Polecat, timer *metrics.ReconcileTimer) (ctrl.Result, error) {
-	// Route based on execution mode
-	if polecat.Spec.ExecutionMode == gastownv1alpha1.ExecutionModeKubernetes {
-		return r.ensureTerminatedKubernetes(ctx, polecat, timer)
-	}
-	return r.ensureTerminatedLocal(ctx, polecat, timer)
-}
-
-// ensureTerminatedKubernetes handles kubernetes termination
-func (r *PolecatReconciler) ensureTerminatedKubernetes(ctx context.Context, polecat *gastownv1alpha1.Polecat, timer *metrics.ReconcileTimer) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	podName := fmt.Sprintf("polecat-%s", polecat.Name)
@@ -450,7 +336,7 @@ func (r *PolecatReconciler) ensureTerminatedKubernetes(ctx context.Context, pole
 
 	// Update status to terminated
 	polecat.Status.Phase = gastownv1alpha1.PolecatPhaseTerminated
-	polecat.Status.SessionActive = false
+	polecat.Status.PodActive = false
 	polecat.Status.PodName = ""
 	r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "Terminated",
 		"Polecat has been terminated")
@@ -460,97 +346,9 @@ func (r *PolecatReconciler) ensureTerminatedKubernetes(ctx context.Context, pole
 		return ctrl.Result{}, gterrors.Wrap(err, "failed to update status")
 	}
 
-	log.Info("Polecat terminated (kubernetes mode)")
+	log.Info("Polecat terminated")
 	timer.RecordResult(metrics.ResultSuccess)
 	return ctrl.Result{}, nil
-}
-
-// ensureTerminatedLocal handles local termination via gt CLI
-func (r *PolecatReconciler) ensureTerminatedLocal(ctx context.Context, polecat *gastownv1alpha1.Polecat, timer *metrics.ReconcileTimer) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	// Check if polecat exists with timeout
-	gtCtx, cancel := WithGTClientTimeout(ctx)
-	exists, err := r.GTClient.PolecatExists(gtCtx, polecat.Spec.Rig, polecat.Name)
-	cancel()
-	if err != nil {
-		timer.RecordResult(metrics.ResultError)
-		return ctrl.Result{}, gterrors.Wrap(err, "failed to check polecat existence")
-	}
-
-	if exists {
-		// Get current status to check for uncommitted work with timeout
-		gtCtx, cancel := WithGTClientTimeout(ctx)
-		status, err := r.GTClient.PolecatStatus(gtCtx, polecat.Spec.Rig, polecat.Name)
-		cancel()
-		if err == nil && status.CleanupStatus != "clean" {
-			// Don't nuke if there's uncommitted work
-			log.Info("Polecat has uncommitted work, refusing to terminate",
-				"cleanupStatus", status.CleanupStatus)
-			r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionFalse, "UncommittedWork",
-				"Polecat has uncommitted work, cannot terminate")
-
-			if updateErr := r.Status().Update(ctx, polecat); updateErr != nil {
-				timer.RecordResult(metrics.ResultError)
-				return ctrl.Result{}, gterrors.Wrap(updateErr, "failed to update polecat status")
-			}
-
-			timer.RecordResult(metrics.ResultRequeue)
-			return ctrl.Result{RequeueAfter: RequeueLong}, nil
-		}
-
-		// Nuke the polecat with timeout
-		log.Info("Terminating polecat")
-		gtCtx, cancel = WithGTClientTimeout(ctx)
-		err = r.GTClient.PolecatNuke(gtCtx, polecat.Spec.Rig, polecat.Name, false)
-		cancel()
-		if err != nil {
-			log.Error(err, "Failed to nuke polecat")
-			r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionFalse, "NukeFailed",
-				err.Error())
-
-			if updateErr := r.Status().Update(ctx, polecat); updateErr != nil {
-				timer.RecordResult(metrics.ResultError)
-				return ctrl.Result{}, gterrors.Wrap(updateErr, "failed to update polecat status")
-			}
-
-			timer.RecordResult(metrics.ResultRequeue)
-			return ctrl.Result{RequeueAfter: RequeueDefault}, nil
-		}
-	}
-
-	// Update status to terminated
-	polecat.Status.Phase = gastownv1alpha1.PolecatPhaseTerminated
-	polecat.Status.SessionActive = false
-	polecat.Status.AssignedBead = ""
-	r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionTrue, "Terminated",
-		"Polecat has been terminated")
-
-	if err := r.Status().Update(ctx, polecat); err != nil {
-		timer.RecordResult(metrics.ResultError)
-		return ctrl.Result{}, gterrors.Wrap(err, "failed to update polecat status")
-	}
-
-	log.Info("Polecat terminated successfully")
-	timer.RecordResult(metrics.ResultSuccess)
-	// Don't requeue - polecat is terminated
-	return ctrl.Result{}, nil
-}
-
-// syncStatusFromGT updates the polecat status from gt CLI response.
-func (r *PolecatReconciler) syncStatusFromGT(polecat *gastownv1alpha1.Polecat, status *gt.PolecatStatus) {
-	polecat.Status.Phase = gastownv1alpha1.PolecatPhase(status.Phase)
-	polecat.Status.AssignedBead = status.AssignedBead
-	polecat.Status.Branch = status.Branch
-	polecat.Status.WorktreePath = status.WorktreePath
-	polecat.Status.TmuxSession = status.TmuxSession
-	polecat.Status.SessionActive = status.SessionActive
-	polecat.Status.CleanupStatus = gastownv1alpha1.CleanupStatus(status.CleanupStatus)
-
-	if !status.LastActivity.IsZero() {
-		t := metav1.NewTime(status.LastActivity)
-		polecat.Status.LastActivity = &t
-	}
 }
 
 // setCondition sets or updates a condition on the Polecat using the standard meta.SetStatusCondition helper.
@@ -576,16 +374,9 @@ func (r *PolecatReconciler) handleDeletion(ctx context.Context, polecat *gastown
 
 	log.Info("Handling Polecat deletion, cleaning up resources")
 
-	// Route cleanup based on execution mode
-	var cleanupErr error
-	if polecat.Spec.ExecutionMode == gastownv1alpha1.ExecutionModeKubernetes {
-		cleanupErr = r.cleanupKubernetes(ctx, polecat)
-	} else {
-		cleanupErr = r.cleanupLocal(ctx, polecat)
-	}
-
-	if cleanupErr != nil {
-		log.Error(cleanupErr, "Failed to cleanup Polecat resources")
+	// Cleanup Pod
+	if err := r.cleanupPod(ctx, polecat); err != nil {
+		log.Error(err, "Failed to cleanup Polecat Pod")
 		timer.RecordResult(metrics.ResultRequeue)
 		return ctrl.Result{RequeueAfter: RequeueDefault}, nil
 	}
@@ -602,8 +393,8 @@ func (r *PolecatReconciler) handleDeletion(ctx context.Context, polecat *gastown
 	return ctrl.Result{}, nil
 }
 
-// cleanupKubernetes deletes the Pod for a kubernetes-mode Polecat.
-func (r *PolecatReconciler) cleanupKubernetes(ctx context.Context, polecat *gastownv1alpha1.Polecat) error {
+// cleanupPod deletes the Pod for a Polecat.
+func (r *PolecatReconciler) cleanupPod(ctx context.Context, polecat *gastownv1alpha1.Polecat) error {
 	log := logf.FromContext(ctx)
 	podName := fmt.Sprintf("polecat-%s", polecat.Name)
 
@@ -620,34 +411,6 @@ func (r *PolecatReconciler) cleanupKubernetes(ctx context.Context, polecat *gast
 	log.Info("Deleting Pod for Polecat cleanup", "podName", podName)
 	if err := r.Delete(ctx, &existingPod); err != nil && !apierrors.IsNotFound(err) {
 		return gterrors.Wrap(err, "failed to delete pod")
-	}
-
-	return nil
-}
-
-// cleanupLocal nukes the polecat via gt CLI.
-func (r *PolecatReconciler) cleanupLocal(ctx context.Context, polecat *gastownv1alpha1.Polecat) error {
-	log := logf.FromContext(ctx)
-
-	gtCtx, cancel := WithGTClientTimeout(ctx)
-	exists, err := r.GTClient.PolecatExists(gtCtx, polecat.Spec.Rig, polecat.Name)
-	cancel()
-	if err != nil {
-		return gterrors.Wrap(err, "failed to check polecat existence")
-	}
-
-	if !exists {
-		log.Info("Polecat already cleaned up")
-		return nil
-	}
-
-	log.Info("Nuking polecat via gt CLI", "rig", polecat.Spec.Rig, "name", polecat.Name)
-	// Force nuke on deletion - we're deleting the resource anyway
-	gtCtx, cancel = WithGTClientTimeout(ctx)
-	err = r.GTClient.PolecatNuke(gtCtx, polecat.Spec.Rig, polecat.Name, true)
-	cancel()
-	if err != nil {
-		return gterrors.Wrap(err, "failed to nuke polecat")
 	}
 
 	return nil

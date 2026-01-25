@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"os"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,38 +29,35 @@ import (
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	gterrors "github.com/org/gastown-operator/pkg/errors"
-	"github.com/org/gastown-operator/pkg/gt"
 	"github.com/org/gastown-operator/pkg/metrics"
 )
 
 const (
-	// RigSyncInterval is how often we re-sync with gt CLI.
+	// RigSyncInterval is how often we re-sync rig status.
 	// Uses RequeueDefault for normal sync operations.
 	RigSyncInterval = RequeueDefault
 
 	// Condition types for Rig.
 	// See constants.go for the condition naming convention (unprefixed values).
 
-	// ConditionRigExists indicates the rig's local path exists on the filesystem.
-	// This is a prerequisite for the rig to be Ready.
-	ConditionRigExists = "Exists"
-
 	// ConditionRigReady uses the standard Ready condition.
 	ConditionRigReady = ConditionReady
 )
 
-// RigReconciler reconciles a Rig object
+// RigReconciler reconciles a Rig object.
+// It aggregates status from child Polecats and Convoys.
 type RigReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	GTClient gt.ClientInterface
+	Scheme *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=rigs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=rigs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=rigs/finalizers,verbs=update
+// +kubebuilder:rbac:groups=gastown.gastown.io,resources=polecats,verbs=get;list;watch
+// +kubebuilder:rbac:groups=gastown.gastown.io,resources=convoys,verbs=get;list;watch
 
-// Reconcile syncs the Rig CRD with the actual rig state from gt CLI.
+// Reconcile aggregates status from Polecats and Convoys in the Rig.
 func (r *RigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	timer := metrics.NewReconcileTimer("rig")
@@ -76,32 +72,11 @@ func (r *RigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	log.Info("Reconciling Rig", "name", rig.Name)
 
-	// Check if rig path exists on filesystem
-	if !r.rigPathExists(rig.Spec.LocalPath) {
-		log.Info("Rig path does not exist", "path", rig.Spec.LocalPath)
-		r.setCondition(&rig, ConditionRigExists, metav1.ConditionFalse, "PathNotFound",
-			"Rig path does not exist on filesystem")
-		rig.Status.Phase = gastownv1alpha1.RigPhaseDegraded
-
-		if err := r.Status().Update(ctx, &rig); err != nil {
-			timer.RecordResult(metrics.ResultError)
-			return ctrl.Result{}, gterrors.Wrap(err, "failed to update rig status")
-		}
-
-		timer.RecordResult(metrics.ResultRequeue)
-		return ctrl.Result{RequeueAfter: RequeueLong}, nil
-	}
-
-	r.setCondition(&rig, ConditionRigExists, metav1.ConditionTrue, "PathExists",
-		"Rig path exists on filesystem")
-
-	// Query gt CLI for rig status with timeout to prevent hung CLI from blocking
-	gtCtx, cancel := WithGTClientTimeout(ctx)
-	defer cancel()
-	status, err := r.GTClient.RigStatus(gtCtx, rig.Name)
-	if err != nil {
-		log.Error(err, "Failed to get rig status from gt CLI")
-		r.setCondition(&rig, ConditionRigReady, metav1.ConditionFalse, "GTCLIError",
+	// Count polecats for this rig
+	var polecatList gastownv1alpha1.PolecatList
+	if err := r.List(ctx, &polecatList, client.MatchingFields{"spec.rig": rig.Name}); err != nil {
+		log.Error(err, "Failed to list polecats for rig")
+		r.setCondition(&rig, ConditionRigReady, metav1.ConditionFalse, "ListFailed",
 			err.Error())
 		rig.Status.Phase = gastownv1alpha1.RigPhaseDegraded
 
@@ -111,22 +86,29 @@ func (r *RigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		}
 
 		timer.RecordResult(metrics.ResultRequeue)
-		// Retry sooner for transient errors
-		if gterrors.IsRetryable(err) {
-			return ctrl.Result{RequeueAfter: RequeueRetryTransient}, nil
-		}
-		return ctrl.Result{RequeueAfter: RequeueLong}, nil
+		return ctrl.Result{RequeueAfter: RequeueDefault}, nil
 	}
 
-	// Update status from gt CLI response
-	rig.Status.Phase = gastownv1alpha1.RigPhaseReady
-	rig.Status.PolecatCount = status.PolecatCount
-	rig.Status.ActiveConvoys = status.ActiveConvoys
-	now := metav1.Now()
-	rig.Status.LastSyncTime = &now
+	// Count convoys for this rig
+	var convoyList gastownv1alpha1.ConvoyList
+	activeConvoys := 0
+	if err := r.List(ctx, &convoyList); err != nil {
+		log.Error(err, "Failed to list convoys")
+	} else {
+		for _, convoy := range convoyList.Items {
+			if convoy.Status.Phase == gastownv1alpha1.ConvoyPhaseInProgress {
+				activeConvoys++
+			}
+		}
+	}
 
-	r.setCondition(&rig, ConditionRigReady, metav1.ConditionTrue, "Synced",
-		"Successfully synced with gt CLI")
+	// Update status
+	rig.Status.Phase = gastownv1alpha1.RigPhaseReady
+	rig.Status.PolecatCount = len(polecatList.Items)
+	rig.Status.ActiveConvoys = activeConvoys
+
+	r.setCondition(&rig, ConditionRigReady, metav1.ConditionTrue, "Ready",
+		"Rig is ready")
 
 	if err := r.Status().Update(ctx, &rig); err != nil {
 		timer.RecordResult(metrics.ResultError)
@@ -139,15 +121,6 @@ func (r *RigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	timer.RecordResult(metrics.ResultSuccess)
 	return ctrl.Result{RequeueAfter: RigSyncInterval}, nil
-}
-
-// rigPathExists checks if the rig path exists on the filesystem.
-func (r *RigReconciler) rigPathExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
 }
 
 // setCondition sets or updates a condition on the Rig using the standard meta.SetStatusCondition helper.
@@ -164,6 +137,14 @@ func (r *RigReconciler) setCondition(rig *gastownv1alpha1.Rig, condType string, 
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RigReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Add index for looking up polecats by rig name
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gastownv1alpha1.Polecat{}, "spec.rig", func(rawObj client.Object) []string {
+		polecat := rawObj.(*gastownv1alpha1.Polecat)
+		return []string{polecat.Spec.Rig}
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gastownv1alpha1.Rig{}).
 		Named("rig").

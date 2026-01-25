@@ -39,18 +39,6 @@ func TestPolecatCustomValidator_ValidateCreate(t *testing.T) {
 		wantWarning bool
 	}{
 		{
-			name: "valid local polecat",
-			polecat: &Polecat{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-polecat"},
-				Spec: PolecatSpec{
-					Rig:           "test-rig",
-					DesiredState:  PolecatDesiredIdle,
-					ExecutionMode: ExecutionModeLocal,
-				},
-			},
-			wantErr: false,
-		},
-		{
 			name: "valid kubernetes polecat",
 			polecat: &Polecat{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-polecat"},
@@ -69,12 +57,35 @@ func TestPolecatCustomValidator_ValidateCreate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "valid kubernetes polecat with api key",
+			polecat: &Polecat{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-polecat"},
+				Spec: PolecatSpec{
+					Rig:           "test-rig",
+					DesiredState:  PolecatDesiredIdle,
+					ExecutionMode: ExecutionModeKubernetes,
+					Kubernetes: &KubernetesSpec{
+						GitRepository:   "git@github.com:org/repo.git",
+						GitBranch:       "main",
+						GitSecretRef:    SecretReference{Name: "git-secret"},
+						ApiKeySecretRef: &SecretKeyRef{Name: "api-key", Key: "api-key"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "missing rig",
 			polecat: &Polecat{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-polecat"},
 				Spec: PolecatSpec{
 					DesiredState:  PolecatDesiredIdle,
-					ExecutionMode: ExecutionModeLocal,
+					ExecutionMode: ExecutionModeKubernetes,
+					Kubernetes: &KubernetesSpec{
+						GitRepository:        "git@github.com:org/repo.git",
+						GitSecretRef:         SecretReference{Name: "git-secret"},
+						ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
+					},
 				},
 			},
 			wantErr:     true,
@@ -134,7 +145,12 @@ func TestPolecatCustomValidator_ValidateCreate(t *testing.T) {
 				Spec: PolecatSpec{
 					Rig:           "test-rig",
 					DesiredState:  PolecatDesiredWorking,
-					ExecutionMode: ExecutionModeLocal,
+					ExecutionMode: ExecutionModeKubernetes,
+					Kubernetes: &KubernetesSpec{
+						GitRepository:        "git@github.com:org/repo.git",
+						GitSecretRef:         SecretReference{Name: "git-secret"},
+						ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
+					},
 					Resources: &corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("8"),
@@ -153,7 +169,12 @@ func TestPolecatCustomValidator_ValidateCreate(t *testing.T) {
 				Spec: PolecatSpec{
 					Rig:           "test-rig",
 					DesiredState:  PolecatDesiredWorking,
-					ExecutionMode: ExecutionModeLocal,
+					ExecutionMode: ExecutionModeKubernetes,
+					Kubernetes: &KubernetesSpec{
+						GitRepository:        "git@github.com:org/repo.git",
+						GitSecretRef:         SecretReference{Name: "git-secret"},
+						ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
+					},
 					Resources: &corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("4"),
@@ -217,7 +238,12 @@ func TestPolecatCustomValidator_ValidateUpdate(t *testing.T) {
 		Spec: PolecatSpec{
 			Rig:           "test-rig",
 			DesiredState:  PolecatDesiredIdle,
-			ExecutionMode: ExecutionModeLocal,
+			ExecutionMode: ExecutionModeKubernetes,
+			Kubernetes: &KubernetesSpec{
+				GitRepository:        "git@github.com:org/repo.git",
+				GitSecretRef:         SecretReference{Name: "git-secret"},
+				ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
+			},
 		},
 	}
 
@@ -234,7 +260,12 @@ func TestPolecatCustomValidator_ValidateUpdate(t *testing.T) {
 				Spec: PolecatSpec{
 					Rig:           "test-rig",
 					DesiredState:  PolecatDesiredWorking,
-					ExecutionMode: ExecutionModeLocal,
+					ExecutionMode: ExecutionModeKubernetes,
+					Kubernetes: &KubernetesSpec{
+						GitRepository:        "git@github.com:org/repo.git",
+						GitSecretRef:         SecretReference{Name: "git-secret"},
+						ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
+					},
 				},
 			},
 			wantErr: false,
@@ -246,8 +277,13 @@ func TestPolecatCustomValidator_ValidateUpdate(t *testing.T) {
 				Spec: PolecatSpec{
 					Rig:           "test-rig",
 					DesiredState:  PolecatDesiredWorking,
-					ExecutionMode: ExecutionModeLocal,
+					ExecutionMode: ExecutionModeKubernetes,
 					BeadID:        "ap-1234",
+					Kubernetes: &KubernetesSpec{
+						GitRepository:        "git@github.com:org/repo.git",
+						GitSecretRef:         SecretReference{Name: "git-secret"},
+						ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
+					},
 				},
 			},
 			wantErr: false,
@@ -259,19 +295,6 @@ func TestPolecatCustomValidator_ValidateUpdate(t *testing.T) {
 				Spec: PolecatSpec{
 					Rig:           "different-rig",
 					DesiredState:  PolecatDesiredIdle,
-					ExecutionMode: ExecutionModeLocal,
-				},
-			},
-			wantErr:     true,
-			errContains: "spec.rig is immutable",
-		},
-		{
-			name: "invalid update - change execution mode (immutable)",
-			newPolecat: &Polecat{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-polecat"},
-				Spec: PolecatSpec{
-					Rig:           "test-rig",
-					DesiredState:  PolecatDesiredIdle,
 					ExecutionMode: ExecutionModeKubernetes,
 					Kubernetes: &KubernetesSpec{
 						GitRepository:        "git@github.com:org/repo.git",
@@ -281,7 +304,7 @@ func TestPolecatCustomValidator_ValidateUpdate(t *testing.T) {
 				},
 			},
 			wantErr:     true,
-			errContains: "spec.executionMode is immutable",
+			errContains: "spec.rig is immutable",
 		},
 	}
 
@@ -309,7 +332,12 @@ func TestPolecatCustomValidator_ValidateDelete(t *testing.T) {
 		Spec: PolecatSpec{
 			Rig:           "test-rig",
 			DesiredState:  PolecatDesiredIdle,
-			ExecutionMode: ExecutionModeLocal,
+			ExecutionMode: ExecutionModeKubernetes,
+			Kubernetes: &KubernetesSpec{
+				GitRepository:        "git@github.com:org/repo.git",
+				GitSecretRef:         SecretReference{Name: "git-secret"},
+				ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
+			},
 		},
 	}
 
@@ -338,7 +366,7 @@ func TestPolecatCustomDefaulter_Default(t *testing.T) {
 				},
 			},
 			checkDefaults: func(t *testing.T, p *Polecat) {
-				assert.Equal(t, ExecutionModeLocal, p.Spec.ExecutionMode)
+				assert.Equal(t, ExecutionModeKubernetes, p.Spec.ExecutionMode)
 			},
 		},
 		{
@@ -350,7 +378,7 @@ func TestPolecatCustomDefaulter_Default(t *testing.T) {
 				},
 			},
 			checkDefaults: func(t *testing.T, p *Polecat) {
-				assert.Equal(t, AgentTypeOpenCode, p.Spec.Agent)
+				assert.Equal(t, AgentTypeClaudeCode, p.Spec.Agent)
 			},
 		},
 		{

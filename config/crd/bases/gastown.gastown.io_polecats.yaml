@@ -18,29 +18,22 @@ spec:
     - jsonPath: .spec.rig
       name: Rig
       type: string
-    - jsonPath: .spec.executionMode
-      name: Mode
-      type: string
-    - jsonPath: .spec.agent
-      name: Agent
-      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
     - jsonPath: .status.assignedBead
       name: Bead
       type: string
+    - jsonPath: .status.podName
+      name: Pod
+      type: string
+    - jsonPath: .status.podActive
+      name: Active
+      type: boolean
     - jsonPath: .status.agentModel
       name: Model
       priority: 1
       type: string
-    - jsonPath: .status.podName
-      name: Pod
-      priority: 1
-      type: string
-    - jsonPath: .status.sessionActive
-      name: Session
-      type: boolean
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -75,10 +68,7 @@ spec:
                 default: claude-code
                 description: Agent is the coding agent type to use
                 enum:
-                - opencode
                 - claude-code
-                - aider
-                - custom
                 type: string
               agentConfig:
                 description: AgentConfig provides configuration for the coding agent
@@ -317,10 +307,9 @@ spec:
                 - Terminated
                 type: string
               executionMode:
-                default: local
+                default: kubernetes
                 description: ExecutionMode determines where the polecat runs
                 enum:
-                - local
                 - kubernetes
                 type: string
               kubernetes:
@@ -566,10 +555,7 @@ spec:
               agent:
                 description: Agent is the agent type currently running
                 enum:
-                - opencode
                 - claude-code
-                - aider
-                - custom
                 type: string
               agentImage:
                 description: AgentImage is the container image being used
@@ -582,14 +568,6 @@ spec:
                 type: string
               branch:
                 description: Branch is the git branch the polecat is working on
-                type: string
-              cleanupStatus:
-                description: CleanupStatus indicates the git workspace state
-                enum:
-                - clean
-                - has_uncommitted
-                - has_unpushed
-                - unknown
                 type: string
               conditions:
                 description: Conditions represent the current state of the Polecat
@@ -666,19 +644,11 @@ spec:
                 - Stuck
                 - Terminated
                 type: string
-              podName:
-                description: PodName is the name of the Pod running the agent (kubernetes
-                  mode)
-                type: string
-              sessionActive:
-                description: SessionActive indicates if the tmux session is running
-                  (local mode)
+              podActive:
+                description: PodActive indicates if the Pod is running
                 type: boolean
-              tmuxSession:
-                description: TmuxSession is the tmux session name (local mode)
-                type: string
-              worktreePath:
-                description: WorktreePath is the filesystem path to the worktree
+              podName:
+                description: PodName is the name of the Pod running the agent
                 type: string
             type: object
         type: object

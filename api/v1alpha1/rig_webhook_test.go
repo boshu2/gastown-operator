@@ -186,115 +186,6 @@ func TestValidateBeadsPrefix(t *testing.T) {
 	}
 }
 
-func TestValidateLocalPath(t *testing.T) {
-	tests := []struct {
-		name    string
-		path    string
-		wantErr bool
-		errMsg  string
-	}{
-		{
-			name:    "valid absolute path",
-			path:    "/home/user/projects/myrig",
-			wantErr: false,
-		},
-		{
-			name:    "valid short absolute path",
-			path:    "/tmp/rig",
-			wantErr: false,
-		},
-		{
-			name:    "empty path",
-			path:    "",
-			wantErr: true,
-			errMsg:  "localPath is required",
-		},
-		{
-			name:    "relative path",
-			path:    "relative/path",
-			wantErr: true,
-			errMsg:  "must be an absolute path",
-		},
-		{
-			name:    "path traversal attempt",
-			path:    "/home/../etc/passwd",
-			wantErr: true,
-			errMsg:  "path cannot contain parent directory references",
-		},
-		{
-			name:    "path traversal attempt - middle",
-			path:    "/home/user/../../../etc/shadow",
-			wantErr: true,
-			errMsg:  "path cannot contain parent directory references",
-		},
-		{
-			name:    "path traversal attempt - trailing",
-			path:    "/home/user/rig/..",
-			wantErr: true,
-			errMsg:  "path cannot contain parent directory references",
-		},
-		{
-			name:    "path too long",
-			path:    "/" + string(make([]byte, 4100)),
-			wantErr: true,
-			errMsg:  "path length exceeds 4096 characters",
-		},
-		{
-			name:    "null byte injection",
-			path:    "/home/user/rig\x00/etc/passwd",
-			wantErr: true,
-			errMsg:  "path cannot contain null bytes",
-		},
-		{
-			name:    "excessive slashes",
-			path:    "/home///user/rig",
-			wantErr: true,
-			errMsg:  "path cannot contain more than two consecutive slashes",
-		},
-		{
-			name:    "sensitive path - etc",
-			path:    "/etc/shadow",
-			wantErr: true,
-			errMsg:  "is in a sensitive directory",
-		},
-		{
-			name:    "sensitive path - proc",
-			path:    "/proc/self/environ",
-			wantErr: true,
-			errMsg:  "is in a sensitive directory",
-		},
-		{
-			name:    "sensitive path - root home",
-			path:    "/root/.ssh",
-			wantErr: true,
-			errMsg:  "is in a sensitive directory",
-		},
-		{
-			name:    "sensitive path - dev",
-			path:    "/dev/sda1",
-			wantErr: true,
-			errMsg:  "is in a sensitive directory",
-		},
-		{
-			name:    "valid path with double slash",
-			path:    "/home/user//rig",
-			wantErr: false, // double slash is OK, triple is not
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateLocalPath(tt.path)
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
 func TestValidateNamepoolTheme(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -352,7 +243,6 @@ func TestRigCustomValidator_ValidateCreate(t *testing.T) {
 				Spec: RigSpec{
 					GitURL:      "git@github.com:org/repo.git",
 					BeadsPrefix: "test",
-					LocalPath:   "/home/user/rig",
 				},
 			},
 			wantErr: false,
@@ -364,7 +254,6 @@ func TestRigCustomValidator_ValidateCreate(t *testing.T) {
 				Spec: RigSpec{
 					GitURL:      "git@github.com:org/repo.git",
 					BeadsPrefix: "test",
-					LocalPath:   "/home/user/rig",
 					Settings: RigSettings{
 						MaxPolecats: 75,
 					},
@@ -380,7 +269,6 @@ func TestRigCustomValidator_ValidateCreate(t *testing.T) {
 				Spec: RigSpec{
 					GitURL:      "not-a-valid-url",
 					BeadsPrefix: "test",
-					LocalPath:   "/home/user/rig",
 				},
 			},
 			wantErr: true,
@@ -392,19 +280,6 @@ func TestRigCustomValidator_ValidateCreate(t *testing.T) {
 				Spec: RigSpec{
 					GitURL:      "git@github.com:org/repo.git",
 					BeadsPrefix: "X",
-					LocalPath:   "/home/user/rig",
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid local path",
-			rig: &Rig{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-rig"},
-				Spec: RigSpec{
-					GitURL:      "git@github.com:org/repo.git",
-					BeadsPrefix: "test",
-					LocalPath:   "relative/path",
 				},
 			},
 			wantErr: true,
@@ -416,7 +291,6 @@ func TestRigCustomValidator_ValidateCreate(t *testing.T) {
 				Spec: RigSpec{
 					GitURL:      "git@github.com:org/repo.git",
 					BeadsPrefix: "test",
-					LocalPath:   "/home/user/rig",
 					Settings: RigSettings{
 						NamepoolTheme: "invalid-theme",
 					},
@@ -450,7 +324,6 @@ func TestRigCustomValidator_ValidateUpdate(t *testing.T) {
 		Spec: RigSpec{
 			GitURL:      "git@github.com:org/repo.git",
 			BeadsPrefix: "test",
-			LocalPath:   "/home/user/rig",
 		},
 	}
 
@@ -467,19 +340,6 @@ func TestRigCustomValidator_ValidateUpdate(t *testing.T) {
 				Spec: RigSpec{
 					GitURL:      "git@github.com:org/new-repo.git",
 					BeadsPrefix: "test",
-					LocalPath:   "/home/user/rig",
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid update - change local path",
-			newRig: &Rig{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-rig"},
-				Spec: RigSpec{
-					GitURL:      "git@github.com:org/repo.git",
-					BeadsPrefix: "test",
-					LocalPath:   "/home/user/new-rig",
 				},
 			},
 			wantErr: false,
@@ -491,7 +351,6 @@ func TestRigCustomValidator_ValidateUpdate(t *testing.T) {
 				Spec: RigSpec{
 					GitURL:      "git@github.com:org/repo.git",
 					BeadsPrefix: "newprefix",
-					LocalPath:   "/home/user/rig",
 				},
 			},
 			wantErr: true,
@@ -521,7 +380,6 @@ func TestRigCustomValidator_ValidateDelete(t *testing.T) {
 		Spec: RigSpec{
 			GitURL:      "git@github.com:org/repo.git",
 			BeadsPrefix: "test",
-			LocalPath:   "/home/user/rig",
 		},
 	}
 
@@ -529,8 +387,6 @@ func TestRigCustomValidator_ValidateDelete(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, warnings)
 }
-
-// Note: WrongType tests removed - generics enforce type safety at compile time
 
 func TestRigCustomDefaulter_Default(t *testing.T) {
 	defaulter := &RigCustomDefaulter{}
@@ -549,7 +405,6 @@ func TestRigCustomDefaulter_Default(t *testing.T) {
 				Spec: RigSpec{
 					GitURL:      "git@github.com:org/repo.git",
 					BeadsPrefix: "test",
-					LocalPath:   "/home/user/rig",
 				},
 			},
 			wantMaxPolecats:   8,
@@ -562,7 +417,6 @@ func TestRigCustomDefaulter_Default(t *testing.T) {
 				Spec: RigSpec{
 					GitURL:      "git@github.com:org/repo.git",
 					BeadsPrefix: "test",
-					LocalPath:   "/home/user/rig",
 					Settings: RigSettings{
 						MaxPolecats: 20,
 					},
@@ -578,7 +432,6 @@ func TestRigCustomDefaulter_Default(t *testing.T) {
 				Spec: RigSpec{
 					GitURL:      "git@github.com:org/repo.git",
 					BeadsPrefix: "test",
-					LocalPath:   "/home/user/rig",
 					Settings: RigSettings{
 						NamepoolTheme: "minerals",
 					},
@@ -594,7 +447,6 @@ func TestRigCustomDefaulter_Default(t *testing.T) {
 				Spec: RigSpec{
 					GitURL:      "git@github.com:org/repo.git",
 					BeadsPrefix: "test",
-					LocalPath:   "/home/user/rig",
 					Settings: RigSettings{
 						MaxPolecats:   15,
 						NamepoolTheme: "wasteland",
@@ -615,5 +467,3 @@ func TestRigCustomDefaulter_Default(t *testing.T) {
 		})
 	}
 }
-
-// Note: WrongType tests removed - generics enforce type safety at compile time

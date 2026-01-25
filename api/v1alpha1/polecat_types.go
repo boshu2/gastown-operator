@@ -53,25 +53,22 @@ const (
 )
 
 // ExecutionMode determines where the polecat runs
-// +kubebuilder:validation:Enum=local;kubernetes
+// Only kubernetes mode is supported - polecats run as Pods
+// +kubebuilder:validation:Enum=kubernetes
 type ExecutionMode string
 
 const (
-	// ExecutionModeLocal runs via gt CLI and tmux (default)
-	ExecutionModeLocal ExecutionMode = "local"
 	// ExecutionModeKubernetes runs as a Pod in the cluster
 	ExecutionModeKubernetes ExecutionMode = "kubernetes"
 )
 
 // AgentType represents the coding agent to use
-// +kubebuilder:validation:Enum=opencode;claude-code;aider;custom
+// Currently only claude-code is supported
+// +kubebuilder:validation:Enum=claude-code
 type AgentType string
 
 const (
-	AgentTypeOpenCode   AgentType = "opencode"
 	AgentTypeClaudeCode AgentType = "claude-code"
-	AgentTypeAider      AgentType = "aider"
-	AgentTypeCustom     AgentType = "custom"
 )
 
 // LLMProvider represents the LLM provider to use
@@ -225,7 +222,7 @@ type PolecatSpec struct {
 	TaskDescription string `json:"taskDescription,omitempty"`
 
 	// ExecutionMode determines where the polecat runs
-	// +kubebuilder:default=local
+	// +kubebuilder:default=kubernetes
 	// +optional
 	ExecutionMode ExecutionMode `json:"executionMode,omitempty"`
 
@@ -268,17 +265,6 @@ const (
 	PolecatPhaseTerminated PolecatPhase = "Terminated"
 )
 
-// CleanupStatus represents the git workspace state
-// +kubebuilder:validation:Enum=clean;has_uncommitted;has_unpushed;unknown
-type CleanupStatus string
-
-const (
-	CleanupStatusClean       CleanupStatus = "clean"
-	CleanupStatusUncommitted CleanupStatus = "has_uncommitted"
-	CleanupStatusUnpushed    CleanupStatus = "has_unpushed"
-	CleanupStatusUnknown     CleanupStatus = "unknown"
-)
-
 // PolecatStatus defines the observed state of Polecat
 type PolecatStatus struct {
 	// Phase is the current lifecycle phase
@@ -293,28 +279,16 @@ type PolecatStatus struct {
 	// +optional
 	Branch string `json:"branch,omitempty"`
 
-	// WorktreePath is the filesystem path to the worktree
-	// +optional
-	WorktreePath string `json:"worktreePath,omitempty"`
-
-	// TmuxSession is the tmux session name (local mode)
-	// +optional
-	TmuxSession string `json:"tmuxSession,omitempty"`
-
-	// SessionActive indicates if the tmux session is running (local mode)
-	SessionActive bool `json:"sessionActive,omitempty"`
-
-	// PodName is the name of the Pod running the agent (kubernetes mode)
+	// PodName is the name of the Pod running the agent
 	// +optional
 	PodName string `json:"podName,omitempty"`
+
+	// PodActive indicates if the Pod is running
+	PodActive bool `json:"podActive,omitempty"`
 
 	// LastActivity is when the polecat last showed activity
 	// +optional
 	LastActivity *metav1.Time `json:"lastActivity,omitempty"`
-
-	// CleanupStatus indicates the git workspace state
-	// +optional
-	CleanupStatus CleanupStatus `json:"cleanupStatus,omitempty"`
 
 	// Agent is the agent type currently running
 	// +optional
@@ -338,13 +312,11 @@ type PolecatStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Rig",type="string",JSONPath=".spec.rig"
-// +kubebuilder:printcolumn:name="Mode",type="string",JSONPath=".spec.executionMode"
-// +kubebuilder:printcolumn:name="Agent",type="string",JSONPath=".spec.agent"
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Bead",type="string",JSONPath=".status.assignedBead"
+// +kubebuilder:printcolumn:name="Pod",type="string",JSONPath=".status.podName"
+// +kubebuilder:printcolumn:name="Active",type="boolean",JSONPath=".status.podActive"
 // +kubebuilder:printcolumn:name="Model",type="string",JSONPath=".status.agentModel",priority=1
-// +kubebuilder:printcolumn:name="Pod",type="string",JSONPath=".status.podName",priority=1
-// +kubebuilder:printcolumn:name="Session",type="boolean",JSONPath=".status.sessionActive"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // Polecat is the Schema for the polecats API.

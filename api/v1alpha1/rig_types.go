@@ -31,10 +31,6 @@ type RigSpec struct {
 	// +kubebuilder:validation:Pattern=`^[a-z]{2,10}$`
 	BeadsPrefix string `json:"beadsPrefix"`
 
-	// LocalPath is the path on the operator's host filesystem
-	// +kubebuilder:validation:Required
-	LocalPath string `json:"localPath"`
-
 	// Settings for the rig
 	// +optional
 	Settings RigSettings `json:"settings,omitempty"`
@@ -75,10 +71,6 @@ type RigStatus struct {
 
 	// ActiveConvoys is the number of convoys currently in progress
 	ActiveConvoys int `json:"activeConvoys,omitempty"`
-
-	// LastSyncTime is when the operator last synced with gt CLI
-	// +optional
-	LastSyncTime *metav1.Time `json:"lastSyncTime,omitempty"`
 
 	// Conditions represent the current state of the Rig resource
 	// +listType=map

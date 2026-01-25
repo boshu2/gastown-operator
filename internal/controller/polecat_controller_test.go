@@ -18,8 +18,6 @@ package controller
 
 import (
 	"context"
-	"errors"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -30,24 +28,20 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
-	"github.com/org/gastown-operator/pkg/gt"
 )
 
 var _ = Describe("Polecat Controller", func() {
 	var (
 		ctx         context.Context
 		reconciler  *PolecatReconciler
-		mockClient  *gt.MockClient
 		testPolecat *gastownv1alpha1.Polecat
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		mockClient = &gt.MockClient{}
 		reconciler = &PolecatReconciler{
-			Client:   k8sClient,
-			Scheme:   k8sClient.Scheme(),
-			GTClient: mockClient,
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
 		}
 
 		testPolecat = &gastownv1alpha1.Polecat{
@@ -57,9 +51,20 @@ var _ = Describe("Polecat Controller", func() {
 				Finalizers: []string{"gastown.io/polecat-cleanup"},
 			},
 			Spec: gastownv1alpha1.PolecatSpec{
-				Rig:          "test-rig",
-				DesiredState: gastownv1alpha1.PolecatDesiredWorking,
-				BeadID:       "test-bead-123",
+				Rig:           "test-rig",
+				DesiredState:  gastownv1alpha1.PolecatDesiredWorking,
+				BeadID:        "test-bead-123",
+				ExecutionMode: gastownv1alpha1.ExecutionModeKubernetes,
+				Kubernetes: &gastownv1alpha1.KubernetesSpec{
+					GitRepository: "git@github.com:example/repo.git",
+					GitBranch:     "main",
+					GitSecretRef: gastownv1alpha1.SecretReference{
+						Name: "git-creds",
+					},
+					ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{
+						Name: "claude-creds",
+					},
+				},
 			},
 		}
 	})
@@ -76,302 +81,6 @@ var _ = Describe("Polecat Controller", func() {
 		}
 	})
 
-	Context("When ensuring Working state", func() {
-		It("should create polecat via sling when it doesn't exist", func() {
-			var slingCalled bool
-			var slingBeadID, slingRig string
-
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return false, nil
-			}
-			mockClient.SlingFunc = func(ctx context.Context, beadID, rig string) error {
-				slingCalled = true
-				slingBeadID = beadID
-				slingRig = rig
-				return nil
-			}
-			mockClient.PolecatStatusFunc = func(ctx context.Context, rig, name string) (*gt.PolecatStatus, error) {
-				return &gt.PolecatStatus{
-					Name:          name,
-					Phase:         "Working",
-					AssignedBead:  "test-bead-123",
-					Branch:        "polecat/test-polecat",
-					TmuxSession:   "gt-test-rig-test-polecat",
-					SessionActive: true,
-				}, nil
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			result, err := reconciler.Reconcile(ctx, req)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(PolecatSyncInterval))
-			Expect(slingCalled).To(BeTrue())
-			Expect(slingBeadID).To(Equal("test-bead-123"))
-			Expect(slingRig).To(Equal("test-rig"))
-
-			// Verify status was updated
-			var updated gastownv1alpha1.Polecat
-			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
-			Expect(updated.Status.Phase).To(Equal(gastownv1alpha1.PolecatPhaseWorking))
-			Expect(updated.Status.AssignedBead).To(Equal("test-bead-123"))
-			Expect(updated.Status.SessionActive).To(BeTrue())
-		})
-
-		It("should handle sling failure gracefully", func() {
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return false, nil
-			}
-			mockClient.SlingFunc = func(ctx context.Context, beadID, rig string) error {
-				return errors.New("sling failed: no available slots")
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			result, err := reconciler.Reconcile(ctx, req)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(30 * time.Second))
-
-			// Verify status shows stuck
-			var updated gastownv1alpha1.Polecat
-			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
-			Expect(updated.Status.Phase).To(Equal(gastownv1alpha1.PolecatPhaseStuck))
-
-			// Verify condition was set
-			var foundCondition bool
-			for _, cond := range updated.Status.Conditions {
-				if cond.Type == ConditionPolecatReady && cond.Status == metav1.ConditionFalse {
-					foundCondition = true
-					Expect(cond.Reason).To(Equal("SlingFailed"))
-					break
-				}
-			}
-			Expect(foundCondition).To(BeTrue())
-		})
-	})
-
-	Context("When ensuring Idle state", func() {
-		It("should handle idle polecat that does not exist locally", func() {
-			testPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredIdle
-
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return false, nil // Polecat doesn't exist locally
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			result, err := reconciler.Reconcile(ctx, req)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(PolecatSyncInterval))
-
-			// Verify status shows idle
-			var updated gastownv1alpha1.Polecat
-			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
-			Expect(updated.Status.Phase).To(Equal(gastownv1alpha1.PolecatPhaseIdle))
-		})
-
-		It("should handle status error during idle check", func() {
-			testPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredIdle
-
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return true, nil
-			}
-			mockClient.PolecatStatusFunc = func(ctx context.Context, rig, name string) (*gt.PolecatStatus, error) {
-				return nil, errors.New("status unavailable")
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			result, err := reconciler.Reconcile(ctx, req)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(30 * time.Second))
-		})
-
-		It("should reset a working polecat to idle", func() {
-			var resetCalled bool
-
-			testPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredIdle
-
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return true, nil
-			}
-			mockClient.PolecatStatusFunc = func(ctx context.Context, rig, name string) (*gt.PolecatStatus, error) {
-				return &gt.PolecatStatus{
-					Name:          name,
-					Phase:         "Working",
-					AssignedBead:  "some-bead",
-					SessionActive: true,
-				}, nil
-			}
-			mockClient.PolecatResetFunc = func(ctx context.Context, rig, name string) error {
-				resetCalled = true
-				return nil
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			result, err := reconciler.Reconcile(ctx, req)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(PolecatSyncInterval))
-			Expect(resetCalled).To(BeTrue())
-
-			// Verify status shows idle
-			var updated gastownv1alpha1.Polecat
-			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
-			Expect(updated.Status.Phase).To(Equal(gastownv1alpha1.PolecatPhaseIdle))
-		})
-
-		It("should handle reset failure with proper error condition (P8 fix)", func() {
-			testPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredIdle
-
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return true, nil
-			}
-			mockClient.PolecatStatusFunc = func(ctx context.Context, rig, name string) (*gt.PolecatStatus, error) {
-				return &gt.PolecatStatus{
-					Name:          name,
-					Phase:         "Working",
-					AssignedBead:  "some-bead",
-					SessionActive: true,
-				}, nil
-			}
-			mockClient.PolecatResetFunc = func(ctx context.Context, rig, name string) error {
-				return errors.New("reset failed: tmux session locked")
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			result, err := reconciler.Reconcile(ctx, req)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(30 * time.Second))
-
-			// Verify condition shows reset failure (P8 fix verification)
-			var updated gastownv1alpha1.Polecat
-			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
-
-			var foundCondition bool
-			for _, cond := range updated.Status.Conditions {
-				if cond.Type == ConditionPolecatReady && cond.Status == metav1.ConditionFalse {
-					foundCondition = true
-					Expect(cond.Reason).To(Equal("ResetFailed"))
-					break
-				}
-			}
-			Expect(foundCondition).To(BeTrue(), "Expected ResetFailed condition (P8 fix)")
-		})
-	})
-
-	Context("When ensuring Terminated state", func() {
-		It("should refuse to terminate polecat with uncommitted work", func() {
-			testPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredTerminated
-
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return true, nil
-			}
-			mockClient.PolecatStatusFunc = func(ctx context.Context, rig, name string) (*gt.PolecatStatus, error) {
-				return &gt.PolecatStatus{
-					Name:          name,
-					Phase:         "Working",
-					CleanupStatus: "dirty",
-				}, nil
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			result, err := reconciler.Reconcile(ctx, req)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(time.Minute))
-
-			// Verify condition shows uncommitted work
-			var updated gastownv1alpha1.Polecat
-			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
-
-			var foundCondition bool
-			for _, cond := range updated.Status.Conditions {
-				if cond.Type == ConditionPolecatReady && cond.Reason == "UncommittedWork" {
-					foundCondition = true
-					break
-				}
-			}
-			Expect(foundCondition).To(BeTrue())
-		})
-
-		It("should terminate clean polecat successfully", func() {
-			var nukeCalled bool
-
-			testPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredTerminated
-
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return true, nil
-			}
-			mockClient.PolecatStatusFunc = func(ctx context.Context, rig, name string) (*gt.PolecatStatus, error) {
-				return &gt.PolecatStatus{
-					Name:          name,
-					Phase:         "Idle",
-					CleanupStatus: "clean",
-				}, nil
-			}
-			mockClient.PolecatNukeFunc = func(ctx context.Context, rig, name string, force bool) error {
-				nukeCalled = true
-				Expect(force).To(BeFalse())
-				return nil
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			result, err := reconciler.Reconcile(ctx, req)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeZero())
-			Expect(nukeCalled).To(BeTrue())
-
-			// Verify status shows terminated
-			var updated gastownv1alpha1.Polecat
-			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
-			Expect(updated.Status.Phase).To(Equal(gastownv1alpha1.PolecatPhaseTerminated))
-			Expect(updated.Status.SessionActive).To(BeFalse())
-		})
-	})
-
 	Context("When polecat does not exist", func() {
 		It("should return without error", func() {
 			req := ctrl.Request{NamespacedName: types.NamespacedName{
@@ -385,35 +94,7 @@ var _ = Describe("Polecat Controller", func() {
 		})
 	})
 
-	Context("When using kubernetes execution mode", func() {
-		var k8sPolecat *gastownv1alpha1.Polecat
-
-		BeforeEach(func() {
-			k8sPolecat = &gastownv1alpha1.Polecat{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "k8s-polecat",
-					Namespace:  "default",
-					Finalizers: []string{"gastown.io/polecat-cleanup"},
-				},
-				Spec: gastownv1alpha1.PolecatSpec{
-					Rig:           "test-rig",
-					DesiredState:  gastownv1alpha1.PolecatDesiredWorking,
-					BeadID:        "test-bead-k8s",
-					ExecutionMode: gastownv1alpha1.ExecutionModeKubernetes,
-					Kubernetes: &gastownv1alpha1.KubernetesSpec{
-						GitRepository: "git@github.com:example/repo.git",
-						GitBranch:     "main",
-						GitSecretRef: gastownv1alpha1.SecretReference{
-							Name: "git-creds",
-						},
-						ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{
-							Name: "claude-creds",
-						},
-					},
-				},
-			}
-		})
-
+	Context("When creating a polecat with kubernetes execution mode", func() {
 		It("should fail gracefully when kubernetes spec is missing", func() {
 			// Create polecat with kubernetes mode but no kubernetes spec
 			badPolecat := &gastownv1alpha1.Polecat{
@@ -432,6 +113,14 @@ var _ = Describe("Polecat Controller", func() {
 			}
 
 			Expect(k8sClient.Create(ctx, badPolecat)).To(Succeed())
+			defer func() {
+				var p gastownv1alpha1.Polecat
+				if k8sClient.Get(ctx, types.NamespacedName{Name: badPolecat.Name, Namespace: badPolecat.Namespace}, &p) == nil {
+					p.Finalizers = nil
+					_ = k8sClient.Update(ctx, &p)
+					_ = k8sClient.Delete(ctx, &p)
+				}
+			}()
 
 			req := ctrl.Request{NamespacedName: types.NamespacedName{
 				Name:      badPolecat.Name,
@@ -440,7 +129,8 @@ var _ = Describe("Polecat Controller", func() {
 			result, err := reconciler.Reconcile(ctx, req)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(time.Minute))
+			// Should requeue after error interval
+			Expect(result.RequeueAfter).NotTo(BeZero())
 
 			// Verify status shows stuck with proper condition
 			var updated gastownv1alpha1.Polecat
@@ -455,31 +145,14 @@ var _ = Describe("Polecat Controller", func() {
 				}
 			}
 			Expect(foundCondition).To(BeTrue())
-
-			// Cleanup
-			updated.Finalizers = nil
-			Expect(k8sClient.Update(ctx, &updated)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, &updated)).To(Succeed())
-		})
-
-		AfterEach(func() {
-			if k8sPolecat != nil {
-				// Remove finalizer to allow deletion
-				var current gastownv1alpha1.Polecat
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: k8sPolecat.Name, Namespace: k8sPolecat.Namespace}, &current); err == nil {
-					current.Finalizers = nil
-					_ = k8sClient.Update(ctx, &current)
-				}
-				_ = k8sClient.Delete(ctx, k8sPolecat)
-			}
 		})
 
 		It("should create a Pod when polecat has kubernetes execution mode", func() {
-			Expect(k8sClient.Create(ctx, k8sPolecat)).To(Succeed())
+			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
 
 			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      k8sPolecat.Name,
-				Namespace: k8sPolecat.Namespace,
+				Name:      testPolecat.Name,
+				Namespace: testPolecat.Namespace,
 			}}
 
 			// Reconcile should create the Pod
@@ -488,18 +161,18 @@ var _ = Describe("Polecat Controller", func() {
 
 			// Verify Pod was created with correct spec
 			var pod corev1.Pod
-			podName := "polecat-" + k8sPolecat.Name
+			podName := "polecat-" + testPolecat.Name
 			Eventually(func() error {
 				return k8sClient.Get(ctx, types.NamespacedName{
 					Name:      podName,
-					Namespace: k8sPolecat.Namespace,
+					Namespace: testPolecat.Namespace,
 				}, &pod)
 			}).Should(Succeed())
 
 			// Verify Pod labels
-			Expect(pod.Labels["gastown.io/polecat"]).To(Equal(k8sPolecat.Name))
-			Expect(pod.Labels["gastown.io/rig"]).To(Equal(k8sPolecat.Spec.Rig))
-			Expect(pod.Labels["gastown.io/bead"]).To(Equal(k8sPolecat.Spec.BeadID))
+			Expect(pod.Labels["gastown.io/polecat"]).To(Equal(testPolecat.Name))
+			Expect(pod.Labels["gastown.io/rig"]).To(Equal(testPolecat.Spec.Rig))
+			Expect(pod.Labels["gastown.io/bead"]).To(Equal(testPolecat.Spec.BeadID))
 
 			// Verify init container exists
 			Expect(pod.Spec.InitContainers).To(HaveLen(1))
@@ -522,11 +195,11 @@ var _ = Describe("Polecat Controller", func() {
 		})
 
 		It("should sync polecat status from Pod status", func() {
-			Expect(k8sClient.Create(ctx, k8sPolecat)).To(Succeed())
+			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
 
 			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      k8sPolecat.Name,
-				Namespace: k8sPolecat.Namespace,
+				Name:      testPolecat.Name,
+				Namespace: testPolecat.Namespace,
 			}}
 
 			// First reconcile creates the Pod
@@ -535,11 +208,11 @@ var _ = Describe("Polecat Controller", func() {
 
 			// Get the created Pod and update its status to Running
 			var pod corev1.Pod
-			podName := "polecat-" + k8sPolecat.Name
+			podName := "polecat-" + testPolecat.Name
 			Eventually(func() error {
 				return k8sClient.Get(ctx, types.NamespacedName{
 					Name:      podName,
-					Namespace: k8sPolecat.Namespace,
+					Namespace: testPolecat.Namespace,
 				}, &pod)
 			}).Should(Succeed())
 
@@ -561,11 +234,11 @@ var _ = Describe("Polecat Controller", func() {
 		})
 
 		It("should mark polecat as Done when Pod succeeds", func() {
-			Expect(k8sClient.Create(ctx, k8sPolecat)).To(Succeed())
+			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
 
 			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      k8sPolecat.Name,
-				Namespace: k8sPolecat.Namespace,
+				Name:      testPolecat.Name,
+				Namespace: testPolecat.Namespace,
 			}}
 
 			// First reconcile creates the Pod
@@ -574,11 +247,11 @@ var _ = Describe("Polecat Controller", func() {
 
 			// Get the created Pod and update its status to Succeeded
 			var pod corev1.Pod
-			podName := "polecat-" + k8sPolecat.Name
+			podName := "polecat-" + testPolecat.Name
 			Eventually(func() error {
 				return k8sClient.Get(ctx, types.NamespacedName{
 					Name:      podName,
-					Namespace: k8sPolecat.Namespace,
+					Namespace: testPolecat.Namespace,
 				}, &pod)
 			}).Should(Succeed())
 
@@ -599,11 +272,11 @@ var _ = Describe("Polecat Controller", func() {
 		})
 
 		It("should mark polecat as Stuck when Pod fails", func() {
-			Expect(k8sClient.Create(ctx, k8sPolecat)).To(Succeed())
+			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
 
 			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      k8sPolecat.Name,
-				Namespace: k8sPolecat.Namespace,
+				Name:      testPolecat.Name,
+				Namespace: testPolecat.Namespace,
 			}}
 
 			// First reconcile creates the Pod
@@ -612,11 +285,11 @@ var _ = Describe("Polecat Controller", func() {
 
 			// Get the created Pod and update its status to Failed
 			var pod corev1.Pod
-			podName := "polecat-" + k8sPolecat.Name
+			podName := "polecat-" + testPolecat.Name
 			Eventually(func() error {
 				return k8sClient.Get(ctx, types.NamespacedName{
 					Name:      podName,
-					Namespace: k8sPolecat.Namespace,
+					Namespace: testPolecat.Namespace,
 				}, &pod)
 			}).Should(Succeed())
 
@@ -637,17 +310,12 @@ var _ = Describe("Polecat Controller", func() {
 		})
 
 		It("should delete Pod when polecat is terminated", func() {
-			k8sPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredTerminated
-
-			Expect(k8sClient.Create(ctx, k8sPolecat)).To(Succeed())
-
-			// First create the Pod by temporarily setting to Working
-			k8sPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredWorking
-			Expect(k8sClient.Update(ctx, k8sPolecat)).To(Succeed())
+			testPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredWorking
+			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
 
 			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      k8sPolecat.Name,
-				Namespace: k8sPolecat.Namespace,
+				Name:      testPolecat.Name,
+				Namespace: testPolecat.Namespace,
 			}}
 
 			// Create the Pod
@@ -656,18 +324,18 @@ var _ = Describe("Polecat Controller", func() {
 
 			// Verify Pod exists
 			var pod corev1.Pod
-			podName := "polecat-" + k8sPolecat.Name
+			podName := "polecat-" + testPolecat.Name
 			Eventually(func() error {
 				return k8sClient.Get(ctx, types.NamespacedName{
 					Name:      podName,
-					Namespace: k8sPolecat.Namespace,
+					Namespace: testPolecat.Namespace,
 				}, &pod)
 			}).Should(Succeed())
 
 			// Now set to terminated
-			Expect(k8sClient.Get(ctx, req.NamespacedName, k8sPolecat)).To(Succeed())
-			k8sPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredTerminated
-			Expect(k8sClient.Update(ctx, k8sPolecat)).To(Succeed())
+			Expect(k8sClient.Get(ctx, req.NamespacedName, testPolecat)).To(Succeed())
+			testPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredTerminated
+			Expect(k8sClient.Update(ctx, testPolecat)).To(Succeed())
 
 			// Reconcile to delete Pod
 			_, err = reconciler.Reconcile(ctx, req)
@@ -677,7 +345,7 @@ var _ = Describe("Polecat Controller", func() {
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      podName,
-					Namespace: k8sPolecat.Namespace,
+					Namespace: testPolecat.Namespace,
 				}, &pod)
 				return apierrors.IsNotFound(err)
 			}).Should(BeTrue())
@@ -686,170 +354,6 @@ var _ = Describe("Polecat Controller", func() {
 			var updated gastownv1alpha1.Polecat
 			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
 			Expect(updated.Status.Phase).To(Equal(gastownv1alpha1.PolecatPhaseTerminated))
-		})
-	})
-
-	Context("When handling nuke failures", func() {
-		It("should handle nuke failure during termination", func() {
-			testPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredTerminated
-
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return true, nil
-			}
-			mockClient.PolecatStatusFunc = func(ctx context.Context, rig, name string) (*gt.PolecatStatus, error) {
-				return &gt.PolecatStatus{
-					Name:          name,
-					Phase:         "Idle",
-					CleanupStatus: "clean",
-				}, nil
-			}
-			mockClient.PolecatNukeFunc = func(ctx context.Context, rig, name string, force bool) error {
-				return errors.New("nuke failed: tmux not responding")
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			result, err := reconciler.Reconcile(ctx, req)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(30 * time.Second))
-
-			// Verify condition shows nuke failed
-			var updated gastownv1alpha1.Polecat
-			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
-
-			var foundCondition bool
-			for _, cond := range updated.Status.Conditions {
-				if cond.Type == ConditionPolecatReady && cond.Reason == "NukeFailed" {
-					foundCondition = true
-					break
-				}
-			}
-			Expect(foundCondition).To(BeTrue())
-		})
-	})
-
-	Context("When handling polecat status errors", func() {
-		It("should handle gt CLI status errors in working state", func() {
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return true, nil // Already exists
-			}
-			mockClient.PolecatStatusFunc = func(ctx context.Context, rig, name string) (*gt.PolecatStatus, error) {
-				return nil, errors.New("gt CLI not responding")
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			result, err := reconciler.Reconcile(ctx, req)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(30 * time.Second))
-
-			// Verify condition shows error
-			var updated gastownv1alpha1.Polecat
-			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
-
-			var foundCondition bool
-			for _, cond := range updated.Status.Conditions {
-				if cond.Type == ConditionPolecatReady && cond.Reason == "GTCLIError" {
-					foundCondition = true
-					break
-				}
-			}
-			Expect(foundCondition).To(BeTrue())
-		})
-
-		It("should handle polecat existence check errors", func() {
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return false, errors.New("network error")
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			_, err := reconciler.Reconcile(ctx, req)
-
-			// Should return error since existence check failed
-			Expect(err).To(HaveOccurred())
-		})
-	})
-
-	Context("When polecat already terminated", func() {
-		It("should handle termination of already-nuked polecat", func() {
-			testPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredTerminated
-
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return false, nil // Already gone
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			result, err := reconciler.Reconcile(ctx, req)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeZero()) // Should not requeue
-
-			// Verify status shows terminated
-			var updated gastownv1alpha1.Polecat
-			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
-			Expect(updated.Status.Phase).To(Equal(gastownv1alpha1.PolecatPhaseTerminated))
-		})
-	})
-
-	Context("When syncing status from gt CLI", func() {
-		It("should sync LastActivity when present", func() {
-			now := time.Now()
-			testPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredWorking
-
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return true, nil
-			}
-			mockClient.PolecatStatusFunc = func(ctx context.Context, rig, name string) (*gt.PolecatStatus, error) {
-				return &gt.PolecatStatus{
-					Name:          name,
-					Phase:         "Working",
-					AssignedBead:  "bead-123",
-					Branch:        "polecat/test-branch",
-					WorktreePath:  "/path/to/worktree",
-					TmuxSession:   "gt-test-rig-test-polecat",
-					SessionActive: true,
-					LastActivity:  now,
-					CleanupStatus: "clean",
-				}, nil
-			}
-
-			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      testPolecat.Name,
-				Namespace: testPolecat.Namespace,
-			}}
-			_, err := reconciler.Reconcile(ctx, req)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Verify all status fields synced
-			var updated gastownv1alpha1.Polecat
-			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
-			Expect(updated.Status.Branch).To(Equal("polecat/test-branch"))
-			Expect(updated.Status.WorktreePath).To(Equal("/path/to/worktree"))
-			Expect(updated.Status.TmuxSession).To(Equal("gt-test-rig-test-polecat"))
-			Expect(updated.Status.CleanupStatus).To(Equal(gastownv1alpha1.CleanupStatusClean))
-			Expect(updated.Status.LastActivity).NotTo(BeNil())
 		})
 	})
 
@@ -862,102 +366,11 @@ var _ = Describe("Polecat Controller", func() {
 					Namespace: "default",
 				},
 				Spec: gastownv1alpha1.PolecatSpec{
-					Rig:          "test-rig",
-					DesiredState: gastownv1alpha1.PolecatDesiredIdle,
-				},
-			}
-
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return false, nil
-			}
-
-			Expect(k8sClient.Create(ctx, polecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      polecat.Name,
-				Namespace: polecat.Namespace,
-			}}
-
-			// First reconcile should add finalizer and request requeue
-			result, err := reconciler.Reconcile(ctx, req)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(time.Millisecond))
-
-			// Verify finalizer was added
-			var updated gastownv1alpha1.Polecat
-			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
-			Expect(updated.Finalizers).To(ContainElement("gastown.io/polecat-cleanup"))
-
-			// Cleanup
-			updated.Finalizers = nil
-			Expect(k8sClient.Update(ctx, &updated)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, &updated)).To(Succeed())
-		})
-
-		It("should cleanup local polecat on deletion", func() {
-			var nukeCalled bool
-			var nukeForce bool
-
-			polecat := &gastownv1alpha1.Polecat{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "local-delete-test",
-					Namespace:  "default",
-					Finalizers: []string{"gastown.io/polecat-cleanup"},
-				},
-				Spec: gastownv1alpha1.PolecatSpec{
-					Rig:           "test-rig",
-					DesiredState:  gastownv1alpha1.PolecatDesiredIdle,
-					ExecutionMode: gastownv1alpha1.ExecutionModeLocal,
-				},
-			}
-
-			mockClient.PolecatExistsFunc = func(ctx context.Context, rig, name string) (bool, error) {
-				return true, nil
-			}
-			mockClient.PolecatNukeFunc = func(ctx context.Context, rig, name string, force bool) error {
-				nukeCalled = true
-				nukeForce = force
-				return nil
-			}
-
-			Expect(k8sClient.Create(ctx, polecat)).To(Succeed())
-
-			// Mark for deletion
-			Expect(k8sClient.Delete(ctx, polecat)).To(Succeed())
-
-			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      polecat.Name,
-				Namespace: polecat.Namespace,
-			}}
-
-			// Reconcile should trigger cleanup
-			_, err := reconciler.Reconcile(ctx, req)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(nukeCalled).To(BeTrue())
-			Expect(nukeForce).To(BeTrue()) // Force on deletion
-
-			// Verify polecat is deleted (finalizer removed)
-			Eventually(func() bool {
-				var p gastownv1alpha1.Polecat
-				err := k8sClient.Get(ctx, req.NamespacedName, &p)
-				return apierrors.IsNotFound(err)
-			}).Should(BeTrue())
-		})
-
-		It("should cleanup kubernetes polecat Pod on deletion", func() {
-			k8sPolecat := &gastownv1alpha1.Polecat{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "k8s-delete-test",
-					Namespace:  "default",
-					Finalizers: []string{"gastown.io/polecat-cleanup"},
-				},
-				Spec: gastownv1alpha1.PolecatSpec{
 					Rig:           "test-rig",
 					DesiredState:  gastownv1alpha1.PolecatDesiredIdle,
 					ExecutionMode: gastownv1alpha1.ExecutionModeKubernetes,
 					Kubernetes: &gastownv1alpha1.KubernetesSpec{
 						GitRepository: "git@github.com:example/repo.git",
-						GitBranch:     "main",
 						GitSecretRef: gastownv1alpha1.SecretReference{
 							Name: "git-creds",
 						},
@@ -968,42 +381,67 @@ var _ = Describe("Polecat Controller", func() {
 				},
 			}
 
-			Expect(k8sClient.Create(ctx, k8sPolecat)).To(Succeed())
-
-			// Create a Pod that would be cleaned up
-			podName := "polecat-" + k8sPolecat.Name
-			testPod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      podName,
-					Namespace: k8sPolecat.Namespace,
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{Name: "test", Image: "busybox"},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, testPod)).To(Succeed())
-
-			// Mark for deletion
-			Expect(k8sClient.Delete(ctx, k8sPolecat)).To(Succeed())
+			Expect(k8sClient.Create(ctx, polecat)).To(Succeed())
+			defer func() {
+				var p gastownv1alpha1.Polecat
+				if k8sClient.Get(ctx, types.NamespacedName{Name: polecat.Name, Namespace: polecat.Namespace}, &p) == nil {
+					p.Finalizers = nil
+					_ = k8sClient.Update(ctx, &p)
+					_ = k8sClient.Delete(ctx, &p)
+				}
+			}()
 
 			req := ctrl.Request{NamespacedName: types.NamespacedName{
-				Name:      k8sPolecat.Name,
-				Namespace: k8sPolecat.Namespace,
+				Name:      polecat.Name,
+				Namespace: polecat.Namespace,
 			}}
 
-			// Reconcile should trigger cleanup
+			// First reconcile should add finalizer
 			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify finalizer was added
+			var updated gastownv1alpha1.Polecat
+			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
+			Expect(updated.Finalizers).To(ContainElement("gastown.io/polecat-cleanup"))
+		})
+
+		It("should cleanup Pod on deletion", func() {
+			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{
+				Name:      testPolecat.Name,
+				Namespace: testPolecat.Namespace,
+			}}
+
+			// First reconcile creates the Pod
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			podName := "polecat-" + testPolecat.Name
+
+			// Verify Pod was created
+			var pod corev1.Pod
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      podName,
+					Namespace: testPolecat.Namespace,
+				}, &pod)
+			}).Should(Succeed())
+
+			// Mark polecat for deletion
+			Expect(k8sClient.Delete(ctx, testPolecat)).To(Succeed())
+
+			// Reconcile should trigger cleanup
+			_, err = reconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify Pod was deleted
 			Eventually(func() bool {
-				var p corev1.Pod
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      podName,
-					Namespace: k8sPolecat.Namespace,
-				}, &p)
+					Namespace: testPolecat.Namespace,
+				}, &pod)
 				return apierrors.IsNotFound(err)
 			}).Should(BeTrue())
 
@@ -1013,6 +451,33 @@ var _ = Describe("Polecat Controller", func() {
 				err := k8sClient.Get(ctx, req.NamespacedName, &p)
 				return apierrors.IsNotFound(err)
 			}).Should(BeTrue())
+		})
+	})
+
+	Context("When handling idle state", func() {
+		It("should not create Pod when desired state is Idle", func() {
+			testPolecat.Spec.DesiredState = gastownv1alpha1.PolecatDesiredIdle
+			Expect(k8sClient.Create(ctx, testPolecat)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{
+				Name:      testPolecat.Name,
+				Namespace: testPolecat.Namespace,
+			}}
+
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify no Pod was created
+			var podList corev1.PodList
+			Expect(k8sClient.List(ctx, &podList)).To(Succeed())
+			for _, pod := range podList.Items {
+				Expect(pod.Labels["gastown.io/polecat"]).NotTo(Equal(testPolecat.Name))
+			}
+
+			// Verify status shows idle
+			var updated gastownv1alpha1.Polecat
+			Expect(k8sClient.Get(ctx, req.NamespacedName, &updated)).To(Succeed())
+			Expect(updated.Status.Phase).To(Equal(gastownv1alpha1.PolecatPhaseIdle))
 		})
 	})
 })

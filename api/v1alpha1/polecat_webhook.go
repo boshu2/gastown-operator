@@ -227,12 +227,12 @@ func (d *PolecatCustomDefaulter) Default(ctx context.Context, polecat *Polecat) 
 
 	// Set default execution mode
 	if polecat.Spec.ExecutionMode == "" {
-		polecat.Spec.ExecutionMode = ExecutionModeLocal
+		polecat.Spec.ExecutionMode = ExecutionModeKubernetes
 	}
 
 	// Set default agent type
 	if polecat.Spec.Agent == "" {
-		polecat.Spec.Agent = AgentTypeOpenCode
+		polecat.Spec.Agent = AgentTypeClaudeCode
 	}
 
 	// Set default desired state

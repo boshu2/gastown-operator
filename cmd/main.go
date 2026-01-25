@@ -37,7 +37,6 @@ import (
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	"github.com/org/gastown-operator/internal/controller"
-	"github.com/org/gastown-operator/pkg/gt"
 	"github.com/org/gastown-operator/pkg/version"
 	// +kubebuilder:scaffold:imports
 )
@@ -191,41 +190,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize GT Client for local execution mode
-	// GT_TOWN_ROOT is required for local mode controllers to communicate with gt CLI
-	var gtClient gt.ClientInterface
-	if townRoot := os.Getenv("GT_TOWN_ROOT"); townRoot != "" {
-		setupLog.Info("Initializing GT client with circuit breaker", "townRoot", townRoot)
-		// Use circuit breaker to prevent cascading failures when gt CLI is unavailable
-		cb := gt.NewCircuitBreaker(gt.DefaultCircuitBreakerConfig())
-		gtClient = gt.NewClientWithConfig(gt.ClientConfig{
-			TownRoot:       townRoot,
-			CircuitBreaker: cb,
-		})
-	} else {
-		setupLog.Info("GT_TOWN_ROOT not set, local execution mode will not be available")
-	}
-
 	if err := (&controller.RigReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		GTClient: gtClient,
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Rig")
 		os.Exit(1)
 	}
 	if err := (&controller.PolecatReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		GTClient: gtClient,
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Polecat")
 		os.Exit(1)
 	}
 	if err := (&controller.ConvoyReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		GTClient: gtClient,
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Convoy")
 		os.Exit(1)

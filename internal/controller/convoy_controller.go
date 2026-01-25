@@ -30,33 +30,32 @@ import (
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	gterrors "github.com/org/gastown-operator/pkg/errors"
-	"github.com/org/gastown-operator/pkg/gt"
 	"github.com/org/gastown-operator/pkg/metrics"
 )
 
 const (
-	// ConvoySyncInterval is how often we re-sync with gt CLI.
+	// ConvoySyncInterval is how often we re-sync convoy status.
 	// Uses RequeueDefault for normal sync operations.
 	ConvoySyncInterval = RequeueDefault
 
 	// Condition types for Convoy
-	ConditionConvoyReady            = "Ready"
-	ConditionConvoyComplete         = "Complete"
-	ConditionConvoyNotificationSent = "NotificationSent"
+	ConditionConvoyReady    = "Ready"
+	ConditionConvoyComplete = "Complete"
 )
 
-// ConvoyReconciler reconciles a Convoy object
+// ConvoyReconciler reconciles a Convoy object.
+// It tracks progress by watching Polecat status.
 type ConvoyReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	GTClient gt.ClientInterface
+	Scheme *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=convoys,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=convoys/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=convoys/finalizers,verbs=update
+// +kubebuilder:rbac:groups=gastown.gastown.io,resources=polecats,verbs=get;list;watch
 
-// Reconcile tracks convoy progress and sends completion notifications.
+// Reconcile tracks convoy progress by watching Polecat status.
 func (r *ConvoyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	timer := metrics.NewReconcileTimer("convoy")
@@ -77,50 +76,30 @@ func (r *ConvoyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
-	// Ensure convoy exists in beads system
-	if convoy.Status.BeadsConvoyID == "" {
-		log.Info("Creating convoy in beads system")
-		gtCtx, cancel := WithGTClientTimeout(ctx)
-		id, err := r.GTClient.ConvoyCreate(gtCtx, convoy.Spec.Description, convoy.Spec.TrackedBeads)
-		cancel() // Release timeout context
-		if err != nil {
-			log.Error(err, "Failed to create convoy in beads")
-			r.setCondition(&convoy, ConditionConvoyReady, metav1.ConditionFalse, "CreateFailed",
-				err.Error())
-
-			if updateErr := r.Status().Update(ctx, &convoy); updateErr != nil {
-				timer.RecordResult(metrics.ResultError)
-				return ctrl.Result{}, gterrors.Wrap(updateErr, "failed to update convoy status")
-			}
-
-			timer.RecordResult(metrics.ResultRequeue)
-			return ctrl.Result{RequeueAfter: RequeueDefault}, nil
-		}
-
-		convoy.Status.BeadsConvoyID = id
+	// Initialize convoy if not started
+	if convoy.Status.Phase == "" || convoy.Status.Phase == gastownv1alpha1.ConvoyPhasePending {
 		now := metav1.Now()
 		convoy.Status.StartedAt = &now
 		convoy.Status.Phase = gastownv1alpha1.ConvoyPhaseInProgress
 		convoy.Status.PendingBeads = convoy.Spec.TrackedBeads
+		convoy.Status.CompletedBeads = []string{}
 
-		r.setCondition(&convoy, ConditionConvoyReady, metav1.ConditionTrue, "Created",
-			"Convoy created in beads system")
+		r.setCondition(&convoy, ConditionConvoyReady, metav1.ConditionTrue, "Started",
+			"Convoy started tracking beads")
 
 		if err := r.Status().Update(ctx, &convoy); err != nil {
 			timer.RecordResult(metrics.ResultError)
 			return ctrl.Result{}, gterrors.Wrap(err, "failed to update convoy status")
 		}
 
-		log.Info("Convoy created", "beadsID", id)
+		log.Info("Convoy initialized", "trackedBeads", len(convoy.Spec.TrackedBeads))
 	}
 
-	// Sync status from gt CLI with timeout
-	gtCtx, cancel := WithGTClientTimeout(ctx)
-	defer cancel()
-	status, err := r.GTClient.ConvoyStatus(gtCtx, convoy.Status.BeadsConvoyID)
-	if err != nil {
-		log.Error(err, "Failed to get convoy status from gt CLI")
-		r.setCondition(&convoy, ConditionConvoyReady, metav1.ConditionFalse, "GTCLIError",
+	// Get all polecats to check their assigned beads
+	var polecatList gastownv1alpha1.PolecatList
+	if err := r.List(ctx, &polecatList); err != nil {
+		log.Error(err, "Failed to list polecats")
+		r.setCondition(&convoy, ConditionConvoyReady, metav1.ConditionFalse, "ListFailed",
 			err.Error())
 
 		if updateErr := r.Status().Update(ctx, &convoy); updateErr != nil {
@@ -132,33 +111,45 @@ func (r *ConvoyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{RequeueAfter: RequeueDefault}, nil
 	}
 
-	// Update status from gt CLI response
-	convoy.Status.Phase = gastownv1alpha1.ConvoyPhase(status.Phase)
-	convoy.Status.Progress = status.Progress
-	convoy.Status.CompletedBeads = status.Completed
-	convoy.Status.PendingBeads = status.Pending
+	// Build a map of bead ID -> polecat phase
+	beadStatus := make(map[string]gastownv1alpha1.PolecatPhase)
+	for _, polecat := range polecatList.Items {
+		if polecat.Status.AssignedBead != "" {
+			beadStatus[polecat.Status.AssignedBead] = polecat.Status.Phase
+		}
+	}
+
+	// Categorize tracked beads
+	var completed, pending []string
+	for _, beadID := range convoy.Spec.TrackedBeads {
+		phase, found := beadStatus[beadID]
+		if found && phase == gastownv1alpha1.PolecatPhaseDone {
+			completed = append(completed, beadID)
+		} else {
+			pending = append(pending, beadID)
+		}
+	}
+
+	// Update status
+	convoy.Status.CompletedBeads = completed
+	convoy.Status.PendingBeads = pending
+	convoy.Status.Progress = fmt.Sprintf("%d/%d", len(completed), len(convoy.Spec.TrackedBeads))
 
 	r.setCondition(&convoy, ConditionConvoyReady, metav1.ConditionTrue, "Synced",
-		"Successfully synced with gt CLI")
+		"Convoy status synced from Polecats")
 
 	// Check for completion
-	if status.Phase == "Complete" && convoy.Status.CompletedAt == nil {
+	if len(pending) == 0 && len(completed) == len(convoy.Spec.TrackedBeads) {
 		now := metav1.Now()
 		convoy.Status.CompletedAt = &now
+		convoy.Status.Phase = gastownv1alpha1.ConvoyPhaseComplete
 		r.setCondition(&convoy, ConditionConvoyComplete, metav1.ConditionTrue, "Complete",
 			"All tracked beads completed")
 
-		// Send notification if configured
-		if convoy.Spec.NotifyOnComplete != "" {
-			r.sendCompletionNotification(ctx, &convoy)
-		}
-
-		log.Info("Convoy completed",
-			"completed", len(convoy.Status.CompletedBeads),
-			"notified", convoy.Spec.NotifyOnComplete != "")
-	} else if status.Phase != "Complete" {
+		log.Info("Convoy completed", "completed", len(completed))
+	} else {
 		r.setCondition(&convoy, ConditionConvoyComplete, metav1.ConditionFalse, "InProgress",
-			fmt.Sprintf("Progress: %s", status.Progress))
+			fmt.Sprintf("Progress: %s", convoy.Status.Progress))
 	}
 
 	if err := r.Status().Update(ctx, &convoy); err != nil {
@@ -178,32 +169,6 @@ func (r *ConvoyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	return ctrl.Result{RequeueAfter: ConvoySyncInterval}, nil
-}
-
-// sendCompletionNotification sends a mail notification on convoy completion.
-// It sets the NotificationSent condition to reflect the delivery status.
-func (r *ConvoyReconciler) sendCompletionNotification(ctx context.Context, convoy *gastownv1alpha1.Convoy) {
-	log := logf.FromContext(ctx)
-
-	subject := fmt.Sprintf("Convoy Complete: %s", convoy.Spec.Description)
-	message := fmt.Sprintf("Convoy %s has completed.\n\nCompleted beads: %d\n\n%v",
-		convoy.Name,
-		len(convoy.Status.CompletedBeads),
-		convoy.Status.CompletedBeads)
-
-	// Use timeout for mail send to prevent blocking
-	gtCtx, cancel := WithGTClientTimeout(ctx)
-	defer cancel()
-	if err := r.GTClient.MailSend(gtCtx, convoy.Spec.NotifyOnComplete, subject, message); err != nil {
-		log.Error(err, "Failed to send completion notification",
-			"address", convoy.Spec.NotifyOnComplete)
-		r.setCondition(convoy, ConditionConvoyNotificationSent, metav1.ConditionFalse, "SendFailed",
-			fmt.Sprintf("Failed to send notification to %s: %v", convoy.Spec.NotifyOnComplete, err))
-	} else {
-		log.Info("Sent completion notification", "address", convoy.Spec.NotifyOnComplete)
-		r.setCondition(convoy, ConditionConvoyNotificationSent, metav1.ConditionTrue, "Sent",
-			fmt.Sprintf("Notification sent to %s", convoy.Spec.NotifyOnComplete))
-	}
 }
 
 // setCondition sets or updates a condition on the Convoy using the standard meta.SetStatusCondition helper.
