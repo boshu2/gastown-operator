@@ -24,13 +24,27 @@ helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
   --create-namespace
 ```
 
-Then tell Claude:
+Then create your first polecat:
 
-> "Set up gastown-operator on my cluster. Read [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md)."
+```yaml
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: my-task
+spec:
+  rig: my-project
+  desiredState: Working
+  kubernetes:
+    gitRepository: "git@github.com:org/repo.git"
+    gitSecretRef:
+      name: git-ssh-key
+    claudeCredsSecretRef:
+      name: claude-creds
+  task:
+    description: "Implement feature X"
+```
 
-Claude will handle the secrets, the Polecat CRs, everything. You don't write YAML - the agents do.
-
-**For AI Agents:** See [.claude/SKILL.md](.claude/SKILL.md) for copy-paste templates and [templates/](templates/) for all resource examples.
+**For AI Agents:** See [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md) for setup instructions and [templates/](templates/) for all resource examples.
 
 ## What You Get
 
@@ -55,7 +69,7 @@ Claude will handle the secrets, the Polecat CRs, everything. You don't write YAM
 - **Built-in resilience**: Kubernetes restarts failed agents automatically.
 - **Resource isolation**: Each polecat gets dedicated CPU/memory.
 
-Supports: **claude-code** (default), **opencode**, **aider**, or **custom** agents.
+Supports **Claude Code** agents running as Kubernetes pods.
 
 ## How It Works
 
@@ -119,17 +133,6 @@ You                          Kubernetes                      Git
 | Work progress | Pod logs | `kubectl logs polecat-my-task` |
 | Final code | Git remote | Pushed to branch |
 | Polecat status | CRD status | `kubectl get polecat -o yaml` |
-
-### Local Mode (Alternative)
-
-If the operator runs on a host with Gas Town installed, it can also manage local polecats:
-
-```yaml
-spec:
-  executionMode: local  # Uses tmux on host instead of pods
-```
-
-In this mode, the operator calls `gt sling` on the host filesystem. This is useful for hybrid setups where you want K8s to orchestrate but execution stays local.
 
 ## Installation Options
 
@@ -198,8 +201,8 @@ Copy-paste YAML templates for all resources:
 
 | Template | Purpose |
 |----------|---------|
-| [polecat-minimal.yaml](templates/polecat-minimal.yaml) | Quick local polecat (3 variables) |
-| [polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml) | Full K8s execution with all options |
+| [polecat-minimal.yaml](templates/polecat-minimal.yaml) | Simple polecat example |
+| [polecat-kubernetes.yaml](templates/polecat-kubernetes.yaml) | Full polecat with all options |
 | [convoy.yaml](templates/convoy.yaml) | Batch tracking |
 | [witness.yaml](templates/witness.yaml) | Health monitoring |
 | [refinery.yaml](templates/refinery.yaml) | Merge processing |
@@ -223,19 +226,6 @@ See [FRICTION_POINTS.md](FRICTION_POINTS.md) for common mistakes and fixes.
 | `image.repository` | `ghcr.io/boshu2/gastown-operator` | Container image |
 | `image.tag` | `0.4.0` | Image tag |
 | `replicaCount` | `1` | Number of replicas |
-| `volumes.enabled` | `false` | Mount host path (for local execution mode only) |
-| `volumes.hostPath` | `/home/core/gt` | Path to Gas Town on host |
-
-**Note:** `volumes.enabled` defaults to `false` because most users use Kubernetes execution mode where polecats run as pods. Enable host volumes only for local execution mode:
-
-```bash
-helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.4.0 \
-  --namespace gastown-system \
-  --create-namespace \
-  --set volumes.enabled=true \
-  --set volumes.hostPath=/path/to/your/gt
-```
 
 See [values.yaml](helm/gastown-operator/values.yaml) for full configuration.
 
@@ -258,22 +248,14 @@ See [values.yaml](helm/gastown-operator/values.yaml) for full configuration.
 │   │   Polecat   │   ...   │   Polecat   │             │
 │   │    (Pod)    │         │    (Pod)    │             │
 │   │  ┌───────┐  │         │  ┌───────┐  │             │
-│   │  │Claude │  │         │  │Claude │  │             │
+│   │  │Claude │  │         │  │Claude │  │  ───► Git   │
 │   │  │ Code  │  │         │  │ Code  │  │             │
 │   │  └───────┘  │         │  └───────┘  │             │
 │   └─────────────┘         └─────────────┘             │
 └────────────────────────────────────────────────────────┘
-          │
-          │ Claims work via webhook
-          ▼
-┌────────────────────────────────────────────────────────┐
-│              Local Gas Town (gt CLI)                    │
-│  - Source of truth for state                           │
-│  - Beads, mail, molecules                              │
-└────────────────────────────────────────────────────────┘
 ```
 
-The operator is a **view layer** - `gt` CLI remains authoritative. Kubernetes handles scheduling, scaling, and lifecycle.
+The operator manages the full polecat lifecycle. Kubernetes handles scheduling, scaling, and restarts.
 
 ## Container Images
 
@@ -327,7 +309,7 @@ See [images/polecat-agent/](images/polecat-agent/) for build details and [CUSTOM
 ## Related Projects
 
 - [Gas Town](https://github.com/steveyegge/gastown) - The multi-agent orchestration framework
-- [opencode](https://github.com/opencode-ai/opencode) - Open-source coding agent (default)
+- [Claude Code](https://github.com/anthropics/claude-code) - AI coding agent from Anthropic
 - [Beads](https://github.com/steveyegge/beads) - Git-based issue tracking
 
 ## Contributing
