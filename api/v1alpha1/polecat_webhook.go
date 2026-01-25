@@ -225,6 +225,20 @@ var _ admission.Defaulter[*Polecat] = &PolecatCustomDefaulter{}
 func (d *PolecatCustomDefaulter) Default(ctx context.Context, polecat *Polecat) error {
 	polecatlog.Info("default", "name", polecat.Name)
 
+	// Ensure labels map exists
+	if polecat.Labels == nil {
+		polecat.Labels = make(map[string]string)
+	}
+
+	// Set gastown.io labels for discovery by other controllers (e.g., Refinery)
+	if polecat.Spec.Rig != "" {
+		polecat.Labels["gastown.io/rig"] = polecat.Spec.Rig
+	}
+	if polecat.Spec.BeadID != "" {
+		polecat.Labels["gastown.io/bead"] = polecat.Spec.BeadID
+	}
+	polecat.Labels["gastown.io/polecat"] = polecat.Name
+
 	// Set default execution mode
 	if polecat.Spec.ExecutionMode == "" {
 		polecat.Spec.ExecutionMode = ExecutionModeKubernetes

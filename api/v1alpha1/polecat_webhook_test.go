@@ -449,6 +449,22 @@ func TestPolecatCustomDefaulter_Default(t *testing.T) {
 				assert.Equal(t, "develop", p.Spec.Kubernetes.GitBranch)
 			},
 		},
+		{
+			name: "sets gastown.io labels for controller discovery",
+			polecat: &Polecat{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-polecat"},
+				Spec: PolecatSpec{
+					Rig:    "my-rig",
+					BeadID: "bead-123",
+				},
+			},
+			checkDefaults: func(t *testing.T, p *Polecat) {
+				require.NotNil(t, p.Labels, "labels should be initialized")
+				assert.Equal(t, "my-rig", p.Labels["gastown.io/rig"], "rig label should be set from spec")
+				assert.Equal(t, "bead-123", p.Labels["gastown.io/bead"], "bead label should be set from spec")
+				assert.Equal(t, "test-polecat", p.Labels["gastown.io/polecat"], "polecat label should be set to name")
+			},
+		},
 	}
 
 	for _, tt := range tests {
