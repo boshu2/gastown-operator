@@ -353,3 +353,52 @@ endef
 define gomodver
 $(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
 endef
+
+##@ CI/CD (Local Pipeline)
+
+.PHONY: ci-validate
+ci-validate: manifests generate vet lint validate-helm ## Run all CI validations locally.
+	@echo "Checking generated manifests are committed..."
+	@git diff --exit-code config/ || { echo "ERROR: Run 'make manifests' and commit"; exit 1; }
+	@echo "Checking generated code is committed..."
+	@git diff --exit-code api/ || { echo "ERROR: Run 'make generate' and commit"; exit 1; }
+	@echo ""
+	@echo "✓ All validations passed"
+
+.PHONY: ci-version
+ci-version: ## Determine release version from VERSION file.
+	@VERSION=$$(cat VERSION 2>/dev/null || echo "0.0.0"); \
+	echo "Version: $$VERSION"; \
+	echo "$$VERSION" > .ci-version
+
+.PHONY: ci-build
+ci-build: ci-version ## Build multi-arch images locally.
+	@VERSION=$$(cat .ci-version); \
+	./scripts/build-local.sh $$VERSION
+
+.PHONY: ci-test
+ci-test: test-e2e ## Run E2E tests in Kind cluster.
+
+.PHONY: ci-push
+ci-push: ci-version ## Push multi-arch image and Helm chart to GHCR.
+	@VERSION=$$(cat .ci-version); \
+	./scripts/release-ghcr.sh $$VERSION && \
+	./scripts/push-helm.sh $$VERSION
+
+.PHONY: ci-publish
+ci-publish: ci-version ## Create GitHub release with gh CLI.
+	@VERSION=$$(cat .ci-version); \
+	./scripts/github-release.sh $$VERSION
+
+.PHONY: ci
+ci: ci-validate ci-version ci-build ci-test ci-push ci-publish ## Run full local CI/CD pipeline.
+	@echo ""
+	@echo "========================================"
+	@echo "  Local CI/CD Pipeline Complete"
+	@echo "========================================"
+	@VERSION=$$(cat .ci-version); \
+	echo "  Version: $$VERSION"; \
+	echo "  Image: ghcr.io/boshu2/gastown-operator:$$VERSION"; \
+	echo "  Helm: oci://ghcr.io/boshu2/charts/gastown-operator:$$VERSION"; \
+	echo "  Release: https://github.com/boshu2/gastown-operator/releases"
+	@rm -f .ci-version

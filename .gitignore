@@ -45,6 +45,7 @@ Thumbs.db
 dist/
 cover.out
 /gt
+.ci-version
 
 # Local config
 config.toml
