@@ -56,6 +56,8 @@ func TestMergeBranch_Integration(t *testing.T) {
 	require.NoError(t, os.WriteFile(initialFile, []byte("# Test Repo\n"), 0o600))
 	require.NoError(t, runGitCmd(t, refineryDir, "add", "README.md"))
 	require.NoError(t, runGitCmd(t, refineryDir, "commit", "-m", "Initial commit"))
+	// Ensure branch is named 'main' (git versions may default to 'master')
+	require.NoError(t, runGitCmd(t, refineryDir, "branch", "-M", "main"))
 	require.NoError(t, runGitCmd(t, refineryDir, "push", "-u", "origin", "main"))
 
 	// Create "polecat" working repo (simulates a polecat's worktree)
@@ -157,6 +159,8 @@ func TestMergeBranch_ConflictHandling(t *testing.T) {
 	require.NoError(t, os.WriteFile(testFile, []byte("line1\n"), 0o600))
 	require.NoError(t, runGitCmd(t, refineryDir, "add", "test.txt"))
 	require.NoError(t, runGitCmd(t, refineryDir, "commit", "-m", "Initial"))
+	// Ensure branch is named 'main' (git versions may default to 'master')
+	require.NoError(t, runGitCmd(t, refineryDir, "branch", "-M", "main"))
 	require.NoError(t, runGitCmd(t, refineryDir, "push", "-u", "origin", "main"))
 
 	// Create feature branch
@@ -218,6 +222,8 @@ func TestMergeBranch_NonExistentBranch(t *testing.T) {
 	require.NoError(t, os.WriteFile(testFile, []byte("test\n"), 0o600))
 	require.NoError(t, runGitCmd(t, repoDir, "add", "test.txt"))
 	require.NoError(t, runGitCmd(t, repoDir, "commit", "-m", "Initial"))
+	// Ensure branch is named 'main' (git versions may default to 'master')
+	require.NoError(t, runGitCmd(t, repoDir, "branch", "-M", "main"))
 	require.NoError(t, runGitCmd(t, repoDir, "push", "-u", "origin", "main"))
 
 	client := NewClient(repoDir, originDir)
@@ -259,6 +265,8 @@ func TestMergeBranch_WithBranchDeletion(t *testing.T) {
 	require.NoError(t, os.WriteFile(testFile, []byte("test\n"), 0o600))
 	require.NoError(t, runGitCmd(t, repoDir, "add", "test.txt"))
 	require.NoError(t, runGitCmd(t, repoDir, "commit", "-m", "Initial"))
+	// Ensure branch is named 'main' (git versions may default to 'master')
+	require.NoError(t, runGitCmd(t, repoDir, "branch", "-M", "main"))
 	require.NoError(t, runGitCmd(t, repoDir, "push", "-u", "origin", "main"))
 
 	// Create and push feature branch
