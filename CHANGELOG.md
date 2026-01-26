@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2](https://github.com/boshu2/gastown-operator/compare/v0.4.1...v0.4.2) (2026-01-26) - Reliability & Observability
+
+### Highlights
+
+- **Prometheus metrics for Refinery**: Merge operations, durations, conflicts, and queue length
+- **Circuit breaker for Witness**: Exponential backoff prevents escalation storms
+- **Rig Ready condition**: Aggregates health from Witness, Refinery, and Polecats
+- **Improved test coverage**: BeadStore and Rig controller test suites
+- **Supply chain security**: SBOM generation uses immutable digests
+
+### Features
+
+* **metrics:** add Prometheus metrics for Refinery merge operations (`gastown_refinery_merge_total`, `gastown_refinery_merge_duration_seconds`, `gastown_refinery_conflicts_total`, `gastown_refinery_queue_length`)
+* **rig:** implement Ready condition aggregating Witness/Refinery/Polecat status
+* **witness:** add circuit breaker with exponential backoff for issue escalation
+* **test:** comprehensive BeadStore controller test suite (12 test cases)
+* **test:** Rig controller test suite with Ready condition verification
+
+### Bug Fixes
+
+* **release:** use immutable digest (`@sha256:...`) for SBOM generation instead of mutable tag
+* **release:** push Helm chart to `/charts` path to avoid OCI artifact collision with container images
+* **release:** add helm registry login to verify job for new chart path
+* **pod:** remove redundant ssh-keyscan fallback (init container already provisions known_hosts)
+
+### Installation
+
+```bash
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.4.2 \
+  --namespace gastown-system \
+  --create-namespace
+```
+
+---
+
 ## [0.4.1](https://github.com/boshu2/gastown-operator/compare/v0.4.0...v0.4.1) (2026-01-25) - kubectl-gt AI-Native CLI
 
 ### Highlights
