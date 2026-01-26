@@ -1,29 +1,43 @@
 # gastown-operator Dockerfile (FIPS/Enterprise Edition)
 # Multi-stage build for OpenShift/FIPS-compliant environments
 #
-# Uses UBI9 go-toolset with boringcrypto for FIPS compliance.
+# Uses UBI9 base with Go 1.25+ for FIPS compliance via boringcrypto.
 #
 # For Tekton CI: The build-gt-cli Task pre-builds the gt binary
 # and places it at ./gt in the build context before Kaniko runs.
 #
 # For local builds: Run `make build-gt-fips` first to build the gt binary.
 #
-# Build args allow DPR image override in CI:
-#   --build-arg GO_IMAGE=${DPR_REGISTRY}/ci-images/go-toolset:1.22-ubi9
+# Build args allow customization in CI:
+#   --build-arg GO_VERSION=1.25.0
+#   --build-arg RUNTIME_IMAGE=${DPR_REGISTRY}/ubi9/ubi-micro:9.3
 
-ARG GO_IMAGE=registry.access.redhat.com/ubi9/go-toolset:1.22
+ARG GO_VERSION=1.25.0
 ARG RUNTIME_IMAGE=registry.access.redhat.com/ubi9/ubi-micro:9.3
 
 # ------------------------------------------------------------------------------
-# Stage 1: Build operator manager
+# Stage 1: Build operator manager with Go 1.25+
 # ------------------------------------------------------------------------------
-FROM ${GO_IMAGE} AS builder
+FROM --platform=linux/amd64 registry.access.redhat.com/ubi9/ubi:9.3 AS builder
 
+ARG GO_VERSION
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 
 USER 0
-RUN dnf install -y git && dnf clean all
+
+# Install build dependencies
+RUN dnf install -y git ca-certificates tar gzip gcc make && dnf clean all
+
+# Download and install Go (version specified via build arg)
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz && \
+    tar -C /usr/local -xzf /tmp/go.tar.gz && \
+    rm /tmp/go.tar.gz
+
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/go"
+ENV PATH="${GOPATH}/bin:${PATH}"
+
 WORKDIR /src
 
 # Cache deps
@@ -38,7 +52,7 @@ RUN CGO_ENABLED=1 GOEXPERIMENT=boringcrypto GOOS=${TARGETOS} GOARCH=${TARGETARCH
 # ------------------------------------------------------------------------------
 # Stage 2: Minimal UBI runtime image
 # ------------------------------------------------------------------------------
-FROM ${RUNTIME_IMAGE}
+FROM --platform=linux/amd64 ${RUNTIME_IMAGE}
 
 WORKDIR /
 
