@@ -6,4 +6,9 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: rig-sample
 spec:
-  # TODO(user): Add fields here
+  gitURL: "git@github.com:example/myproject.git"
+  beadsPrefix: "mp"
+  localPath: "/workspaces/myproject"
+  settings:
+    namepoolTheme: "mad-max"
+    maxPolecats: 8

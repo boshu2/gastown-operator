@@ -5,5 +5,13 @@ metadata:
     app.kubernetes.io/name: gastown-operator
     app.kubernetes.io/managed-by: kustomize
   name: convoy-sample
+  namespace: gastown-system
 spec:
-  # TODO(user): Add fields here
+  description: "Wave 1: Core infrastructure tasks"
+  trackedBeads:
+    - "mp-abc-123"
+    - "mp-def-456"
+    - "mp-ghi-789"
+  parallelism: 3
+  rigRef: rig-sample
+  notifyOnComplete: "mayor"

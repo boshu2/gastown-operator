@@ -1,3 +1,10 @@
+# Krew plugin manifest for kubectl-gt
+#
+# SHA256 checksums are placeholders until release artifacts exist.
+# After creating a GitHub release, run:
+#   ./scripts/update-krew-manifest.sh <version>
+#
+# This computes real checksums from the release artifacts.
 apiVersion: krew.googlecontainertools.github.com/v1alpha2
 kind: Plugin
 metadata:

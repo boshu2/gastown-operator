@@ -52,13 +52,11 @@ The `executionMode` field defaults to `kubernetes` and only accepts `kubernetes`
 - **True isolation**: Every polecat runs in its own pod
 - **Cloud-native**: Works in any Kubernetes cluster
 
-### Negative
+### Trade-offs
 
-- **No local debugging**: Can't attach to tmux for quick inspection
-- **Slower iteration**: Pod startup adds latency vs local tmux
+Pod-based execution has different debugging patterns than local development:
 
-### Mitigations
-
-- Use `kubectl logs -f` for live log streaming
-- Use `kubectl exec` for interactive debugging
-- Use short `activeDeadlineSeconds` during development
+- **Log streaming**: Use `kubectl logs -f` or `kubectl gt polecat logs`
+- **Interactive debugging**: Use `kubectl exec` to access running pods
+- **Fast iteration**: Use short `activeDeadlineSeconds` during development
+- **Pod startup latency**: ~10-30s vs instant local process (acceptable for agent workloads)
