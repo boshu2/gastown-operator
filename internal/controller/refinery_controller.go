@@ -22,6 +22,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -37,6 +38,7 @@ import (
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	"github.com/org/gastown-operator/internal/git"
+	"github.com/org/gastown-operator/pkg/metrics"
 )
 
 const (
@@ -109,6 +111,9 @@ func (r *RefineryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	refinery.Status.QueueLength = int32(queueLen)           // #nosec G115 -- bounds checked above
 	refinery.Status.MergesSummary.Pending = int32(queueLen) // #nosec G115 -- bounds checked above
 
+	// Update queue length metric
+	metrics.UpdateQueueLength(refinery.Spec.RigRef, float64(queueLen))
+
 	// If no work, mark as Idle
 	if len(mergeQueue) == 0 {
 		refinery.Status.Phase = "Idle"
@@ -132,18 +137,26 @@ func (r *RefineryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		r.setCondition(refinery, RefineryConditionProcessing, metav1.ConditionTrue,
 			"Processing", "Processing merge for "+targetPolecat.Name)
 
-		// Process the merge
+		// Process the merge with timing
+		mergeTimer := metrics.NewRefineryMergeTimer(refinery.Spec.RigRef)
 		if err := r.processMerge(ctx, refinery, &targetPolecat); err != nil {
 			log.Error(err, "Failed to process merge", "polecat", targetPolecat.Name)
 			refinery.Status.MergesSummary.Failed++
 			r.Recorder.Event(refinery, "Warning", "MergeFailed",
 				"Merge failed for "+targetPolecat.Name+": "+err.Error())
+			mergeTimer.RecordError()
+
+			// Track conflicts (rebase failures typically indicate conflicts)
+			if strings.Contains(err.Error(), "rebase failed") || strings.Contains(err.Error(), "conflict") {
+				metrics.RecordConflict(refinery.Spec.RigRef)
+			}
 		} else {
 			refinery.Status.MergesSummary.Succeeded++
 			refinery.Status.MergesSummary.Total++
 			refinery.Status.LastMergeTime = &metav1.Time{Time: time.Now()}
 			r.Recorder.Event(refinery, "Normal", "MergeSucceeded",
 				"Successfully merged "+targetPolecat.Name)
+			mergeTimer.RecordSuccess()
 		}
 	}
 

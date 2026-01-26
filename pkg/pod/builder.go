@@ -343,13 +343,11 @@ if [ -f "%s/.credentials.json" ]; then
     echo "Claude credentials copied to $HOME/.claude/"
 fi
 
-# Configure SSH for git operations
+# Configure SSH for git operations (known_hosts already set up by init container)
 mkdir -p "$HOME/.ssh"
 if [ -f "%s/ssh-privatekey" ]; then
     cp "%s/ssh-privatekey" "$HOME/.ssh/id_rsa"
     chmod 600 "$HOME/.ssh/id_rsa"
-    # Add GitHub to known hosts
-    ssh-keyscan -t rsa github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
     echo "Git SSH key configured"
 fi
 

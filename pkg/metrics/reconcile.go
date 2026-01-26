@@ -95,6 +95,43 @@ var (
 		},
 		[]string{labelController, "error_type"},
 	)
+
+	// RefineryMergeTotal counts merge attempts by rig and result.
+	RefineryMergeTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "gastown_refinery_merge_total",
+			Help: "Total number of merge attempts by rig and result",
+		},
+		[]string{labelRig, labelResult},
+	)
+
+	// RefineryMergeDuration tracks the duration of merge operations.
+	RefineryMergeDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "gastown_refinery_merge_duration_seconds",
+			Help:    "Duration of merge operations in seconds",
+			Buckets: []float64{0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+		},
+		[]string{labelRig},
+	)
+
+	// RefineryConflictsTotal counts merge conflicts by rig.
+	RefineryConflictsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "gastown_refinery_conflicts_total",
+			Help: "Total number of merge conflicts by rig",
+		},
+		[]string{labelRig},
+	)
+
+	// RefineryQueueLength tracks the number of items in the merge queue per rig.
+	RefineryQueueLength = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "gastown_refinery_queue_length",
+			Help: "Number of items in the merge queue by rig",
+		},
+		[]string{labelRig},
+	)
 )
 
 func init() {
@@ -108,6 +145,10 @@ func init() {
 		GTCLICallsTotal,
 		GTCLIDuration,
 		ReconcileErrors,
+		RefineryMergeTotal,
+		RefineryMergeDuration,
+		RefineryConflictsTotal,
+		RefineryQueueLength,
 	)
 }
 
@@ -182,4 +223,42 @@ func UpdatePolecatPhase(rig, phase string, count float64) {
 // UpdateConvoyPhase updates the convoy phase gauge.
 func UpdateConvoyPhase(phase string, count float64) {
 	ConvoyPhaseGauge.WithLabelValues(phase).Set(count)
+}
+
+// RefineryMergeTimer tracks merge operation timing for a specific rig.
+type RefineryMergeTimer struct {
+	rig   string
+	start time.Time
+}
+
+// NewRefineryMergeTimer creates a new timer for a refinery merge operation.
+func NewRefineryMergeTimer(rig string) *RefineryMergeTimer {
+	return &RefineryMergeTimer{
+		rig:   rig,
+		start: time.Now(),
+	}
+}
+
+// RecordSuccess records a successful merge.
+func (t *RefineryMergeTimer) RecordSuccess() {
+	duration := time.Since(t.start).Seconds()
+	RefineryMergeDuration.WithLabelValues(t.rig).Observe(duration)
+	RefineryMergeTotal.WithLabelValues(t.rig, ResultSuccess).Inc()
+}
+
+// RecordError records a failed merge.
+func (t *RefineryMergeTimer) RecordError() {
+	duration := time.Since(t.start).Seconds()
+	RefineryMergeDuration.WithLabelValues(t.rig).Observe(duration)
+	RefineryMergeTotal.WithLabelValues(t.rig, ResultError).Inc()
+}
+
+// RecordConflict records a merge conflict for a rig.
+func RecordConflict(rig string) {
+	RefineryConflictsTotal.WithLabelValues(rig).Inc()
+}
+
+// UpdateQueueLength updates the merge queue length for a rig.
+func UpdateQueueLength(rig string, length float64) {
+	RefineryQueueLength.WithLabelValues(rig).Set(length)
 }

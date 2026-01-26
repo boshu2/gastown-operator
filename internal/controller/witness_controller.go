@@ -31,6 +31,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
+	gterrors "github.com/org/gastown-operator/pkg/errors"
 )
 
 const (
@@ -57,6 +58,10 @@ type WitnessReconciler struct {
 	GTClient interface {
 		MailSend(ctx context.Context, address, subject, message string) error
 	}
+	// Backoff provides circuit breaker functionality for escalation.
+	// If nil, escalation always proceeds. When configured, prevents
+	// excessive escalation when issues persist.
+	Backoff *gterrors.BackoffCalculator
 }
 
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=witnesses,verbs=get;list;watch;create;update;patch;delete
@@ -110,6 +115,9 @@ func (r *WitnessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	witness.Status.LastCheckTime = &metav1.Time{Time: time.Now()}
 	witness.Status.PolecatsSummary = summary
 
+	// Key for backoff tracking
+	backoffKey := fmt.Sprintf("%s/%s", witness.Namespace, witness.Name)
+
 	// Set healthy condition
 	if summary.Stuck > 0 || summary.Failed > 0 {
 		r.setCondition(witness, ConditionWitnessReady, metav1.ConditionFalse,
@@ -120,9 +128,22 @@ func (r *WitnessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			r.Recorder.Event(witness, "Warning", "StuckPolecats",
 				"Detected polecats with no progress")
 
-			// Escalate to configured target
+			// Escalate to configured target (with circuit breaker)
 			if r.GTClient != nil {
-				r.escalateIssues(ctx, witness, summary)
+				shouldEscalate := true
+				if r.Backoff != nil {
+					if r.Backoff.ShouldGiveUp(backoffKey) {
+						log.Info("Circuit breaker open, skipping escalation",
+							"witness", witness.Name,
+							"retries", r.Backoff.GetRetryCount(backoffKey))
+						r.Recorder.Event(witness, "Warning", "EscalationCircuitBreaker",
+							"Too many escalation attempts, circuit breaker open")
+						shouldEscalate = false
+					}
+				}
+				if shouldEscalate {
+					r.escalateIssues(ctx, witness, summary, backoffKey)
+				}
 			}
 		}
 
@@ -133,6 +154,11 @@ func (r *WitnessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	} else {
 		r.setCondition(witness, ConditionWitnessReady, metav1.ConditionTrue,
 			"AllHealthy", "All polecats are healthy")
+
+		// Reset circuit breaker when healthy
+		if r.Backoff != nil {
+			r.Backoff.ResetRetries(backoffKey)
+		}
 	}
 
 	// Update status
@@ -162,9 +188,9 @@ func (r *WitnessReconciler) calculateSummary(polecats *gastownv1alpha1.PolecatLi
 		summary.Total++
 
 		// Track what we find for this polecat
-		var hasAvailable, hasProgressing, hasDegraded bool
-		var hasOldReady, hasOldWorking bool
-		var progressingCond, workingCond metav1.Condition
+		var hasAvailable, hasProgressing bool
+		var hasOldWorking bool
+		var workingCond metav1.Condition
 
 		// Check all conditions
 		for _, cond := range polecat.Status.Conditions {
@@ -177,7 +203,6 @@ func (r *WitnessReconciler) calculateSummary(polecats *gastownv1alpha1.PolecatLi
 				}
 			case ConditionProgressing:
 				hasProgressing = true
-				progressingCond = cond
 				if cond.Status == metav1.ConditionTrue {
 					summary.Running++
 					// Check if stuck (no update for too long)
@@ -186,13 +211,11 @@ func (r *WitnessReconciler) calculateSummary(polecats *gastownv1alpha1.PolecatLi
 					}
 				}
 			case ConditionDegraded:
-				hasDegraded = true
 				if cond.Status == metav1.ConditionTrue {
 					summary.Failed++
 				}
 			// Old conditions (backward compatibility)
 			case "Ready":
-				hasOldReady = true
 				// Only use Ready as fallback for Available if Available isn't present
 				if cond.Status == metav1.ConditionTrue && cond.Reason == "PodSucceeded" {
 					// This is a completed polecat using old conditions
@@ -217,9 +240,6 @@ func (r *WitnessReconciler) calculateSummary(polecats *gastownv1alpha1.PolecatLi
 
 		// Note: If neither new nor old conditions are present, polecat is not counted
 		// in running/succeeded/failed - this is expected for newly created polecats
-		_ = hasOldReady     // Suppress unused warning (used in switch case)
-		_ = hasDegraded     // Suppress unused warning (used in switch case)
-		_ = progressingCond // Suppress unused warning (used in switch case)
 	}
 
 	return summary
@@ -248,8 +268,17 @@ func (r *WitnessReconciler) setCondition(witness *gastownv1alpha1.Witness, condT
 }
 
 // escalateIssues sends escalation alerts based on the configured escalation target.
-func (r *WitnessReconciler) escalateIssues(ctx context.Context, witness *gastownv1alpha1.Witness, summary gastownv1alpha1.PolecatsSummary) {
+// The backoffKey is used to track escalation attempts for the circuit breaker.
+func (r *WitnessReconciler) escalateIssues(ctx context.Context, witness *gastownv1alpha1.Witness, summary gastownv1alpha1.PolecatsSummary, backoffKey string) {
 	log := logf.FromContext(ctx)
+
+	// Increment backoff counter for each escalation attempt
+	if r.Backoff != nil {
+		_ = r.Backoff.GetBackoffResult(backoffKey) // Increments counter, we ignore the Result
+		log.Info("Escalation attempt recorded",
+			"witness", witness.Name,
+			"attempts", r.Backoff.GetRetryCount(backoffKey))
+	}
 
 	target := witness.Spec.EscalationTarget
 	if target == "" {

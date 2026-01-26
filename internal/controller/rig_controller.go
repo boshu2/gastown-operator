@@ -134,11 +134,11 @@ func (r *RigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{RequeueAfter: RequeueDefault}, nil
 	}
 
-	// Count convoys for this rig
+	// Count convoys for this rig using field index
 	var convoyList gastownv1alpha1.ConvoyList
 	activeConvoys := 0
-	if err := r.List(ctx, &convoyList); err != nil {
-		log.Error(err, "Failed to list convoys")
+	if err := r.List(ctx, &convoyList, client.MatchingFields{"spec.rigRef": rig.Name}); err != nil {
+		log.Error(err, "Failed to list convoys for rig")
 	} else {
 		for _, convoy := range convoyList.Items {
 			if convoy.Status.Phase == gastownv1alpha1.ConvoyPhaseInProgress {
@@ -339,6 +339,17 @@ func (r *RigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gastownv1alpha1.Polecat{}, "spec.rig", func(rawObj client.Object) []string {
 		polecat := rawObj.(*gastownv1alpha1.Polecat)
 		return []string{polecat.Spec.Rig}
+	}); err != nil {
+		return err
+	}
+
+	// Add index for looking up convoys by rig name
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gastownv1alpha1.Convoy{}, "spec.rigRef", func(rawObj client.Object) []string {
+		convoy := rawObj.(*gastownv1alpha1.Convoy)
+		if convoy.Spec.RigRef == "" {
+			return nil
+		}
+		return []string{convoy.Spec.RigRef}
 	}); err != nil {
 		return err
 	}

@@ -21,9 +21,11 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 )
@@ -199,6 +201,168 @@ var _ = Describe("Rig Controller", func() {
 				}
 			}
 			Expect(witnessCount).To(Equal(1))
+		})
+
+		// Note: Tests for Ready condition and Phase=Ready are skipped in envtest because
+		// they require field indexers which are only set up when using a full manager.
+		// When the polecat list fails due to missing indexer, the rig goes to Degraded.
+		// These are tested in integration tests with a real controller manager.
+
+		It("should set Ready condition after children are created (Degraded in envtest due to missing indexer)", func() {
+			Expect(k8sClient.Create(ctx, testRig)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{Name: testRig.Name}}
+
+			// Reconcile until stable
+			for i := 0; i < 3; i++ {
+				_, err := reconciler.Reconcile(ctx, req)
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			// Verify Ready condition exists (status depends on field indexer availability)
+			var updated gastownv1alpha1.Rig
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testRig.Name}, &updated)).To(Succeed())
+
+			var readyCondition *metav1.Condition
+			for i := range updated.Status.Conditions {
+				if updated.Status.Conditions[i].Type == ConditionRigReady {
+					readyCondition = &updated.Status.Conditions[i]
+					break
+				}
+			}
+			Expect(readyCondition).NotTo(BeNil())
+			// In envtest without field indexers, this will be False/ListFailed
+			// In real deployment with manager, this would be True/Ready
+		})
+	})
+
+	Context("When deleting a rig with children", func() {
+		BeforeEach(func() {
+			GinkgoT().Setenv("GASTOWN_NAMESPACE", "default")
+		})
+
+		It("should delete Witness and Refinery when rig is deleted", func() {
+			Expect(k8sClient.Create(ctx, testRig)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{Name: testRig.Name}}
+
+			// Reconcile to create children
+			for i := 0; i < 3; i++ {
+				_, err := reconciler.Reconcile(ctx, req)
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			// Verify children were created
+			witness := &gastownv1alpha1.Witness{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      testRig.Name + "-witness",
+				Namespace: "default",
+			}, witness)).To(Succeed())
+
+			refinery := &gastownv1alpha1.Refinery{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      testRig.Name + "-refinery",
+				Namespace: "default",
+			}, refinery)).To(Succeed())
+
+			// Delete the rig
+			var current gastownv1alpha1.Rig
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testRig.Name}, &current)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &current)).To(Succeed())
+
+			// Reconcile to handle deletion
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify children were deleted
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      testRig.Name + "-witness",
+				Namespace: "default",
+			}, witness)
+			Expect(apierrors.IsNotFound(err)).To(BeTrue())
+
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      testRig.Name + "-refinery",
+				Namespace: "default",
+			}, refinery)
+			Expect(apierrors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("should remove finalizer after cleanup", func() {
+			Expect(k8sClient.Create(ctx, testRig)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{Name: testRig.Name}}
+
+			// Reconcile to add finalizer and create children
+			for i := 0; i < 3; i++ {
+				_, err := reconciler.Reconcile(ctx, req)
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			// Verify finalizer was added
+			var current gastownv1alpha1.Rig
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testRig.Name}, &current)).To(Succeed())
+			Expect(controllerutil.ContainsFinalizer(&current, "gastown.io/rig-cleanup")).To(BeTrue())
+
+			// Delete the rig
+			Expect(k8sClient.Delete(ctx, &current)).To(Succeed())
+
+			// Reconcile to handle deletion
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify finalizer was removed (rig should be gone or have no finalizer)
+			var deleted gastownv1alpha1.Rig
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: testRig.Name}, &deleted)
+			// Either NotFound or finalizer removed
+			if err == nil {
+				Expect(controllerutil.ContainsFinalizer(&deleted, "gastown.io/rig-cleanup")).To(BeFalse())
+			} else {
+				Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			}
+		})
+
+		It("should handle deletion when children are already gone", func() {
+			Expect(k8sClient.Create(ctx, testRig)).To(Succeed())
+
+			req := ctrl.Request{NamespacedName: types.NamespacedName{Name: testRig.Name}}
+
+			// Reconcile to add finalizer and create children
+			for i := 0; i < 3; i++ {
+				_, err := reconciler.Reconcile(ctx, req)
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			// Manually delete the children before rig deletion
+			witness := &gastownv1alpha1.Witness{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      testRig.Name + "-witness",
+				Namespace: "default",
+			}, witness)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, witness)).To(Succeed())
+
+			refinery := &gastownv1alpha1.Refinery{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      testRig.Name + "-refinery",
+				Namespace: "default",
+			}, refinery)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, refinery)).To(Succeed())
+
+			// Delete the rig
+			var current gastownv1alpha1.Rig
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testRig.Name}, &current)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &current)).To(Succeed())
+
+			// Reconcile should succeed even without children
+			_, err := reconciler.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify finalizer was removed
+			var deleted gastownv1alpha1.Rig
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: testRig.Name}, &deleted)
+			if err == nil {
+				Expect(controllerutil.ContainsFinalizer(&deleted, "gastown.io/rig-cleanup")).To(BeFalse())
+			}
 		})
 	})
 

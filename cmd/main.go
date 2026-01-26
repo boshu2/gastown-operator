@@ -37,6 +37,7 @@ import (
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	"github.com/org/gastown-operator/internal/controller"
+	gterrors "github.com/org/gastown-operator/pkg/errors"
 	"github.com/org/gastown-operator/pkg/version"
 	// +kubebuilder:scaffold:imports
 )
@@ -216,6 +217,7 @@ func main() {
 		Scheme: mgr.GetScheme(),
 		//nolint:staticcheck // TODO: migrate to events.EventRecorder
 		Recorder: mgr.GetEventRecorderFor("witness-controller"),
+		Backoff:  gterrors.NewBackoffCalculator(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Witness")
 		os.Exit(1)

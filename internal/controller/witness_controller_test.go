@@ -398,7 +398,8 @@ var _ = Describe("Witness Controller", func() {
 				Stuck:     1,
 			}
 
-			r.escalateIssues(ctx, witness, summary)
+			backoffKey := "default/test-witness"
+			r.escalateIssues(ctx, witness, summary, backoffKey)
 			Expect(mockMailSent).To(BeTrue())
 		})
 	})
