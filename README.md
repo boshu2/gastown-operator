@@ -77,6 +77,57 @@ flowchart TB
 
 ---
 
+## What Runs in Your Cluster
+
+### The Operator (1 Pod)
+
+The operator is a single deployment that watches for CRs and reconciles them:
+
+```
+gastown-system namespace:
+└── gastown-operator-controller-manager (1 pod, ~64MB memory)
+    └── Watches: Rig, Polecat, Convoy, Witness, Refinery, BeadStore
+```
+
+That's it. One small pod runs all the controllers.
+
+### Custom Resources
+
+| CR | Scope | What It Does | Creates Pods? |
+|----|-------|--------------|---------------|
+| **Rig** | Cluster | Defines a project workspace. Auto-creates Witness + Refinery. | No |
+| **Polecat** | Namespace | An AI worker. Creates a pod that runs Claude Code. | **Yes** (1 pod per Polecat) |
+| **Witness** | Namespace | Monitors polecat health. Detects stuck workers, escalates. | No |
+| **Refinery** | Namespace | Watches for completed polecats (`Available=True`), merges PRs. | No |
+| **Convoy** | Namespace | Tracks a batch of polecats for parallel execution. | No |
+| **BeadStore** | Namespace | Optional. Configures beads issue tracking backend. | No |
+
+### What Actually Runs
+
+```
+Cluster
+├── gastown-system namespace
+│   ├── gastown-operator-controller-manager  ← Always running (1 pod)
+│   ├── Witness CRs                          ← Just data, no pods
+│   ├── Refinery CRs                         ← Just data, no pods
+│   └── Polecat CRs                          ← Each creates a pod ↓
+│       ├── polecat-furiosa (pod)            ← Running Claude Code
+│       ├── polecat-nux (pod)                ← Running Claude Code
+│       └── polecat-capable (pod)            ← Running Claude Code
+└── Rig CRs (cluster-scoped)                 ← Just data, no pods
+```
+
+**Key insight:** Only Polecats create pods. Everything else is just Kubernetes custom resources that the operator watches and updates. The Witness and Refinery controllers run inside the operator pod - they don't spawn separate pods.
+
+### Resource Usage
+
+| Component | CPU | Memory | Count |
+|-----------|-----|--------|-------|
+| Operator | 10m-500m | 64-128MB | 1 |
+| Polecat pod | 100m-2000m | 512MB-4GB | 0-N (on demand) |
+
+---
+
 ### Prerequisites
 
 This operator extends Gas Town to Kubernetes. You'll need:
@@ -375,14 +426,7 @@ make deploy IMG=ghcr.io/boshu2/gastown-operator:0.4.1
 
 ## Custom Resources
 
-| CRD | Description |
-|-----|-------------|
-| **Rig** | Project workspace (cluster-scoped) |
-| **Polecat** | Autonomous worker agent pod |
-| **Convoy** | Batch tracking for parallel execution |
-| **Refinery** | Merge queue processor |
-| **Witness** | Worker lifecycle monitor |
-| **BeadStore** | Issue tracking backend |
+See [What Runs in Your Cluster](#what-runs-in-your-cluster) for details on each CR and what actually runs as pods.
 
 ## Templates
 
