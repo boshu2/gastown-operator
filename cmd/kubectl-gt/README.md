@@ -14,16 +14,16 @@ kubectl krew install gt
 
 ### From Binary
 
-Download the latest release from [GitHub Releases](https://github.com/olympus-cloud/gastown-operator/releases) and extract to your PATH:
+Download the latest release from [GitHub Releases](https://github.com/boshu2/gastown-operator/releases) and extract to your PATH:
 
 ```bash
 # macOS (Apple Silicon)
-curl -LO https://github.com/olympus-cloud/gastown-operator/releases/latest/download/kubectl-gt-darwin-arm64.tar.gz
+curl -LO https://github.com/boshu2/gastown-operator/releases/latest/download/kubectl-gt-darwin-arm64.tar.gz
 tar -xzf kubectl-gt-darwin-arm64.tar.gz
 mv kubectl-gt /usr/local/bin/
 
 # Linux (amd64)
-curl -LO https://github.com/olympus-cloud/gastown-operator/releases/latest/download/kubectl-gt-linux-amd64.tar.gz
+curl -LO https://github.com/boshu2/gastown-operator/releases/latest/download/kubectl-gt-linux-amd64.tar.gz
 tar -xzf kubectl-gt-linux-amd64.tar.gz
 mv kubectl-gt /usr/local/bin/
 ```

@@ -11,7 +11,7 @@
 | Attribute | Value |
 |-----------|-------|
 | **Name** | gastown-operator |
-| **Version** | 0.4.1 |
+| **Version** | 0.4.2 |
 | **Role** | Kubernetes execution for Gas Town |
 | **Repository** | boshu2/gastown-operator |
 | **Helm Chart** | `oci://ghcr.io/boshu2/charts/gastown-operator` |
@@ -37,7 +37,7 @@ The gastown-operator extends [Gas Town](https://github.com/steveyegge/gastown) t
 
 ```bash
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.4.1 \
+  --version 0.4.2 \
   --namespace gastown-system \
   --create-namespace
 ```
@@ -46,11 +46,11 @@ helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
 
 ```bash
 # macOS (Apple Silicon)
-curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-darwin-arm64
+curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.2/kubectl-gt-darwin-arm64
 chmod +x kubectl-gt-darwin-arm64 && sudo mv kubectl-gt-darwin-arm64 /usr/local/bin/kubectl-gt
 
 # Linux
-curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-linux-amd64
+curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.2/kubectl-gt-linux-amd64
 chmod +x kubectl-gt-linux-amd64 && sudo mv kubectl-gt-linux-amd64 /usr/local/bin/kubectl-gt
 ```
 

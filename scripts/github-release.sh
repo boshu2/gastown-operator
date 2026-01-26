@@ -53,22 +53,22 @@ cd "$PROJECT_ROOT/cmd/kubectl-gt"
 make clean
 
 # Cross-compile for all platforms
-LDFLAGS="-ldflags \"-X github.com/olympus-cloud/gastown-operator/cmd/kubectl-gt/cmd.Version=$VERSION\""
+LDFLAGS="-ldflags \"-X github.com/boshu2/gastown-operator/cmd/kubectl-gt/cmd.Version=$VERSION\""
 
 echo "  Building linux-amd64..."
-GOOS=linux GOARCH=amd64 go build -ldflags "-X github.com/olympus-cloud/gastown-operator/cmd/kubectl-gt/cmd.Version=$VERSION" -o bin/kubectl-gt-linux-amd64 .
+GOOS=linux GOARCH=amd64 go build -ldflags "-X github.com/boshu2/gastown-operator/cmd/kubectl-gt/cmd.Version=$VERSION" -o bin/kubectl-gt-linux-amd64 .
 
 echo "  Building linux-arm64..."
-GOOS=linux GOARCH=arm64 go build -ldflags "-X github.com/olympus-cloud/gastown-operator/cmd/kubectl-gt/cmd.Version=$VERSION" -o bin/kubectl-gt-linux-arm64 .
+GOOS=linux GOARCH=arm64 go build -ldflags "-X github.com/boshu2/gastown-operator/cmd/kubectl-gt/cmd.Version=$VERSION" -o bin/kubectl-gt-linux-arm64 .
 
 echo "  Building darwin-amd64..."
-GOOS=darwin GOARCH=amd64 go build -ldflags "-X github.com/olympus-cloud/gastown-operator/cmd/kubectl-gt/cmd.Version=$VERSION" -o bin/kubectl-gt-darwin-amd64 .
+GOOS=darwin GOARCH=amd64 go build -ldflags "-X github.com/boshu2/gastown-operator/cmd/kubectl-gt/cmd.Version=$VERSION" -o bin/kubectl-gt-darwin-amd64 .
 
 echo "  Building darwin-arm64..."
-GOOS=darwin GOARCH=arm64 go build -ldflags "-X github.com/olympus-cloud/gastown-operator/cmd/kubectl-gt/cmd.Version=$VERSION" -o bin/kubectl-gt-darwin-arm64 .
+GOOS=darwin GOARCH=arm64 go build -ldflags "-X github.com/boshu2/gastown-operator/cmd/kubectl-gt/cmd.Version=$VERSION" -o bin/kubectl-gt-darwin-arm64 .
 
 echo "  Building windows-amd64..."
-GOOS=windows GOARCH=amd64 go build -ldflags "-X github.com/olympus-cloud/gastown-operator/cmd/kubectl-gt/cmd.Version=$VERSION" -o bin/kubectl-gt-windows-amd64.exe .
+GOOS=windows GOARCH=amd64 go build -ldflags "-X github.com/boshu2/gastown-operator/cmd/kubectl-gt/cmd.Version=$VERSION" -o bin/kubectl-gt-windows-amd64.exe .
 
 cd "$PROJECT_ROOT"
 

@@ -30,14 +30,14 @@ How the Gas Town Operator works and why it's designed this way.
                      │
                      ▼
               ┌─────────────┐
-              │  Filesystem │  (~/gt/, .beads/, tmux)
+              │ Kubernetes  │  (Pods, Secrets, Git)
               │  + Beads    │
               └─────────────┘
 ```
 
 ### Why This Pattern?
 
-1. **gt CLI is mature** - It handles all the complexity of tmux sessions, git branches, beads sync
+1. **gt CLI is mature** - It handles all the complexity of git branches, beads sync
 2. **Operator adds orchestration** - K8s-native scheduling, conditions, events
 3. **No state duplication** - We query gt CLI, don't maintain parallel state
 4. **Graceful degradation** - If operator is down, gt CLI still works
@@ -148,11 +148,35 @@ volumes:
 
 Operator exposes Prometheus metrics:
 
+### Reconciliation Metrics
+
 | Metric | Type | Description |
 |--------|------|-------------|
 | `gastown_reconcile_total` | Counter | Total reconciliations by controller |
 | `gastown_reconcile_errors_total` | Counter | Failed reconciliations |
 | `gastown_reconcile_duration_seconds` | Histogram | Reconcile latency |
+
+### Refinery Metrics (v0.4.2+)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `gastown_refinery_merge_total` | Counter | rig, result | Total merge attempts (success/conflict/failure) |
+| `gastown_refinery_merge_duration_seconds` | Histogram | rig | Time to complete merge operation |
+| `gastown_refinery_conflicts_total` | Counter | rig | Merge conflicts detected |
+| `gastown_refinery_queue_length` | Gauge | rig | Current merge queue depth |
+
+### Phase Gauges (v0.4.2+)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `gastown_rig_phase` | Gauge | rig, phase | Current rig phase (1=active) |
+| `gastown_polecat_phase` | Gauge | rig, name, phase | Current polecat phase (1=active) |
+| `gastown_convoy_phase` | Gauge | rig, name, phase | Current convoy phase (1=active) |
+
+### CLI Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
 | `gastown_gt_cli_calls_total` | Counter | gt CLI invocations |
 | `gastown_gt_cli_errors_total` | Counter | gt CLI failures |
 
@@ -170,20 +194,20 @@ Operator exposes Prometheus metrics:
 - Clear error message in condition
 - Does not block other rigs
 
-### Tmux Session Died
+### Pod Failure
 
-- Polecat controller detects `sessionActive: false`
+- Polecat controller detects pod termination
 - Sets `Failed` phase with reason
-- Can be recovered by setting `desiredState: Working` again
+- Witness controller tracks stuck polecats with exponential backoff
 
 ## Security Considerations
 
-### Host Access
+### Kubernetes Execution
 
-The operator needs access to:
-- `~/gt/` filesystem (hostPath mount)
-- gt CLI binary
-- Tmux sessions (for polecat management)
+The operator runs polecats as Kubernetes pods:
+- Claude Code agent runs in each pod
+- Git credentials via Kubernetes Secrets
+- No host filesystem access required
 
 ### RBAC
 

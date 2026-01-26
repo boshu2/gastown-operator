@@ -33,6 +33,26 @@ A Rig represents a project workspace in Gas Town. Rigs are cluster-scoped becaus
 | `lastSyncTime` | timestamp | Last sync with gt CLI |
 | `conditions` | []Condition | Standard Kubernetes conditions |
 
+### Ready Condition (v0.4.2+)
+
+The Rig Ready condition is **aggregated** from child resources:
+
+| Child Resource | Contributes to Ready |
+|----------------|---------------------|
+| Witness | Must be Active |
+| Refinery | Must be Idle or Processing |
+| Polecats | At least one must be Working or Done |
+
+**Ready=True** requires:
+1. Witness exists and is Active
+2. Refinery exists and is not in Error phase
+3. At least one polecat has completed successfully OR is actively working
+
+**Ready=False** reasons:
+- `WitnessNotReady`: Witness is missing or Degraded
+- `RefineryError`: Refinery is in Error phase
+- `NoPolecatActivity`: No polecats have completed work
+
 ### Example
 
 ```yaml
@@ -278,6 +298,31 @@ A Witness monitors the health of Polecats in a Rig and escalates issues.
 | `polecatsSummary.failed` | int32 | Failed polecats |
 | `polecatsSummary.stuck` | int32 | Polecats with no progress |
 | `conditions` | []Condition | Standard Kubernetes conditions |
+
+### Circuit Breaker (v0.4.2+)
+
+The Witness uses **exponential backoff** for escalation to prevent alert storms:
+
+| Consecutive Failures | Backoff Delay | Behavior |
+|---------------------|---------------|----------|
+| 1 | 0 (immediate) | First escalation sent immediately |
+| 2 | 1 minute | Wait before second escalation |
+| 3 | 2 minutes | Doubled backoff |
+| 4 | 4 minutes | Doubled again |
+| 5+ | 8 minutes (max) | Capped at 8 minute intervals |
+
+**Reset behavior:**
+- Successful health check resets the backoff counter
+- Polecat returning to Working phase resets for that polecat
+- Manual `kubectl gt polecat nuke` followed by re-sling resets
+
+**Status fields for circuit breaker:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `escalationBackoff` | duration | Current backoff delay |
+| `lastEscalationTime` | timestamp | When last escalation was sent |
+| `consecutiveFailures` | int32 | Failures since last reset |
 
 ### Example
 

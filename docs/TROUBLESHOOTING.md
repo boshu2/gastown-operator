@@ -146,8 +146,8 @@ kubectl gt polecat logs <rig>/<name> -n gastown-system
 
 If you see this error on v0.4.0:
 ```bash
-# Upgrade kubectl-gt to v0.4.1
-curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-darwin-arm64
+# Upgrade kubectl-gt to v0.4.2
+curl -LO https://github.com/boshu2/gastown-operator/releases/download/v0.4.2/kubectl-gt-darwin-arm64
 chmod +x kubectl-gt-darwin-arm64 && sudo mv kubectl-gt-darwin-arm64 /usr/local/bin/kubectl-gt
 ```
 
