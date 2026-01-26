@@ -158,7 +158,7 @@ If you want standalone K8s agents without the Gas Town workflow, see [Advanced: 
 
 ```bash
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.4.1 \
+  --version 0.4.2 \
   --namespace gastown-system \
   --create-namespace
 ```
@@ -168,7 +168,7 @@ helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
 ```bash
 # Download for your platform (auto-detects OS and architecture)
 ARCH=$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')
-curl -LO "https://github.com/boshu2/gastown-operator/releases/download/v0.4.1/kubectl-gt-$(uname -s | tr '[:upper:]' '[:lower:]')-${ARCH}"
+curl -LO "https://github.com/boshu2/gastown-operator/releases/download/v0.4.2/kubectl-gt-$(uname -s | tr '[:upper:]' '[:lower:]')-${ARCH}"
 chmod +x kubectl-gt-* && sudo mv kubectl-gt-* /usr/local/bin/kubectl-gt
 ```
 
@@ -381,7 +381,7 @@ You                          Kubernetes                      Git
 ```bash
 # Standard Kubernetes
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.4.1 \
+  --version 0.4.2 \
   --namespace gastown-system \
   --create-namespace
 ```
@@ -392,7 +392,7 @@ OpenShift requires stricter security settings:
 
 ```bash
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.4.1 \
+  --version 0.4.2 \
   --namespace gastown-system \
   --create-namespace \
   --set securityContext.allowPrivilegeEscalation=false \
@@ -406,10 +406,10 @@ Or use the FIPS-compliant image for regulated environments:
 
 ```bash
 helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
-  --version 0.4.1 \
+  --version 0.4.2 \
   --namespace gastown-system \
   --create-namespace \
-  --set image.tag=0.4.1-fips \
+  --set image.tag=0.4.2-fips \
   --set securityContext.allowPrivilegeEscalation=false \
   --set securityContext.runAsNonRoot=true \
   --set securityContext.runAsUser=null \
@@ -421,7 +421,7 @@ helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
 
 ```bash
 make install      # Install CRDs
-make deploy IMG=ghcr.io/boshu2/gastown-operator:0.4.1
+make deploy IMG=ghcr.io/boshu2/gastown-operator:0.4.2
 ```
 
 ## Custom Resources
@@ -457,7 +457,7 @@ See [FRICTION_POINTS.md](FRICTION_POINTS.md) for common mistakes and fixes.
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `image.repository` | `ghcr.io/boshu2/gastown-operator` | Container image |
-| `image.tag` | `0.4.1` | Image tag |
+| `image.tag` | `0.4.2` | Image tag |
 | `replicaCount` | `1` | Number of replicas |
 
 See [values.yaml](helm/gastown-operator/values.yaml) for full configuration.
@@ -496,16 +496,16 @@ All images are published to GHCR with SBOM, Trivy scans, and provenance attestat
 
 | Image | Purpose | Tags |
 |-------|---------|------|
-| `ghcr.io/boshu2/gastown-operator` | Kubernetes operator | `0.4.1`, `latest`, `0.4.1-fips` |
-| `ghcr.io/boshu2/polecat-agent` | Pre-built polecat agent | `0.4.1`, `latest` |
-| `ghcr.io/boshu2/charts/gastown-operator` | Helm chart (OCI) | `0.4.1` |
+| `ghcr.io/boshu2/gastown-operator` | Kubernetes operator | `0.4.2`, `latest`, `0.4.2-fips` |
+| `ghcr.io/boshu2/polecat-agent` | Pre-built polecat agent | `0.4.2`, `latest` |
+| `ghcr.io/boshu2/charts/gastown-operator` | Helm chart (OCI) | `0.4.2` |
 
 ### Polecat Agent Image
 
 The `polecat-agent` image comes with Claude Code pre-installed:
 
 ```bash
-docker pull ghcr.io/boshu2/polecat-agent:0.4.1
+docker pull ghcr.io/boshu2/polecat-agent:0.4.2
 ```
 
 **Benefits:**
@@ -537,7 +537,7 @@ See [images/polecat-agent/](images/polecat-agent/) for build details and [CUSTOM
 | **Target** | Vanilla Kubernetes | OpenShift / Regulated |
 | **Base Image** | `distroless` | Red Hat UBI9 |
 | **Crypto** | Standard Go | FIPS-validated (BoringCrypto) |
-| **Image Tag** | `0.4.1` | `0.4.1-fips` |
+| **Image Tag** | `0.4.2` | `0.4.2-fips` |
 
 ## Related Projects
 
