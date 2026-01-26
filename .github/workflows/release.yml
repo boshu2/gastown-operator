@@ -336,6 +336,9 @@ jobs:
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.preflight.outputs.version }}
           echo "Image verification passed"
 
+      - name: Log in to GHCR for Helm
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
       - name: Verify Helm chart
         run: |
           helm show chart oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/gastown-operator \
