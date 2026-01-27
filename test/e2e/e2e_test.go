@@ -84,19 +84,45 @@ var _ = Describe("Manager", Ordered, func() {
 	// and deleting the namespace.
 	AfterAll(func() {
 		By("cleaning up the curl pod for metrics")
-		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
+		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace, "--ignore-not-found")
+		_, _ = utils.Run(cmd)
+
+		// Delete all CRs first and wait for them to be fully deleted
+		// This ensures finalizers are processed before the controller is removed
+		By("cleaning up any remaining Polecats")
+		cmd = exec.Command("kubectl", "delete", "polecats", "--all", "-n", namespace, "--ignore-not-found", "--timeout=60s")
+		_, _ = utils.Run(cmd)
+
+		By("cleaning up any remaining Rigs")
+		cmd = exec.Command("kubectl", "delete", "rigs", "--all", "--ignore-not-found", "--timeout=60s")
+		_, _ = utils.Run(cmd)
+
+		By("cleaning up any remaining Witnesses")
+		cmd = exec.Command("kubectl", "delete", "witnesses", "--all", "-n", namespace, "--ignore-not-found", "--timeout=60s")
+		_, _ = utils.Run(cmd)
+
+		By("cleaning up any remaining Refineries")
+		cmd = exec.Command("kubectl", "delete", "refineries", "--all", "-n", namespace, "--ignore-not-found", "--timeout=60s")
+		_, _ = utils.Run(cmd)
+
+		By("cleaning up any remaining Convoys")
+		cmd = exec.Command("kubectl", "delete", "convoys", "--all", "-n", namespace, "--ignore-not-found", "--timeout=60s")
+		_, _ = utils.Run(cmd)
+
+		By("cleaning up any remaining BeadStores")
+		cmd = exec.Command("kubectl", "delete", "beadstores", "--all", "-n", namespace, "--ignore-not-found", "--timeout=60s")
 		_, _ = utils.Run(cmd)
 
 		By("undeploying the controller-manager")
-		cmd = exec.Command("make", "undeploy")
+		cmd = exec.Command("make", "undeploy", "ignore-not-found=true")
 		_, _ = utils.Run(cmd)
 
 		By("uninstalling CRDs")
-		cmd = exec.Command("make", "uninstall")
+		cmd = exec.Command("make", "uninstall", "ignore-not-found=true")
 		_, _ = utils.Run(cmd)
 
 		By("removing manager namespace")
-		cmd = exec.Command("kubectl", "delete", "ns", namespace)
+		cmd = exec.Command("kubectl", "delete", "ns", namespace, "--ignore-not-found", "--timeout=60s")
 		_, _ = utils.Run(cmd)
 	})
 
@@ -473,8 +499,10 @@ status:
 			Eventually(verifyRefineryQueue, 3*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("cleaning up test resources")
-			_ = exec.Command("kubectl", "delete", "polecat", polecatName, "-n", namespace)
-			_ = exec.Command("kubectl", "delete", "rig", rigName)
+			cmd = exec.Command("kubectl", "delete", "polecat", polecatName, "-n", namespace)
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "delete", "rig", rigName)
+			_, _ = utils.Run(cmd)
 		})
 
 		It("should create a Pod for a Polecat in kubernetes execution mode", func() {
@@ -603,8 +631,10 @@ spec:
 			Eventually(verifyPodDeleted, 2*time.Minute, time.Second).Should(Succeed())
 
 			By("cleaning up test secrets")
-			_ = exec.Command("kubectl", "delete", "secret", "test-git-creds", "-n", testNamespace)
-			_ = exec.Command("kubectl", "delete", "secret", "test-claude-creds", "-n", testNamespace)
+			cmd = exec.Command("kubectl", "delete", "secret", "test-git-creds", "-n", testNamespace)
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "delete", "secret", "test-claude-creds", "-n", testNamespace)
+			_, _ = utils.Run(cmd)
 		})
 	})
 })
