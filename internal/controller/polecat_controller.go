@@ -31,11 +31,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	gterrors "github.com/org/gastown-operator/pkg/errors"
 	"github.com/org/gastown-operator/pkg/metrics"
 	"github.com/org/gastown-operator/pkg/pod"
+	gtworkqueue "github.com/org/gastown-operator/pkg/workqueue"
 )
 
 const (
@@ -88,7 +90,9 @@ func (r *PolecatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// Add finalizer if not present
 	if !controllerutil.ContainsFinalizer(&polecat, polecatFinalizer) {
-		log.Info("Adding finalizer to Polecat")
+		log.Info("Adding finalizer to Polecat",
+			"resource", polecat.Name,
+			"namespace", polecat.Namespace)
 		controllerutil.AddFinalizer(&polecat, polecatFinalizer)
 		if err := r.Update(ctx, &polecat); err != nil {
 			timer.RecordResult(metrics.ResultError)
@@ -107,7 +111,10 @@ func (r *PolecatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	case gastownv1alpha1.PolecatDesiredTerminated:
 		return r.ensureTerminated(ctx, &polecat, timer)
 	default:
-		log.Info("Unknown desired state, defaulting to idle")
+		log.Info("Unknown desired state, defaulting to idle",
+			"resource", polecat.Name,
+			"namespace", polecat.Namespace,
+			"desiredState", polecat.Spec.DesiredState)
 		return r.ensureIdle(ctx, &polecat, timer)
 	}
 }
@@ -171,7 +178,11 @@ func (r *PolecatReconciler) ensureWorking(ctx context.Context, polecat *gastownv
 	}
 
 	if err := r.Create(ctx, newPod); err != nil {
-		log.Error(err, "Failed to create Pod")
+		log.Error(err, "Failed to create Pod",
+			"resource", polecat.Name,
+			"namespace", polecat.Namespace,
+			"podName", podName,
+			"error_type", gterrors.ToConditionReason(err))
 		r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionFalse, "PodCreateFailed",
 			err.Error())
 		polecat.Status.Phase = gastownv1alpha1.PolecatPhaseStuck
@@ -205,7 +216,10 @@ func (r *PolecatReconciler) ensureWorking(ctx context.Context, polecat *gastownv
 		return ctrl.Result{}, gterrors.Wrap(err, "failed to update status")
 	}
 
-	log.Info("Pod created for Polecat", "podName", podName)
+	log.Info("Pod created for Polecat",
+		"resource", polecat.Name,
+		"namespace", polecat.Namespace,
+		"podName", podName)
 	timer.RecordResult(metrics.ResultSuccess)
 	return ctrl.Result{RequeueAfter: PolecatSyncInterval}, nil
 }
@@ -294,6 +308,8 @@ func (r *PolecatReconciler) syncStatusFromPod(ctx context.Context, polecat *gast
 	}
 
 	log.Info("Synced status from Pod",
+		"resource", polecat.Name,
+		"namespace", polecat.Namespace,
 		"podName", p.Name,
 		"podPhase", p.Status.Phase,
 		"polecatPhase", polecat.Status.Phase)
@@ -319,9 +335,16 @@ func (r *PolecatReconciler) ensureIdle(ctx context.Context, polecat *gastownv1al
 	err := r.Get(ctx, client.ObjectKey{Name: podName, Namespace: polecat.Namespace}, &existingPod)
 	if err == nil {
 		// Pod exists, delete it
-		log.Info("Deleting Pod to transition to idle", "podName", podName)
+		log.Info("Deleting Pod to transition to idle",
+			"resource", polecat.Name,
+			"namespace", polecat.Namespace,
+			"podName", podName)
 		if err := r.Delete(ctx, &existingPod); err != nil && !apierrors.IsNotFound(err) {
-			log.Error(err, "Failed to delete Pod")
+			log.Error(err, "Failed to delete Pod",
+				"resource", polecat.Name,
+				"namespace", polecat.Namespace,
+				"podName", podName,
+				"error_type", gterrors.ToConditionReason(err))
 			timer.RecordResult(metrics.ResultRequeue)
 			return ctrl.Result{RequeueAfter: RequeueDefault}, nil
 		}
@@ -353,7 +376,9 @@ func (r *PolecatReconciler) ensureIdle(ctx context.Context, polecat *gastownv1al
 		return ctrl.Result{}, gterrors.Wrap(err, "failed to update polecat status")
 	}
 
-	log.Info("Polecat is idle")
+	log.Info("Polecat is idle",
+		"resource", polecat.Name,
+		"namespace", polecat.Namespace)
 	timer.RecordResult(metrics.ResultSuccess)
 	return ctrl.Result{}, nil
 }
@@ -369,9 +394,16 @@ func (r *PolecatReconciler) ensureTerminated(ctx context.Context, polecat *gasto
 	err := r.Get(ctx, client.ObjectKey{Name: podName, Namespace: polecat.Namespace}, &existingPod)
 	if err == nil {
 		// Pod exists, delete it
-		log.Info("Deleting Pod for terminated Polecat", "podName", podName)
+		log.Info("Deleting Pod for terminated Polecat",
+			"resource", polecat.Name,
+			"namespace", polecat.Namespace,
+			"podName", podName)
 		if err := r.Delete(ctx, &existingPod); err != nil && !apierrors.IsNotFound(err) {
-			log.Error(err, "Failed to delete Pod")
+			log.Error(err, "Failed to delete Pod",
+				"resource", polecat.Name,
+				"namespace", polecat.Namespace,
+				"podName", podName,
+				"error_type", gterrors.ToConditionReason(err))
 			r.setCondition(polecat, ConditionPolecatReady, metav1.ConditionFalse, "PodDeleteFailed",
 				err.Error())
 			if updateErr := r.Status().Update(ctx, polecat); updateErr != nil {
@@ -406,7 +438,9 @@ func (r *PolecatReconciler) ensureTerminated(ctx context.Context, polecat *gasto
 		return ctrl.Result{}, gterrors.Wrap(err, "failed to update status")
 	}
 
-	log.Info("Polecat terminated")
+	log.Info("Polecat terminated",
+		"resource", polecat.Name,
+		"namespace", polecat.Namespace)
 	timer.RecordResult(metrics.ResultSuccess)
 	return ctrl.Result{}, nil
 }
@@ -432,17 +466,24 @@ func (r *PolecatReconciler) handleDeletion(ctx context.Context, polecat *gastown
 		return ctrl.Result{}, nil
 	}
 
-	log.Info("Handling Polecat deletion, cleaning up resources")
+	log.Info("Handling Polecat deletion, cleaning up resources",
+		"resource", polecat.Name,
+		"namespace", polecat.Namespace)
 
 	// Cleanup Pod
 	if err := r.cleanupPod(ctx, polecat); err != nil {
-		log.Error(err, "Failed to cleanup Polecat Pod")
+		log.Error(err, "Failed to cleanup Polecat Pod",
+			"resource", polecat.Name,
+			"namespace", polecat.Namespace,
+			"error_type", gterrors.ToConditionReason(err))
 		timer.RecordResult(metrics.ResultRequeue)
 		return ctrl.Result{RequeueAfter: RequeueDefault}, nil
 	}
 
 	// Remove finalizer after successful cleanup
-	log.Info("Cleanup complete, removing finalizer")
+	log.Info("Cleanup complete, removing finalizer",
+		"resource", polecat.Name,
+		"namespace", polecat.Namespace)
 	controllerutil.RemoveFinalizer(polecat, polecatFinalizer)
 	if err := r.Update(ctx, polecat); err != nil {
 		timer.RecordResult(metrics.ResultError)
@@ -461,14 +502,20 @@ func (r *PolecatReconciler) cleanupPod(ctx context.Context, polecat *gastownv1al
 	var existingPod corev1.Pod
 	err := r.Get(ctx, client.ObjectKey{Name: podName, Namespace: polecat.Namespace}, &existingPod)
 	if apierrors.IsNotFound(err) {
-		log.Info("Pod already deleted", "podName", podName)
+		log.Info("Pod already deleted",
+			"resource", polecat.Name,
+			"namespace", polecat.Namespace,
+			"podName", podName)
 		return nil
 	}
 	if err != nil {
 		return gterrors.Wrap(err, "failed to get pod")
 	}
 
-	log.Info("Deleting Pod for Polecat cleanup", "podName", podName)
+	log.Info("Deleting Pod for Polecat cleanup",
+		"resource", polecat.Name,
+		"namespace", polecat.Namespace,
+		"podName", podName)
 	if err := r.Delete(ctx, &existingPod); err != nil && !apierrors.IsNotFound(err) {
 		return gterrors.Wrap(err, "failed to delete pod")
 	}
@@ -481,8 +528,10 @@ func (r *PolecatReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gastownv1alpha1.Polecat{}).
 		Named("polecat").
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: 5, // Limit concurrent pod creations
+			RateLimiter:             gtworkqueue.NewGastownRateLimiter(),
 		}).
 		Complete(r)
 }

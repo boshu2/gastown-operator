@@ -181,6 +181,8 @@ type KubernetesSpec struct {
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// ActiveDeadlineSeconds is the max runtime before Pod is terminated
+	// +kubebuilder:validation:Minimum=60
+	// +kubebuilder:validation:Maximum=86400
 	// +kubebuilder:default=3600
 	// +optional
 	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
@@ -244,10 +246,14 @@ type PolecatSpec struct {
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// TTLSecondsAfterFinished limits how long a completed polecat persists
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=604800
 	// +optional
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
 
 	// MaxIdleSeconds terminates polecat if idle for this duration
+	// +kubebuilder:validation:Minimum=60
+	// +kubebuilder:validation:Maximum=3600
 	// +optional
 	MaxIdleSeconds *int32 `json:"maxIdleSeconds,omitempty"`
 }

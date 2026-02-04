@@ -132,6 +132,36 @@ var (
 		},
 		[]string{labelRig},
 	)
+
+	// ChildCreationDuration tracks duration to create Witness/Refinery children.
+	ChildCreationDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "gastown_rig_child_creation_duration_seconds",
+			Help:    "Duration to create Witness/Refinery children",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"rig", "child_type", "result"},
+	)
+
+	// PodOperationDuration tracks duration of pod operations (create/update/delete).
+	PodOperationDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "gastown_polecat_pod_operation_duration_seconds",
+			Help:    "Duration of pod operations (create/update/delete)",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"polecat", "operation", "result"},
+	)
+
+	// GitOperationDuration tracks duration of git operations.
+	GitOperationDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "gastown_refinery_git_operation_duration_seconds",
+			Help:    "Duration of git operations",
+			Buckets: []float64{0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+		},
+		[]string{"refinery", "operation", "result"},
+	)
 )
 
 func init() {
@@ -149,6 +179,9 @@ func init() {
 		RefineryMergeDuration,
 		RefineryConflictsTotal,
 		RefineryQueueLength,
+		ChildCreationDuration,
+		PodOperationDuration,
+		GitOperationDuration,
 	)
 }
 
@@ -261,4 +294,23 @@ func RecordConflict(rig string) {
 // UpdateQueueLength updates the merge queue length for a rig.
 func UpdateQueueLength(rig string, length float64) {
 	RefineryQueueLength.WithLabelValues(rig).Set(length)
+}
+
+// OperationTimer is a generic helper for timing operations with a result label.
+type OperationTimer struct {
+	histogram *prometheus.HistogramVec
+	labels    []string
+	start     time.Time
+}
+
+// NewOperationTimer creates a new timer for an operation.
+// Labels should be all labels except the result, which is added via ObserveWithResult.
+func NewOperationTimer(h *prometheus.HistogramVec, labels ...string) *OperationTimer {
+	return &OperationTimer{histogram: h, labels: labels, start: time.Now()}
+}
+
+// ObserveWithResult records the operation duration with the given result label.
+func (t *OperationTimer) ObserveWithResult(result string) {
+	labels := append(t.labels, result)
+	t.histogram.WithLabelValues(labels...).Observe(time.Since(t.start).Seconds())
 }

@@ -322,6 +322,8 @@ spec:
                     description: ActiveDeadlineSeconds is the max runtime before Pod
                       is terminated
                     format: int64
+                    maximum: 86400
+                    minimum: 60
                     type: integer
                   apiKeySecretRef:
                     description: |-
@@ -469,6 +471,8 @@ spec:
               maxIdleSeconds:
                 description: MaxIdleSeconds terminates polecat if idle for this duration
                 format: int32
+                maximum: 3600
+                minimum: 60
                 type: integer
               resources:
                 description: Resources defines compute resources for the polecat pod
@@ -541,6 +545,8 @@ spec:
                 description: TTLSecondsAfterFinished limits how long a completed polecat
                   persists
                 format: int32
+                maximum: 604800
+                minimum: 0
                 type: integer
             required:
             - desiredState

@@ -35,10 +35,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	"github.com/org/gastown-operator/internal/git"
+	gterrors "github.com/org/gastown-operator/pkg/errors"
 	"github.com/org/gastown-operator/pkg/metrics"
+	gtworkqueue "github.com/org/gastown-operator/pkg/workqueue"
 )
 
 const (
@@ -85,7 +88,10 @@ func (r *RefineryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("Reconciling Refinery", "rigRef", refinery.Spec.RigRef)
+	log.Info("Reconciling Refinery",
+		"resource", refinery.Name,
+		"namespace", refinery.Namespace,
+		"rigRef", refinery.Spec.RigRef)
 
 	// List Polecats in the namespace that belong to this rig and are ready for merge
 	polecatList := &gastownv1alpha1.PolecatList{}
@@ -94,7 +100,11 @@ func (r *RefineryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		client.MatchingLabels{"gastown.io/rig": refinery.Spec.RigRef},
 	}
 	if err := r.List(ctx, polecatList, listOpts...); err != nil {
-		log.Error(err, "Failed to list Polecats")
+		log.Error(err, "Failed to list Polecats",
+			"resource", refinery.Name,
+			"namespace", refinery.Namespace,
+			"rigRef", refinery.Spec.RigRef,
+			"error_type", gterrors.ToConditionReason(err))
 		r.setCondition(refinery, RefineryConditionReady, metav1.ConditionFalse,
 			"ListFailed", "Failed to list Polecats")
 		return ctrl.Result{RequeueAfter: refineryIdleRequeueInterval}, r.Status().Update(ctx, refinery)
@@ -122,7 +132,10 @@ func (r *RefineryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			"Idle", "No merges pending")
 
 		if err := r.Status().Update(ctx, refinery); err != nil {
-			log.Error(err, "Failed to update Refinery status")
+			log.Error(err, "Failed to update Refinery status",
+				"resource", refinery.Name,
+				"namespace", refinery.Namespace,
+				"error_type", gterrors.ToConditionReason(err))
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: refineryIdleRequeueInterval}, nil
@@ -140,7 +153,11 @@ func (r *RefineryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		// Process the merge with timing
 		mergeTimer := metrics.NewRefineryMergeTimer(refinery.Spec.RigRef)
 		if err := r.processMerge(ctx, refinery, &targetPolecat); err != nil {
-			log.Error(err, "Failed to process merge", "polecat", targetPolecat.Name)
+			log.Error(err, "Failed to process merge",
+				"resource", refinery.Name,
+				"namespace", refinery.Namespace,
+				"polecat", targetPolecat.Name,
+				"error_type", gterrors.ToConditionReason(err))
 			refinery.Status.MergesSummary.Failed++
 			r.Recorder.Event(refinery, "Warning", "MergeFailed",
 				"Merge failed for "+targetPolecat.Name+": "+err.Error())
@@ -162,11 +179,16 @@ func (r *RefineryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// Update status
 	if err := r.Status().Update(ctx, refinery); err != nil {
-		log.Error(err, "Failed to update Refinery status")
+		log.Error(err, "Failed to update Refinery status",
+			"resource", refinery.Name,
+			"namespace", refinery.Namespace,
+			"error_type", gterrors.ToConditionReason(err))
 		return ctrl.Result{}, err
 	}
 
 	log.Info("Refinery reconciliation complete",
+		"resource", refinery.Name,
+		"namespace", refinery.Namespace,
 		"phase", refinery.Status.Phase,
 		"queueLength", refinery.Status.QueueLength,
 		"succeeded", refinery.Status.MergesSummary.Succeeded,
@@ -240,6 +262,8 @@ func (r *RefineryReconciler) processMerge(
 	}
 
 	log.Info("Processing merge",
+		"resource", refinery.Name,
+		"namespace", refinery.Namespace,
 		"polecat", polecat.Name,
 		"sourceBranch", sourceBranch,
 		"targetBranch", targetBranch,
@@ -284,7 +308,10 @@ func (r *RefineryReconciler) processMerge(
 	gitClient := factory(repoDir, gitURL, sshKeyPath)
 
 	// Clone the repository
-	log.Info("Cloning repository", "url", gitURL)
+	log.Info("Cloning repository",
+		"resource", refinery.Name,
+		"namespace", refinery.Namespace,
+		"url", gitURL)
 	if err := gitClient.Clone(ctx); err != nil {
 		return fmt.Errorf("failed to clone repository: %w", err)
 	}
@@ -298,6 +325,8 @@ func (r *RefineryReconciler) processMerge(
 	}
 
 	log.Info("Executing merge workflow",
+		"resource", refinery.Name,
+		"namespace", refinery.Namespace,
 		"sourceBranch", sourceBranch,
 		"targetBranch", targetBranch)
 
@@ -311,6 +340,8 @@ func (r *RefineryReconciler) processMerge(
 	}
 
 	log.Info("Merge completed successfully",
+		"resource", refinery.Name,
+		"namespace", refinery.Namespace,
 		"mergedCommit", result.MergedCommit,
 		"sourceBranch", sourceBranch,
 		"targetBranch", targetBranch)
@@ -407,8 +438,10 @@ func (r *RefineryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gastownv1alpha1.Refinery{}).
 		Named("refinery").
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: 2, // Merges should be serialized per rig anyway
+			RateLimiter:             gtworkqueue.NewGastownRateLimiter(),
 		}).
 		Complete(r)
 }

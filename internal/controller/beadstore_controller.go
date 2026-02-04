@@ -29,10 +29,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	gterrors "github.com/org/gastown-operator/pkg/errors"
 	"github.com/org/gastown-operator/pkg/metrics"
+	gtworkqueue "github.com/org/gastown-operator/pkg/workqueue"
 )
 
 const (
@@ -221,8 +223,10 @@ func (r *BeadStoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&gastownv1alpha1.BeadStore{}).
 		Owns(&corev1.Secret{}).
 		Named("beadstore").
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: 1, // BeadStore is a singleton config
+			RateLimiter:             gtworkqueue.NewGastownRateLimiter(),
 		}).
 		Complete(r)
 }

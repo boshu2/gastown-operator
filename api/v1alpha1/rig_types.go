@@ -21,6 +21,7 @@ import (
 )
 
 // RigSpec defines the desired state of Rig
+// +kubebuilder:validation:XValidation:rule="self.settings.maxPolecats <= 50",message="maxPolecats must be <= 50"
 type RigSpec struct {
 	// GitURL is the remote repository URL
 	// +kubebuilder:validation:Required
@@ -44,7 +45,7 @@ type RigSettings struct {
 
 	// MaxPolecats is the maximum number of concurrent polecats
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=100
+	// +kubebuilder:validation:Maximum=50
 	// +kubebuilder:default=8
 	// +optional
 	MaxPolecats int `json:"maxPolecats,omitempty"`

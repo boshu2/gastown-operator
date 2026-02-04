@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -30,10 +31,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	gterrors "github.com/org/gastown-operator/pkg/errors"
 	"github.com/org/gastown-operator/pkg/metrics"
+	gtworkqueue "github.com/org/gastown-operator/pkg/workqueue"
 )
 
 const (
@@ -93,19 +96,21 @@ func (r *RigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	// Add finalizer if not present
 	if !controllerutil.ContainsFinalizer(&rig, rigFinalizer) {
-		log.Info("Adding finalizer to Rig")
+		log.Info("Adding finalizer to Rig", "resource", rig.Name)
 		controllerutil.AddFinalizer(&rig, rigFinalizer)
 		if err := r.Update(ctx, &rig); err != nil {
 			timer.RecordResult(metrics.ResultError)
 			return ctrl.Result{}, gterrors.Wrap(err, "failed to add finalizer")
 		}
-		// Requeue to continue reconciliation
-		return ctrl.Result{Requeue: true}, nil
+		// Requeue immediately to continue reconciliation
+		return ctrl.Result{RequeueAfter: time.Millisecond}, nil
 	}
 
 	// Ensure Witness and Refinery children exist
 	if err := r.ensureChildren(ctx, &rig); err != nil {
-		log.Error(err, "Failed to ensure child resources")
+		log.Error(err, "Failed to ensure child resources",
+			"resource", rig.Name,
+			"error_type", gterrors.ToConditionReason(err))
 		r.setCondition(&rig, ConditionRigReady, metav1.ConditionFalse, "ChildCreationFailed",
 			err.Error())
 		rig.Status.Phase = gastownv1alpha1.RigPhaseDegraded
@@ -120,7 +125,9 @@ func (r *RigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	// Count polecats for this rig
 	var polecatList gastownv1alpha1.PolecatList
 	if err := r.List(ctx, &polecatList, client.MatchingFields{"spec.rig": rig.Name}); err != nil {
-		log.Error(err, "Failed to list polecats for rig")
+		log.Error(err, "Failed to list polecats for rig",
+			"resource", rig.Name,
+			"error_type", gterrors.ToConditionReason(err))
 		r.setCondition(&rig, ConditionRigReady, metav1.ConditionFalse, "ListFailed",
 			err.Error())
 		rig.Status.Phase = gastownv1alpha1.RigPhaseDegraded
@@ -138,7 +145,9 @@ func (r *RigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	var convoyList gastownv1alpha1.ConvoyList
 	activeConvoys := 0
 	if err := r.List(ctx, &convoyList, client.MatchingFields{"spec.rigRef": rig.Name}); err != nil {
-		log.Error(err, "Failed to list convoys for rig")
+		log.Error(err, "Failed to list convoys for rig",
+			"resource", rig.Name,
+			"error_type", gterrors.ToConditionReason(err))
 	} else {
 		for _, convoy := range convoyList.Items {
 			if convoy.Status.Phase == gastownv1alpha1.ConvoyPhaseInProgress {
@@ -207,7 +216,7 @@ func (r *RigReconciler) ensureChildren(ctx context.Context, rig *gastownv1alpha1
 			if !apierrors.IsAlreadyExists(err) {
 				return fmt.Errorf("failed to create Witness %s: %w", witnessName, err)
 			}
-			log.Info("Witness already exists", "name", witnessName)
+			log.Info("Witness already exists", "resource", rig.Name, "witness", witnessName)
 		} else {
 			log.Info("Created Witness for Rig", "witness", witnessName, "rig", rig.Name)
 		}
@@ -237,7 +246,7 @@ func (r *RigReconciler) ensureChildren(ctx context.Context, rig *gastownv1alpha1
 			if !apierrors.IsAlreadyExists(err) {
 				return fmt.Errorf("failed to create Refinery %s: %w", refineryName, err)
 			}
-			log.Info("Refinery already exists", "name", refineryName)
+			log.Info("Refinery already exists", "resource", rig.Name, "refinery", refineryName)
 		} else {
 			log.Info("Created Refinery for Rig", "refinery", refineryName, "rig", rig.Name)
 		}
@@ -265,7 +274,7 @@ func (r *RigReconciler) handleDeletion(ctx context.Context, rig *gastownv1alpha1
 		return ctrl.Result{}, nil
 	}
 
-	log.Info("Handling Rig deletion, cleaning up child resources", "rig", rig.Name)
+	log.Info("Handling Rig deletion, cleaning up child resources", "resource", rig.Name)
 
 	ns := rig.Status.ChildNamespace
 	if ns == "" {
@@ -276,32 +285,48 @@ func (r *RigReconciler) handleDeletion(ctx context.Context, rig *gastownv1alpha1
 	witnessName := rig.Name + "-witness"
 	witness := &gastownv1alpha1.Witness{}
 	if err := r.Get(ctx, client.ObjectKey{Name: witnessName, Namespace: ns}, witness); err == nil {
-		log.Info("Deleting Witness", "name", witnessName)
+		log.Info("Deleting Witness", "resource", rig.Name, "witness", witnessName, "namespace", ns)
 		if err := r.Delete(ctx, witness); err != nil && !apierrors.IsNotFound(err) {
-			log.Error(err, "Failed to delete Witness", "name", witnessName)
+			log.Error(err, "Failed to delete Witness",
+				"resource", rig.Name,
+				"witness", witnessName,
+				"namespace", ns,
+				"error_type", gterrors.ToConditionReason(err))
 			timer.RecordResult(metrics.ResultRequeue)
 			return ctrl.Result{RequeueAfter: RequeueDefault}, nil
 		}
 	} else if !apierrors.IsNotFound(err) {
-		log.Error(err, "Failed to get Witness for deletion", "name", witnessName)
+		log.Error(err, "Failed to get Witness for deletion",
+			"resource", rig.Name,
+			"witness", witnessName,
+			"namespace", ns,
+			"error_type", gterrors.ToConditionReason(err))
 	}
 
 	// Delete Refinery
 	refineryName := rig.Name + "-refinery"
 	refinery := &gastownv1alpha1.Refinery{}
 	if err := r.Get(ctx, client.ObjectKey{Name: refineryName, Namespace: ns}, refinery); err == nil {
-		log.Info("Deleting Refinery", "name", refineryName)
+		log.Info("Deleting Refinery", "resource", rig.Name, "refinery", refineryName, "namespace", ns)
 		if err := r.Delete(ctx, refinery); err != nil && !apierrors.IsNotFound(err) {
-			log.Error(err, "Failed to delete Refinery", "name", refineryName)
+			log.Error(err, "Failed to delete Refinery",
+				"resource", rig.Name,
+				"refinery", refineryName,
+				"namespace", ns,
+				"error_type", gterrors.ToConditionReason(err))
 			timer.RecordResult(metrics.ResultRequeue)
 			return ctrl.Result{RequeueAfter: RequeueDefault}, nil
 		}
 	} else if !apierrors.IsNotFound(err) {
-		log.Error(err, "Failed to get Refinery for deletion", "name", refineryName)
+		log.Error(err, "Failed to get Refinery for deletion",
+			"resource", rig.Name,
+			"refinery", refineryName,
+			"namespace", ns,
+			"error_type", gterrors.ToConditionReason(err))
 	}
 
 	// Remove finalizer after successful cleanup
-	log.Info("Cleanup complete, removing finalizer", "rig", rig.Name)
+	log.Info("Cleanup complete, removing finalizer", "resource", rig.Name)
 	controllerutil.RemoveFinalizer(rig, rigFinalizer)
 	if err := r.Update(ctx, rig); err != nil {
 		timer.RecordResult(metrics.ResultError)
@@ -357,8 +382,10 @@ func (r *RigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gastownv1alpha1.Rig{}).
 		Named("rig").
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: 3, // Rigs are cluster-scoped, limit concurrency
+			RateLimiter:             gtworkqueue.NewGastownRateLimiter(),
 		}).
 		Complete(r)
 }

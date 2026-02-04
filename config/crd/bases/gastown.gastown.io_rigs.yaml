@@ -68,7 +68,7 @@ spec:
                   maxPolecats:
                     default: 8
                     description: MaxPolecats is the maximum number of concurrent polecats
-                    maximum: 100
+                    maximum: 50
                     minimum: 1
                     type: integer
                   namepoolTheme:
@@ -80,6 +80,9 @@ spec:
             - beadsPrefix
             - gitURL
             type: object
+            x-kubernetes-validations:
+            - message: maxPolecats must be <= 50
+              rule: self.settings.maxPolecats <= 50
           status:
             description: RigStatus defines the observed state of Rig
             properties:

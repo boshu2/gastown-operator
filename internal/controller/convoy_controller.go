@@ -27,10 +27,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	gterrors "github.com/org/gastown-operator/pkg/errors"
 	"github.com/org/gastown-operator/pkg/metrics"
+	gtworkqueue "github.com/org/gastown-operator/pkg/workqueue"
 )
 
 const (
@@ -188,8 +190,10 @@ func (r *ConvoyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gastownv1alpha1.Convoy{}).
 		Named("convoy").
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: 3, // Limit concurrent convoy processing
+			RateLimiter:             gtworkqueue.NewGastownRateLimiter(),
 		}).
 		Complete(r)
 }

@@ -29,9 +29,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	gterrors "github.com/org/gastown-operator/pkg/errors"
+	gtworkqueue "github.com/org/gastown-operator/pkg/workqueue"
 )
 
 const (
@@ -80,7 +82,10 @@ func (r *WitnessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("Reconciling Witness", "rigRef", witness.Spec.RigRef)
+	log.Info("Reconciling Witness",
+		"resource", witness.Name,
+		"namespace", witness.Namespace,
+		"rigRef", witness.Spec.RigRef)
 
 	// Get health check interval from spec or use default
 	healthCheckInterval := defaultHealthCheckInterval
@@ -101,7 +106,11 @@ func (r *WitnessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		client.MatchingLabels{"gastown.io/rig": witness.Spec.RigRef},
 	}
 	if err := r.List(ctx, polecatList, listOpts...); err != nil {
-		log.Error(err, "Failed to list Polecats")
+		log.Error(err, "Failed to list Polecats",
+			"resource", witness.Name,
+			"namespace", witness.Namespace,
+			"rigRef", witness.Spec.RigRef,
+			"error_type", gterrors.ToConditionReason(err))
 		r.setCondition(witness, ConditionWitnessDegraded, metav1.ConditionTrue,
 			"ListFailed", "Failed to list Polecats")
 		return ctrl.Result{RequeueAfter: healthCheckInterval}, r.Status().Update(ctx, witness)
@@ -134,7 +143,8 @@ func (r *WitnessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				if r.Backoff != nil {
 					if r.Backoff.ShouldGiveUp(backoffKey) {
 						log.Info("Circuit breaker open, skipping escalation",
-							"witness", witness.Name,
+							"resource", witness.Name,
+							"namespace", witness.Namespace,
 							"retries", r.Backoff.GetRetryCount(backoffKey))
 						r.Recorder.Event(witness, "Warning", "EscalationCircuitBreaker",
 							"Too many escalation attempts, circuit breaker open")
@@ -163,11 +173,16 @@ func (r *WitnessReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// Update status
 	if err := r.Status().Update(ctx, witness); err != nil {
-		log.Error(err, "Failed to update Witness status")
+		log.Error(err, "Failed to update Witness status",
+			"resource", witness.Name,
+			"namespace", witness.Namespace,
+			"error_type", gterrors.ToConditionReason(err))
 		return ctrl.Result{}, err
 	}
 
 	log.Info("Witness health check complete",
+		"resource", witness.Name,
+		"namespace", witness.Namespace,
 		"total", summary.Total,
 		"running", summary.Running,
 		"succeeded", summary.Succeeded,
@@ -276,7 +291,8 @@ func (r *WitnessReconciler) escalateIssues(ctx context.Context, witness *gastown
 	if r.Backoff != nil {
 		_ = r.Backoff.GetBackoffResult(backoffKey) // Increments counter, we ignore the Result
 		log.Info("Escalation attempt recorded",
-			"witness", witness.Name,
+			"resource", witness.Name,
+			"namespace", witness.Namespace,
 			"attempts", r.Backoff.GetRetryCount(backoffKey))
 	}
 
@@ -293,23 +309,36 @@ func (r *WitnessReconciler) escalateIssues(ctx context.Context, witness *gastown
 	case "mayor":
 		if r.GTClient != nil {
 			if err := r.GTClient.MailSend(ctx, target, subject, message); err != nil {
-				log.Error(err, "Failed to send escalation mail to mayor", "witness", witness.Name)
+				log.Error(err, "Failed to send escalation mail to mayor",
+					"resource", witness.Name,
+					"namespace", witness.Namespace,
+					"target", target,
+					"error_type", gterrors.ToConditionReason(err))
 				r.Recorder.Event(witness, "Warning", "EscalationFailed",
 					fmt.Sprintf("Failed to send alert to mayor: %v", err))
 			} else {
-				log.Info("Escalation mail sent to mayor", "witness", witness.Name)
+				log.Info("Escalation mail sent to mayor",
+					"resource", witness.Name,
+					"namespace", witness.Namespace)
 			}
 		}
 	case "slack":
-		log.Info("Slack escalation configured but not yet implemented", "witness", witness.Name)
+		log.Info("Slack escalation configured but not yet implemented",
+			"resource", witness.Name,
+			"namespace", witness.Namespace)
 		r.Recorder.Event(witness, "Warning", "SlackNotConfigured",
 			"Slack escalation is not yet implemented")
 	case "email":
-		log.Info("Email escalation configured but not yet implemented", "witness", witness.Name)
+		log.Info("Email escalation configured but not yet implemented",
+			"resource", witness.Name,
+			"namespace", witness.Namespace)
 		r.Recorder.Event(witness, "Warning", "EmailNotConfigured",
 			"Email escalation is not yet implemented")
 	default:
-		log.Info("Unknown escalation target", "witness", witness.Name, "target", target)
+		log.Info("Unknown escalation target",
+			"resource", witness.Name,
+			"namespace", witness.Namespace,
+			"target", target)
 		r.Recorder.Event(witness, "Warning", "UnknownEscalationTarget",
 			fmt.Sprintf("Unknown escalation target: %s", target))
 	}
@@ -320,8 +349,10 @@ func (r *WitnessReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gastownv1alpha1.Witness{}).
 		Named("witness").
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: 2, // Witnesses are lightweight monitors
+			RateLimiter:             gtworkqueue.NewGastownRateLimiter(),
 		}).
 		Complete(r)
 }
