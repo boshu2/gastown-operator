@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3](https://github.com/boshu2/gastown-operator/compare/v0.4.2...v0.4.3) (2026-02-04) - Elite Operator Patterns
+
+### Highlights
+
+- **Watch predicates**: All 6 controllers filter status-only updates, reducing reconcile noise
+- **Custom rate limiter**: Exponential backoff (5ms-5min) + bucket limiting (10/s, burst 100)
+- **Per-operation metrics**: Fine-grained histograms for child creation, pod ops, and git ops
+- **CEL validation**: CRD rules work without admission webhooks
+- **Fast unit tests**: 37 tests in 0.6s using fake client (no envtest required)
+
+### Features
+
+* **controller:** add `GenerationChangedPredicate` to all 6 controllers to filter status-only updates
+* **workqueue:** add custom rate limiter combining exponential backoff with bucket limiting (`pkg/workqueue`)
+* **metrics:** add `gastown_rig_child_creation_duration_seconds` histogram for Witness/Refinery creation
+* **metrics:** add `gastown_polecat_pod_operation_duration_seconds` histogram for pod create/update/delete
+* **metrics:** add `gastown_refinery_git_operation_duration_seconds` histogram for git operations
+* **metrics:** add `OperationTimer` helper for generic timing with result labels
+* **crd:** add CEL validation rule for `Rig.spec.settings.maxPolecats <= 50`
+* **test:** add 37 unit tests for Rig, Polecat, and Witness controllers using fake client
+* **docs:** add Elite Operator Patterns section to architecture.md
+
+### Bug Fixes
+
+* **cel:** handle optional `settings` field in CEL validation (was failing when settings not provided)
+* **controller:** use `RequeueAfter` instead of deprecated `Requeue` field
+* **test:** use `t.Setenv()` instead of `os.Setenv/Unsetenv` for proper test isolation
+
+### Installation
+
+```bash
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.4.3 \
+  --namespace gastown-system \
+  --create-namespace
+```
+
+---
+
 ## [0.4.2](https://github.com/boshu2/gastown-operator/compare/v0.4.1...v0.4.2) (2026-01-26) - Reliability & Observability
 
 ### Highlights
