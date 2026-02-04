@@ -82,7 +82,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: maxPolecats must be <= 50
-              rule: self.settings.maxPolecats <= 50
+              rule: '!has(self.settings) || !has(self.settings.maxPolecats) || self.settings.maxPolecats
+                <= 50'
           status:
             description: RigStatus defines the observed state of Rig
             properties:

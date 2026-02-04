@@ -21,7 +21,7 @@ import (
 )
 
 // RigSpec defines the desired state of Rig
-// +kubebuilder:validation:XValidation:rule="self.settings.maxPolecats <= 50",message="maxPolecats must be <= 50"
+// +kubebuilder:validation:XValidation:rule="!has(self.settings) || !has(self.settings.maxPolecats) || self.settings.maxPolecats <= 50",message="maxPolecats must be <= 50"
 type RigSpec struct {
 	// GitURL is the remote repository URL
 	// +kubebuilder:validation:Required
