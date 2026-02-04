@@ -1,10 +1,10 @@
 # Agent Instructions
 
-See **[AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md)** for complete agent context.
+See **[CLAUDE.md](CLAUDE.md)** for full technical documentation.
 
-This file exists for compatibility with tools that look for AGENTS.md.
+---
 
-## Quick Reference (CLI-First)
+## Quick Start
 
 ```bash
 # Install operator
@@ -21,12 +21,113 @@ chmod +x kubectl-gt-darwin-arm64 && sudo mv kubectl-gt-darwin-arm64 /usr/local/b
 kubectl create secret generic git-creds -n gastown-system \
   --from-file=ssh-privatekey=$HOME/.ssh/id_ed25519
 kubectl gt auth sync -n gastown-system
-
-# Create rig and dispatch work
-kubectl gt rig create my-project --git-url git@github.com:org/repo.git --prefix mp
-kubectl gt sling issue-123 my-project --name furiosa
-kubectl gt polecat logs my-project/furiosa -f
 ```
+
+---
+
+## Tech Stack
+
+| Component | Version |
+|-----------|---------|
+| Go | 1.25 |
+| controller-runtime | 0.23.x |
+| Kubernetes | 1.35.x |
+| golangci-lint | 2.5.0 |
+
+---
+
+## Build
+
+```bash
+make build           # Operator binary
+make kubectl-gt      # kubectl plugin
+make docker-build    # Container image
+make manifests       # Regenerate CRDs
+```
+
+---
+
+## Test
+
+```bash
+make test            # Unit tests (fast, ~12s)
+make test-e2e        # E2E in Kind (slow, ~5min)
+```
+
+---
+
+## Validate
+
+```bash
+make validate        # go vet + lint
+make validate-all    # + Helm sync check
+```
+
+### CI Jobs
+
+validate → lint → test → prescan → security → build → e2e (main only)
+
+---
+
+## RPI Workflow
+
+```
+Research → Plan → Implement → Validate
+```
+
+| Phase | Commands |
+|-------|----------|
+| Research | `/research`, `ao inject` |
+| Plan | `/plan`, `/pre-mortem`, `bd create` |
+| Implement | `/implement`, `/crank`, `/swarm` |
+| Validate | `/vibe`, `/post-mortem`, `/retro` |
+
+---
+
+## Release Workflow
+
+**MANDATORY CHECKLIST - Follow every step.**
+
+### 1. Pre-Release
+
+```bash
+go mod tidy
+git diff --exit-code go.mod go.sum || git commit -am "chore: go mod tidy"
+make validate-all
+make test
+git push && gh run watch  # Wait for CI
+```
+
+### 2. Version & Changelog
+
+```bash
+echo "X.Y.Z" > VERSION
+# Edit CHANGELOG.md
+git add VERSION CHANGELOG.md
+git commit -m "docs: add X.Y.Z changelog entry"
+git push && gh run watch  # Wait for CI
+```
+
+### 3. Tag
+
+```bash
+git tag vX.Y.Z
+git push --tags
+gh run watch  # Watch Release workflow
+```
+
+### 4. Verify
+
+```bash
+gh release view vX.Y.Z
+helm show chart oci://ghcr.io/boshu2/charts/gastown-operator --version X.Y.Z
+```
+
+### v0.4.3 Lesson
+
+**Always `go mod tidy` before tagging.** New imports can promote dependencies from indirect to direct, causing CI to fail on "go.mod not tidy" check.
+
+---
 
 ## CLI Commands
 
@@ -40,109 +141,24 @@ kubectl gt polecat logs my-project/furiosa -f
 | `kubectl gt convoy list` | List convoys |
 | `kubectl gt auth sync` | Sync Claude creds |
 
-## Full Documentation
-
-- [README.md](README.md) - Main docs with CLI reference
-- [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md) - Agent context
-- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) - Complete walkthrough
-
-## Key Point
-
-**Use the kubectl-gt CLI** for normal workflows. YAML templates are available in [templates/](templates/) for advanced use cases or GitOps.
-
 ---
 
-## Release Workflow
+## Landing the Plane
 
-**MANDATORY: Follow this checklist for every release. Skipping steps causes CI failures.**
+**When ending a session**, complete ALL steps:
 
-### Pre-Release Checklist
-
-Run these commands BEFORE tagging:
-
-```bash
-# 1. Ensure go.mod is tidy (CRITICAL - v0.4.3 lesson)
-go mod tidy
-git diff --exit-code go.mod go.sum || {
-  echo "go.mod changed - commit it first"
-  git add go.mod go.sum
-  git commit -m "chore: go mod tidy"
-}
-
-# 2. Run full validation
-make lint
-make test
-
-# 3. Push and wait for CI
-git push
-gh run watch  # Wait for CI to pass
-
-# 4. Verify CI passed
-gh run list --limit 1  # Should show "success"
-```
-
-### Create Release
-
-Only after CI passes:
-
-```bash
-# 1. Update CHANGELOG.md with release notes
-# 2. Commit changelog
-git add CHANGELOG.md
-git commit -m "docs: add X.Y.Z changelog entry"
-git push
-
-# 3. Tag and push (triggers release workflow)
-git tag vX.Y.Z
-git push --tags
-
-# 4. Monitor release
-gh run watch  # Watch the Release workflow
-```
-
-### Post-Release Verification
-
-```bash
-# Verify artifacts published
-gh release view vX.Y.Z
-
-# Verify helm chart
-helm show chart oci://ghcr.io/boshu2/charts/gastown-operator --version X.Y.Z
-
-# Verify container image
-docker pull ghcr.io/boshu2/gastown-operator:X.Y.Z
-```
-
-### Why This Matters
-
-**v0.4.3 Lesson:** Tagged before running `go mod tidy`. The `pkg/workqueue` rate limiter imports `golang.org/x/time/rate`, which promoted the dependency from indirect to direct. CI failed on "go.mod not tidy" check. Release succeeded (separate workflow) but CI showed failure.
-
-**Root cause:** New imports can change dependency classification. Always run `go mod tidy` before committing Go changes.
-
----
-
-## Landing the Plane (Session Completion)
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
+1. **File issues** for remaining work
+2. **Run quality gates** - `make validate-all && make test`
+3. **Update issue status** - Close finished, update in-progress
+4. **PUSH TO REMOTE** (MANDATORY):
    ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
+   git pull --rebase && bd sync && git push
+   git status  # MUST show "up to date"
    ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+5. **Verify** - All changes pushed
+6. **Hand off** - Context for next session
 
-**CRITICAL RULES:**
+**RULES:**
 - Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+- NEVER stop before pushing
+- If push fails, resolve and retry
