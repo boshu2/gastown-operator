@@ -154,6 +154,21 @@ bd create "title"    # Create issue manually
 
 **MANDATORY: Follow this checklist. Skipping steps causes CI failures.**
 
+### Pipeline Architecture
+
+```
+Tag push (vX.Y.Z) triggers release.yml:
+  Pre-flight → Validation → [GoReleaser binaries | Container images] → Helm → SBOM → GitHub Release → Verify
+```
+
+| Component | Owner | What It Does |
+|-----------|-------|--------------|
+| kubectl-gt binaries | GoReleaser (`.goreleaser.yaml`) | Cross-platform builds, checksums, binary SBOM |
+| Container images | release.yml + buildx | Multi-arch (amd64/arm64), Cosign signing |
+| Helm chart | release.yml | Package + push to GHCR OCI |
+| Image SBOM | release.yml + Syft | SPDX + CycloneDX from image digest |
+| Dependencies | Renovate (GitHub App) | Auto-PRs for Go, Actions, Dockerfiles, Makefile tools |
+
 ### 1. Pre-Release Validation
 
 ```bash
@@ -217,8 +232,21 @@ docker pull ghcr.io/boshu2/gastown-operator:X.Y.Z
 | Container image | `ghcr.io/boshu2/gastown-operator:X.Y.Z` |
 | Helm chart | `oci://ghcr.io/boshu2/charts/gastown-operator:X.Y.Z` |
 | Install manifest | GitHub Release `install.yaml` |
-| kubectl-gt binaries | GitHub Release (darwin/linux, amd64/arm64) |
-| SBOM | GitHub Release (SPDX + CycloneDX) |
+| kubectl-gt binaries | GitHub Release (darwin/linux/windows, amd64/arm64) |
+| SBOM (container) | GitHub Release (SPDX + CycloneDX) |
+| SBOM (binaries) | GitHub Release (SPDX per binary) |
+| Checksums | GitHub Release `checksums.txt` |
+
+### Dependency Updates (Renovate)
+
+Renovate GitHub App creates PRs automatically for:
+
+| Category | Source | Automerge |
+|----------|--------|-----------|
+| Go modules | `go.mod` | Minor/patch yes, K8s ecosystem no |
+| GitHub Actions | `.github/workflows/` | Yes |
+| Dockerfiles | `Dockerfile*` | No |
+| Makefile tools | `GOLANGCI_LINT_VERSION`, etc. | No |
 
 ### Why go mod tidy Matters
 

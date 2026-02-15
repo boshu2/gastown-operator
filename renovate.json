@@ -1,0 +1,73 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":automergeMinor",
+    "group:allNonMajor"
+  ],
+  "labels": ["dependencies"],
+  "gomod": {
+    "enabled": true
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["^Makefile$"],
+      "matchStrings": [
+        "KUSTOMIZE_VERSION \\?= (?<currentValue>v[\\d.]+)",
+        "CONTROLLER_TOOLS_VERSION \\?= (?<currentValue>v[\\d.]+)",
+        "GOLANGCI_LINT_VERSION \\?= (?<currentValue>v[\\d.]+)"
+      ],
+      "depNameTemplate": "{{#if (equals depName 'KUSTOMIZE_VERSION')}}sigs.k8s.io/kustomize/kustomize/v5{{else if (equals depName 'CONTROLLER_TOOLS_VERSION')}}sigs.k8s.io/controller-tools{{else}}github.com/golangci/golangci-lint/v2{{/if}}",
+      "datasourceTemplate": "go"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^Makefile$"],
+      "matchStrings": [
+        "GOLANGCI_LINT_VERSION \\?= (?<currentValue>v[\\d.]+)"
+      ],
+      "depNameTemplate": "github.com/golangci/golangci-lint",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["\\.github/workflows/.*\\.yml$"],
+      "matchStrings": [
+        "GO_VERSION: '(?<currentValue>[\\d.]+)'"
+      ],
+      "depNameTemplate": "golang",
+      "datasourceTemplate": "golang-version"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["\\.github/workflows/.*\\.yml$"],
+      "matchStrings": [
+        "GOLANGCI_LINT_VERSION: '(?<currentValue>v[\\d.]+)'"
+      ],
+      "depNameTemplate": "github.com/golangci/golangci-lint",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["gomod"],
+      "matchPackagePrefixes": ["k8s.io/", "sigs.k8s.io/"],
+      "groupName": "kubernetes ecosystem",
+      "automerge": false
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "automerge": true
+    },
+    {
+      "matchManagers": ["dockerfile"],
+      "groupName": "docker base images",
+      "automerge": false
+    }
+  ]
+}

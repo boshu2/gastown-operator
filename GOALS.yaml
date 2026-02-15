@@ -1,0 +1,85 @@
+version: 1
+mission: "Scale Claude Code agents to Kubernetes — run hundreds of AI coding agents as pods"
+
+# v0.5.0 — Harden, observe, document. Ship one big release.
+
+goals:
+  # === Gate: CI must be green ===
+
+  - id: go-mod-tidy
+    description: "go.mod must be tidy — indirect vs direct deps in sync"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && go mod tidy && git diff --exit-code go.mod go.sum"
+    weight: 10
+
+  - id: unit-tests-pass
+    description: "All unit tests pass with envtest"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && make test"
+    weight: 10
+
+  - id: lint-clean
+    description: "golangci-lint reports zero issues"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && make validate"
+    weight: 9
+
+  - id: manifests-in-sync
+    description: "Generated CRDs and DeepCopy match source types"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && make manifests generate && git diff --exit-code config/ api/"
+    weight: 9
+
+  - id: helm-in-sync
+    description: "Helm chart CRDs match generated manifests"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && make validate-helm"
+    weight: 9
+
+  # === Hardening ===
+
+  - id: security-clean
+    description: "govulncheck reports zero vulnerabilities"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && govulncheck ./... 2>&1 | grep -q 'No vulnerabilities found'"
+    weight: 8
+
+  - id: binary-builds
+    description: "Operator binary and kubectl-gt plugin compile cleanly"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && make build && make kubectl-gt"
+    weight: 8
+
+  - id: go-coverage-floor
+    description: "Unit test coverage stays above 60% for controller package"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && go test -cover ./internal/controller/ 2>&1 | grep -oP 'coverage: \\K[0-9.]+' | awk '{exit ($1 < 60)}'"
+    weight: 7
+
+  # === Observability ===
+
+  - id: k8s-events-recorded
+    description: "Controllers emit Kubernetes events for key actions (create, delete, error)"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && grep -rq 'EventRecorder\\|recorder.Event' internal/controller/"
+    weight: 6
+
+  - id: servicemonitor-in-helm
+    description: "Helm chart includes Prometheus ServiceMonitor template"
+    check: "ls /Users/fullerbt/gt/gastown_operator/mayor/rig/helm/gastown-operator/templates/servicemonitor.yaml"
+    weight: 5
+
+  # === Release & Dependency Management ===
+
+  - id: goreleaser-configured
+    description: "GoReleaser config exists for automated cross-platform binary releases"
+    check: "ls /Users/fullerbt/gt/gastown_operator/mayor/rig/.goreleaser.yaml 2>/dev/null || ls /Users/fullerbt/gt/gastown_operator/mayor/rig/.goreleaser.yml 2>/dev/null"
+    weight: 6
+
+  - id: renovate-configured
+    description: "Renovate config exists for automated dependency updates"
+    check: "ls /Users/fullerbt/gt/gastown_operator/mayor/rig/renovate.json 2>/dev/null || ls /Users/fullerbt/gt/gastown_operator/mayor/rig/.github/renovate.json 2>/dev/null || ls /Users/fullerbt/gt/gastown_operator/mayor/rig/renovate.json5 2>/dev/null"
+    weight: 6
+
+  # === Documentation & DX ===
+
+  - id: exported-funcs-documented
+    description: "All exported functions have godoc comments"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && ! go vet ./... 2>&1 | grep -q 'exported .* should have comment'"
+    weight: 4
+
+  - id: friction-points-current
+    description: "FRICTION_POINTS.md covers all webhook validation error messages"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && DOC_REFS=$(grep -c 'Error:' FRICTION_POINTS.md 2>/dev/null || echo 0); test $DOC_REFS -ge 9"
+    weight: 4

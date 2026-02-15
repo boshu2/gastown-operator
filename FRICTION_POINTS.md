@@ -15,6 +15,9 @@ This document catalogs common mistakes when creating Gas Town Kubernetes resourc
 | `authentication failed` | Claude creds expired | Re-run `claude login`, update secret |
 | `namespace not found` | Missing namespace | Create namespace first |
 | `polecat stuck in Working` | Various causes | Check pod logs for details |
+| `convoy stuck in Pending` | Tracked beads don't exist | Verify bead IDs with `bd show` |
+| `Pod OOMKilled` | Resource limits too low | Increase memory to 4Gi limit minimum |
+| `has_unpushed` | Work not pushed to remote | Push polecat branch manually |
 
 ---
 
@@ -120,6 +123,11 @@ spec:
   # ...
 ```
 
+**Error:**
+```
+Polecat created but operator doesn't reconcile - resource in wrong namespace
+```
+
 **Symptoms:**
 - Polecat created but operator doesn't see it
 - No reconciliation happens
@@ -175,7 +183,7 @@ kubectl create secret generic git-credentials \
 # But forgot to add public key to GitHub/GitLab!
 ```
 
-**Error (in polecat pod logs):**
+**Error:**
 ```
 Permission denied (publickey).
 fatal: Could not read from remote repository.
@@ -240,6 +248,11 @@ spec:
     - "at-0000"  # Doesn't exist!
 ```
 
+**Error:**
+```
+Convoy "wave-1" stuck in Pending: tracked beads not found (0/2 resolved)
+```
+
 **Symptoms:**
 - Convoy stays in `Pending` forever
 - No polecats created
@@ -271,6 +284,11 @@ spec:
         memory: "256Mi" # Too low!
 ```
 
+**Error:**
+```
+Pod OOMKilled: polecat-furiosa exceeded memory limit (256Mi)
+```
+
 **Symptoms:**
 - Pod OOMKilled
 - Claude times out
@@ -298,6 +316,11 @@ spec:
 ---
 
 ## Anti-Pattern 9: Forgetting to Push Work
+
+**Error:**
+```
+Polecat completed but cleanupStatus: has_unpushed — work not on remote
+```
 
 **Symptoms:**
 - Polecat completes work

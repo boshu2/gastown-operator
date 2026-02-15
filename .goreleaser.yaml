@@ -1,0 +1,66 @@
+# GoReleaser config for gastown-operator
+# Handles kubectl-gt binary releases only.
+# Container images and Helm charts are handled by the existing release workflow.
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: kubectl-gt
+    main: ./cmd/kubectl-gt
+    binary: kubectl-gt
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/boshu2/gastown-operator/cmd/kubectl-gt/cmd.Version={{.Version}}
+      - -X github.com/boshu2/gastown-operator/cmd/kubectl-gt/cmd.GitCommit={{.FullCommit}}
+      - -X github.com/boshu2/gastown-operator/cmd/kubectl-gt/cmd.BuildDate={{.Date}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: kubectl-gt
+    builds:
+      - kubectl-gt
+    name_template: "kubectl-gt-{{ .Os }}-{{ .Arch }}"
+    format: binary
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "Merge pull request"
+
+release:
+  github:
+    owner: boshu2
+    name: gastown-operator
+  draft: false
+  prerelease: auto
+  extra_files:
+    - glob: dist/install.yaml
+  name_template: "v{{.Version}}"
+
+sboms:
+  - artifacts: binary
+    cmd: syft
+    args: ["${artifact}", "--output", "spdx-json=${document}"]

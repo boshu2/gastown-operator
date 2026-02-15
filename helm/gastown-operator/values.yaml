@@ -78,3 +78,12 @@ probes:
 # Leader election (for HA)
 leaderElection:
   enabled: true
+
+# Prometheus ServiceMonitor
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  # scrapeTimeout: 10s
+  # namespace: monitoring
+  additionalLabels: {}
+  #   release: prometheus

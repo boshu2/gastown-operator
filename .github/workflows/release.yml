@@ -1,19 +1,20 @@
 # Release Pipeline - Triggered by tags or manual dispatch
 #
-# This workflow handles releases when GitLab is unavailable or for
-# community contributions that come through GitHub.
+# Pipeline:
+#   1. Pre-flight: version from tag or manual input
+#   2. Validation: go mod tidy, tests, lint (skippable)
+#   3. Container images: multi-arch buildx + Cosign signing
+#   4. Helm chart: package + push to GHCR OCI
+#   5. SBOM: Syft on container image (SPDX + CycloneDX)
+#   6. GitHub Release: GoReleaser kubectl-gt binaries + install.yaml + SBOMs
+#   7. Verification: pull image + show chart
 #
-# Primary release flow is still GitLab/Tekton, but this provides
-# a GitHub-native alternative.
+# GoReleaser owns kubectl-gt binaries (cross-platform + binary SBOM).
+# This workflow owns container images, Helm chart, and image SBOM.
 #
 # Triggers:
-#   - Push of v* tag (e.g., v0.3.0)
+#   - Push of v* tag (e.g., v0.5.0)
 #   - Manual workflow dispatch
-#
-# Outputs:
-#   - Container image to GHCR
-#   - Helm chart to GHCR OCI
-#   - GitHub Release with changelog
 
 name: Release
 
@@ -107,7 +108,7 @@ jobs:
       - name: Run lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.5.0
+          version: v2.9.0
           args: --timeout=5m
 
   # ==========================================================================
@@ -281,21 +282,13 @@ jobs:
           make build-installer VERSION=${{ needs.preflight.outputs.version }} \
             IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
-      - name: Build kubectl-gt binaries
-        run: |
-          mkdir -p dist/kubectl-gt
-          # Linux amd64
-          GOOS=linux GOARCH=amd64 go build -o dist/kubectl-gt/kubectl-gt-linux-amd64 ./cmd/kubectl-gt
-          # Linux arm64
-          GOOS=linux GOARCH=arm64 go build -o dist/kubectl-gt/kubectl-gt-linux-arm64 ./cmd/kubectl-gt
-          # macOS amd64
-          GOOS=darwin GOARCH=amd64 go build -o dist/kubectl-gt/kubectl-gt-darwin-amd64 ./cmd/kubectl-gt
-          # macOS arm64
-          GOOS=darwin GOARCH=arm64 go build -o dist/kubectl-gt/kubectl-gt-darwin-arm64 ./cmd/kubectl-gt
-          # Windows amd64
-          GOOS=windows GOARCH=amd64 go build -o dist/kubectl-gt/kubectl-gt-windows-amd64.exe ./cmd/kubectl-gt
-          # Create checksums
-          cd dist/kubectl-gt && sha256sum kubectl-gt-* > checksums.txt
+      - name: Build kubectl-gt binaries via GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean --skip=publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate changelog
         id: changelog
@@ -318,12 +311,9 @@ jobs:
           body_path: release-notes.md
           files: |
             dist/install.yaml
-            dist/kubectl-gt/kubectl-gt-linux-amd64
-            dist/kubectl-gt/kubectl-gt-linux-arm64
-            dist/kubectl-gt/kubectl-gt-darwin-amd64
-            dist/kubectl-gt/kubectl-gt-darwin-arm64
-            dist/kubectl-gt/kubectl-gt-windows-amd64.exe
-            dist/kubectl-gt/checksums.txt
+            dist/kubectl-gt-*
+            dist/checksums.txt
+            dist/*.spdx.json
             sbom.spdx.json
             sbom.cyclonedx.json
           generate_release_notes: true
