@@ -191,16 +191,6 @@ build-gt: ## Build gt CLI for Docker image (required before docker-build).
 	@test -f "$(CURDIR)/gt" || { echo "ERROR: gt binary not found at $(CURDIR)/gt"; exit 1; }
 	@echo "gt CLI built at $(CURDIR)/gt"
 
-.PHONY: build-gt-fips
-build-gt-fips: ## Build gt CLI with FIPS-compliant crypto (for Dockerfile.fips).
-	@echo "Building gt CLI from daedalus (FIPS)..."
-	@rm -rf /tmp/gastown-build
-	@git clone --depth 1 https://git.deepskylab.io/olympus/daedalus.git /tmp/gastown-build
-	@cd /tmp/gastown-build && CGO_ENABLED=1 GOEXPERIMENT=boringcrypto go build -trimpath -ldflags="-s -w" -o "$(CURDIR)/gt" ./cmd/gt
-	@rm -rf /tmp/gastown-build
-	@test -f "$(CURDIR)/gt" || { echo "ERROR: gt binary not found at $(CURDIR)/gt"; exit 1; }
-	@echo "gt CLI (FIPS) built at $(CURDIR)/gt"
-
 .PHONY: kubectl-gt
 kubectl-gt: ## Build kubectl-gt plugin binary.
 	go build -o bin/kubectl-gt ./cmd/kubectl-gt
@@ -230,25 +220,10 @@ docker-build: build-gt ## Build community docker image (vanilla K8s).
 docker-build-e2e: build-gt ## Build image for E2E tests (IMG should be full image:tag reference).
 	$(CONTAINER_TOOL) build -t ${IMG} -f Dockerfile .
 
-.PHONY: docker-build-fips
-docker-build-fips: ## Build enterprise/FIPS docker image (OpenShift).
-	$(CONTAINER_TOOL) build -t ${IMG}:${VERSION}-fips -t ${IMG}:latest-fips -f Dockerfile.fips .
-
-.PHONY: docker-build-all
-docker-build-all: docker-build docker-build-fips ## Build both community and enterprise images.
-
 .PHONY: docker-push
-docker-push: ## Push community docker image.
+docker-push: ## Push docker image.
 	$(CONTAINER_TOOL) push ${IMG}:${VERSION}
 	$(CONTAINER_TOOL) push ${IMG}:latest
-
-.PHONY: docker-push-fips
-docker-push-fips: ## Push enterprise/FIPS docker image.
-	$(CONTAINER_TOOL) push ${IMG}:${VERSION}-fips
-	$(CONTAINER_TOOL) push ${IMG}:latest-fips
-
-.PHONY: docker-push-all
-docker-push-all: docker-push docker-push-fips ## Push both community and enterprise images.
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:

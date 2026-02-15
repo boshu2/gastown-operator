@@ -21,8 +21,6 @@ ci:
   - changed-files:
       - any-glob-to-any-file:
           - '.github/**'
-          - '.gitlab-ci.yml'
-          - 'deploy/tekton/**'
           - 'Makefile'
 
 # Documentation changes

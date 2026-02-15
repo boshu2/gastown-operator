@@ -38,8 +38,7 @@ make kubectl-gt      # Build kubectl plugin → bin/kubectl-gt
 make build-gt        # Build gt CLI (clones gastown repo)
 
 # Container Images
-make docker-build    # Build community image (single arch)
-make docker-build-fips  # Build FIPS image (OpenShift)
+make docker-build    # Build image (single arch)
 
 # Manifests
 make manifests       # Regenerate CRDs from Go types

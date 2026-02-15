@@ -64,11 +64,7 @@ make lint
 ## Building
 
 ```bash
-# Community edition
 make docker-build
-
-# Enterprise/FIPS edition
-make docker-build-fips
 ```
 
 ## Questions?

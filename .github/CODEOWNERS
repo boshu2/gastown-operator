@@ -16,9 +16,6 @@
 
 # CI/CD changes
 /.github/ @boshu2
-/.gitlab-ci.yml @boshu2
-/deploy/tekton/ @boshu2
-
 # Security-sensitive files
 /scripts/prescan.sh @boshu2
 /.gitleaks.toml @boshu2
