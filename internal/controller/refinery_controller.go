@@ -68,6 +68,11 @@ type RefineryReconciler struct {
 
 	// GitClientFactory creates git clients. If nil, uses git.DefaultGitClientFactory.
 	GitClientFactory git.GitClientFactory
+
+	// Backoff provides circuit breaker functionality for git operations.
+	// If nil, git operations always proceed. When configured, prevents
+	// excessive git calls when the remote is unavailable.
+	Backoff *gterrors.BackoffCalculator
 }
 
 // +kubebuilder:rbac:groups=gastown.gastown.io,resources=refineries,verbs=get;list;watch;create;update;patch;delete
@@ -141,39 +146,68 @@ func (r *RefineryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{RequeueAfter: refineryIdleRequeueInterval}, nil
 	}
 
+	// Circuit breaker key for this refinery
+	backoffKey := fmt.Sprintf("%s/%s", refinery.Namespace, refinery.Name)
+
 	// Process the first item in queue (sequential processing)
 	if refinery.Spec.Parallelism <= 1 && len(mergeQueue) > 0 {
-		targetPolecat := mergeQueue[0]
-		refinery.Status.Phase = "Processing"
-		refinery.Status.CurrentMerge = targetPolecat.Name
-
-		r.setCondition(refinery, RefineryConditionProcessing, metav1.ConditionTrue,
-			"Processing", "Processing merge for "+targetPolecat.Name)
-
-		// Process the merge with timing
-		mergeTimer := metrics.NewRefineryMergeTimer(refinery.Spec.RigRef)
-		if err := r.processMerge(ctx, refinery, &targetPolecat); err != nil {
-			log.Error(err, "Failed to process merge",
+		// Check circuit breaker before attempting git operations
+		if r.Backoff != nil && r.Backoff.ShouldGiveUp(backoffKey) {
+			log.Info("Circuit breaker open, skipping git operations",
 				"resource", refinery.Name,
 				"namespace", refinery.Namespace,
-				"polecat", targetPolecat.Name,
-				"error_type", gterrors.ToConditionReason(err))
-			refinery.Status.MergesSummary.Failed++
-			r.Recorder.Event(refinery, "Warning", "MergeFailed",
-				"Merge failed for "+targetPolecat.Name+": "+err.Error())
-			mergeTimer.RecordError()
-
-			// Track conflicts (rebase failures typically indicate conflicts)
-			if strings.Contains(err.Error(), "rebase failed") || strings.Contains(err.Error(), "conflict") {
-				metrics.RecordConflict(refinery.Spec.RigRef)
-			}
+				"retries", r.Backoff.GetRetryCount(backoffKey))
+			r.Recorder.Event(refinery, "Warning", "GitCircuitBreaker",
+				"Too many git operation failures, circuit breaker open")
+			r.setCondition(refinery, RefineryConditionReady, metav1.ConditionFalse,
+				"CircuitBreakerOpen", "Git operations suspended due to repeated failures")
 		} else {
-			refinery.Status.MergesSummary.Succeeded++
-			refinery.Status.MergesSummary.Total++
-			refinery.Status.LastMergeTime = &metav1.Time{Time: time.Now()}
-			r.Recorder.Event(refinery, "Normal", "MergeSucceeded",
-				"Successfully merged "+targetPolecat.Name)
-			mergeTimer.RecordSuccess()
+			targetPolecat := mergeQueue[0]
+			refinery.Status.Phase = "Processing"
+			refinery.Status.CurrentMerge = targetPolecat.Name
+
+			r.setCondition(refinery, RefineryConditionProcessing, metav1.ConditionTrue,
+				"Processing", "Processing merge for "+targetPolecat.Name)
+
+			// Process the merge with timing
+			mergeTimer := metrics.NewRefineryMergeTimer(refinery.Spec.RigRef)
+			if err := r.processMerge(ctx, refinery, &targetPolecat); err != nil {
+				log.Error(err, "Failed to process merge",
+					"resource", refinery.Name,
+					"namespace", refinery.Namespace,
+					"polecat", targetPolecat.Name,
+					"error_type", gterrors.ToConditionReason(err))
+				refinery.Status.MergesSummary.Failed++
+				r.Recorder.Event(refinery, "Warning", "MergeFailed",
+					"Merge failed for "+targetPolecat.Name+": "+err.Error())
+				mergeTimer.RecordError()
+
+				// Increment circuit breaker counter on git failure
+				if r.Backoff != nil {
+					_ = r.Backoff.GetBackoffResult(backoffKey)
+					log.Info("Git operation failure recorded",
+						"resource", refinery.Name,
+						"namespace", refinery.Namespace,
+						"attempts", r.Backoff.GetRetryCount(backoffKey))
+				}
+
+				// Track conflicts (rebase failures typically indicate conflicts)
+				if strings.Contains(err.Error(), "rebase failed") || strings.Contains(err.Error(), "conflict") {
+					metrics.RecordConflict(refinery.Spec.RigRef)
+				}
+			} else {
+				refinery.Status.MergesSummary.Succeeded++
+				refinery.Status.MergesSummary.Total++
+				refinery.Status.LastMergeTime = &metav1.Time{Time: time.Now()}
+				r.Recorder.Event(refinery, "Normal", "MergeSucceeded",
+					"Successfully merged "+targetPolecat.Name)
+				mergeTimer.RecordSuccess()
+
+				// Reset circuit breaker on success
+				if r.Backoff != nil {
+					r.Backoff.ResetRetries(backoffKey)
+				}
+			}
 		}
 	}
 

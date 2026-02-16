@@ -15,9 +15,11 @@ const (
 	labelRig        = "rig"
 	labelPhase      = "phase"
 
-	// Result values
+	// ResultSuccess indicates a reconciliation completed without error.
 	ResultSuccess = "success"
-	ResultError   = "error"
+	// ResultError indicates a reconciliation failed with an error.
+	ResultError = "error"
+	// ResultRequeue indicates a reconciliation requested a requeue.
 	ResultRequeue = "requeue"
 )
 

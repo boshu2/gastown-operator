@@ -40,8 +40,9 @@ const (
 	// Uses RequeueDefault for normal sync operations.
 	ConvoySyncInterval = RequeueDefault
 
-	// Condition types for Convoy
-	ConditionConvoyReady    = "Ready"
+	// ConditionConvoyReady indicates the convoy is actively tracking bead progress.
+	ConditionConvoyReady = "Ready"
+	// ConditionConvoyComplete indicates all tracked beads have finished.
 	ConditionConvoyComplete = "Complete"
 )
 

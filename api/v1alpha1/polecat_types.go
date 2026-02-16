@@ -47,8 +47,11 @@ import (
 type PolecatDesiredState string
 
 const (
-	PolecatDesiredIdle       PolecatDesiredState = "Idle"
-	PolecatDesiredWorking    PolecatDesiredState = "Working"
+	// PolecatDesiredIdle indicates the polecat should be idle with no running Pod.
+	PolecatDesiredIdle PolecatDesiredState = "Idle"
+	// PolecatDesiredWorking indicates the polecat should have a running Pod working on a task.
+	PolecatDesiredWorking PolecatDesiredState = "Working"
+	// PolecatDesiredTerminated indicates the polecat should be terminated and its Pod deleted.
 	PolecatDesiredTerminated PolecatDesiredState = "Terminated"
 )
 
@@ -58,7 +61,7 @@ const (
 type ExecutionMode string
 
 const (
-	// ExecutionModeKubernetes runs as a Pod in the cluster
+	// ExecutionModeKubernetes indicates the polecat runs as a Pod in the cluster.
 	ExecutionModeKubernetes ExecutionMode = "kubernetes"
 )
 
@@ -68,6 +71,7 @@ const (
 type AgentType string
 
 const (
+	// AgentTypeClaudeCode indicates the Claude Code coding agent.
 	AgentTypeClaudeCode AgentType = "claude-code"
 )
 
@@ -76,10 +80,14 @@ const (
 type LLMProvider string
 
 const (
-	LLMProviderLiteLLM   LLMProvider = "litellm"
+	// LLMProviderLiteLLM routes requests through a LiteLLM proxy.
+	LLMProviderLiteLLM LLMProvider = "litellm"
+	// LLMProviderAnthropic sends requests directly to the Anthropic API.
 	LLMProviderAnthropic LLMProvider = "anthropic"
-	LLMProviderOpenAI    LLMProvider = "openai"
-	LLMProviderOllama    LLMProvider = "ollama"
+	// LLMProviderOpenAI sends requests directly to the OpenAI API.
+	LLMProviderOpenAI LLMProvider = "openai"
+	// LLMProviderOllama sends requests to a local Ollama instance.
+	LLMProviderOllama LLMProvider = "ollama"
 )
 
 // SecretKeyRef references a key in a Secret
@@ -263,10 +271,15 @@ type PolecatSpec struct {
 type PolecatPhase string
 
 const (
-	PolecatPhaseIdle       PolecatPhase = "Idle"
-	PolecatPhaseWorking    PolecatPhase = "Working"
-	PolecatPhaseDone       PolecatPhase = "Done"
-	PolecatPhaseStuck      PolecatPhase = "Stuck"
+	// PolecatPhaseIdle indicates no work is assigned and no Pod is running.
+	PolecatPhaseIdle PolecatPhase = "Idle"
+	// PolecatPhaseWorking indicates the polecat Pod is running and processing a task.
+	PolecatPhaseWorking PolecatPhase = "Working"
+	// PolecatPhaseDone indicates the polecat Pod completed successfully.
+	PolecatPhaseDone PolecatPhase = "Done"
+	// PolecatPhaseStuck indicates the polecat Pod has failed or is not making progress.
+	PolecatPhaseStuck PolecatPhase = "Stuck"
+	// PolecatPhaseTerminated indicates the polecat has been gracefully terminated.
 	PolecatPhaseTerminated PolecatPhase = "Terminated"
 )
 

@@ -41,14 +41,17 @@ const (
 	// BeadStoreSyncInterval is how often we sync beads
 	BeadStoreSyncInterval = 5 * time.Minute
 
-	// Condition types for BeadStore
+	// ConditionBeadStoreSynced indicates the beadstore has synced with its backing store.
 	ConditionBeadStoreSynced = "Synced"
-	ConditionBeadStoreReady  = "Ready"
+	// ConditionBeadStoreReady indicates the beadstore is operational and its Rig exists.
+	ConditionBeadStoreReady = "Ready"
 
-	// Phase constants for BeadStore status
-	PhaseError   = "Error"
+	// PhaseError indicates the beadstore encountered a validation or sync error.
+	PhaseError = "Error"
+	// PhasePending indicates the beadstore is waiting for its referenced Rig to exist.
 	PhasePending = "Pending"
-	PhaseSynced  = "Synced"
+	// PhaseSynced indicates the beadstore has successfully validated its Rig reference.
+	PhaseSynced = "Synced"
 
 	// beadstoreFinalizer ensures cleanup of external resources
 	beadstoreFinalizer = "gastown.io/beadstore-cleanup"

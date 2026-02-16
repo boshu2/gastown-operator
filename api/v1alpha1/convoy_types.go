@@ -49,10 +49,14 @@ type ConvoySpec struct {
 type ConvoyPhase string
 
 const (
-	ConvoyPhasePending    ConvoyPhase = "Pending"
+	// ConvoyPhasePending indicates the convoy has not yet started processing.
+	ConvoyPhasePending ConvoyPhase = "Pending"
+	// ConvoyPhaseInProgress indicates the convoy is actively tracking bead completion.
 	ConvoyPhaseInProgress ConvoyPhase = "InProgress"
-	ConvoyPhaseComplete   ConvoyPhase = "Complete"
-	ConvoyPhaseFailed     ConvoyPhase = "Failed"
+	// ConvoyPhaseComplete indicates all tracked beads have been completed.
+	ConvoyPhaseComplete ConvoyPhase = "Complete"
+	// ConvoyPhaseFailed indicates the convoy encountered an unrecoverable failure.
+	ConvoyPhaseFailed ConvoyPhase = "Failed"
 )
 
 // ConvoyStatus defines the observed state of Convoy

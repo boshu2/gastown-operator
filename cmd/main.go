@@ -227,6 +227,7 @@ func main() {
 		Scheme: mgr.GetScheme(),
 		//nolint:staticcheck // TODO: migrate to events.EventRecorder
 		Recorder: mgr.GetEventRecorderFor("refinery-controller"),
+		Backoff:  gterrors.NewBackoffCalculator(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Refinery")
 		os.Exit(1)

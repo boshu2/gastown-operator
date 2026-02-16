@@ -478,6 +478,33 @@ func TestPolecatCustomDefaulter_Default(t *testing.T) {
 
 // Note: WrongType tests removed - generics enforce type safety at compile time
 
+func TestContainsPathTraversal(t *testing.T) {
+	tests := []struct {
+		name string
+		s    string
+		want bool
+	}{
+		{name: "clean path", s: "org/repo.git", want: false},
+		{name: "clean SSH URL", s: "git@github.com:org/repo.git", want: false},
+		{name: "single dot segment", s: "org/./repo", want: false},
+		{name: "double dot in name", s: "my..repo", want: false},
+		{name: "dot-dot-slash", s: "../etc/passwd", want: true},
+		{name: "mid-path traversal", s: "org/../../../etc/passwd", want: true},
+		{name: "backslash traversal", s: `org\..\secret`, want: true},
+		{name: "url-encoded full", s: "org/%2e%2e%2fpasswd", want: true},
+		{name: "url-encoded dots", s: "org/%2e%2e/passwd", want: true},
+		{name: "url-encoded slash", s: "org/..%2fpasswd", want: true},
+		{name: "mixed case encoding", s: "org/%2E%2E%2Fpasswd", want: true},
+		{name: "trailing dot-dot after slash", s: "org/..", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, containsPathTraversal(tt.s))
+		})
+	}
+}
+
 func TestValidateKubernetesSpec(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -523,6 +550,37 @@ func TestValidateKubernetesSpec(t *testing.T) {
 			},
 			wantErrs:    1,
 			errContains: []string{"spec.kubernetes.activeDeadlineSeconds: must be positive"},
+		},
+		{
+			name: "path traversal in gitRepository",
+			spec: &KubernetesSpec{
+				GitRepository:        "git@github.com:org/../../../etc/passwd",
+				GitSecretRef:         SecretReference{Name: "git-secret"},
+				ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
+			},
+			wantErrs:    1,
+			errContains: []string{"spec.kubernetes.gitRepository: must not contain path traversal sequences"},
+		},
+		{
+			name: "path traversal in gitBranch",
+			spec: &KubernetesSpec{
+				GitRepository:        "git@github.com:org/repo.git",
+				GitBranch:            "../../etc/shadow",
+				GitSecretRef:         SecretReference{Name: "git-secret"},
+				ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
+			},
+			wantErrs:    1,
+			errContains: []string{"spec.kubernetes.gitBranch: must not contain path traversal sequences"},
+		},
+		{
+			name: "url-encoded path traversal in gitRepository",
+			spec: &KubernetesSpec{
+				GitRepository:        "git@github.com:org/%2e%2e%2fpasswd",
+				GitSecretRef:         SecretReference{Name: "git-secret"},
+				ClaudeCredsSecretRef: &SecretReference{Name: "claude-creds"},
+			},
+			wantErrs:    1,
+			errContains: []string{"spec.kubernetes.gitRepository: must not contain path traversal sequences"},
 		},
 	}
 

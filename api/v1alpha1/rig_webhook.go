@@ -137,6 +137,11 @@ func validateGitURL(gitURL string) error {
 		return fmt.Errorf("gitURL is required")
 	}
 
+	// Reject path traversal sequences before further parsing
+	if containsPathTraversal(gitURL) {
+		return fmt.Errorf("must not contain path traversal sequences")
+	}
+
 	// Check for SSH format: git@host:path.git
 	sshPattern := regexp.MustCompile(`^git@[\w.-]+:[\w./-]+(?:\.git)?$`)
 	if sshPattern.MatchString(gitURL) {

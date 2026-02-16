@@ -86,6 +86,30 @@ func TestValidateGitURL(t *testing.T) {
 			wantErr: true,
 			errMsg:  "URL must include a repository path",
 		},
+		{
+			name:    "path traversal in SSH URL",
+			gitURL:  "git@github.com:org/../../../etc/passwd",
+			wantErr: true,
+			errMsg:  "must not contain path traversal sequences",
+		},
+		{
+			name:    "path traversal in HTTPS URL",
+			gitURL:  "https://github.com/org/../../etc/shadow",
+			wantErr: true,
+			errMsg:  "must not contain path traversal sequences",
+		},
+		{
+			name:    "url-encoded path traversal",
+			gitURL:  "https://github.com/org/%2e%2e%2f%2e%2e%2fetc/passwd",
+			wantErr: true,
+			errMsg:  "must not contain path traversal sequences",
+		},
+		{
+			name:    "path traversal in file URL",
+			gitURL:  "file:///home/user/../../../etc/shadow",
+			wantErr: true,
+			errMsg:  "must not contain path traversal sequences",
+		},
 	}
 
 	for _, tt := range tests {

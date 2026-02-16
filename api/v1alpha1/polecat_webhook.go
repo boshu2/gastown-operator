@@ -137,6 +137,25 @@ func (v *PolecatCustomValidator) validatePolecat(polecat *Polecat) (admission.Wa
 	return warnings, nil
 }
 
+// containsPathTraversal checks whether a string contains path traversal sequences.
+// It rejects "../", "..\", and URL-encoded variants like "%2e%2e%2f".
+func containsPathTraversal(s string) bool {
+	lower := strings.ToLower(s)
+	// Check literal traversal patterns
+	if strings.Contains(lower, "../") || strings.Contains(lower, "..\\") {
+		return true
+	}
+	// Check for bare trailing ".."
+	if strings.HasSuffix(lower, "..") && (len(lower) == 2 || lower[len(lower)-3] == '/' || lower[len(lower)-3] == '\\') {
+		return true
+	}
+	// Check URL-encoded variants (%2e = '.', %2f = '/')
+	if strings.Contains(lower, "%2e%2e%2f") || strings.Contains(lower, "%2e%2e/") || strings.Contains(lower, "..%2f") {
+		return true
+	}
+	return false
+}
+
 // validateKubernetesSpec validates the kubernetes execution spec.
 func validateKubernetesSpec(k *KubernetesSpec) []string {
 	var errs []string
@@ -144,6 +163,16 @@ func validateKubernetesSpec(k *KubernetesSpec) []string {
 	// GitRepository is required (validated by CRD, but double-check)
 	if k.GitRepository == "" {
 		errs = append(errs, "spec.kubernetes.gitRepository: is required")
+	}
+
+	// Reject path traversal in GitRepository
+	if k.GitRepository != "" && containsPathTraversal(k.GitRepository) {
+		errs = append(errs, "spec.kubernetes.gitRepository: must not contain path traversal sequences")
+	}
+
+	// Reject path traversal in GitBranch
+	if k.GitBranch != "" && containsPathTraversal(k.GitBranch) {
+		errs = append(errs, "spec.kubernetes.gitBranch: must not contain path traversal sequences")
 	}
 
 	// GitSecretRef is required

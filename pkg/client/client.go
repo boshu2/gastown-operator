@@ -31,19 +31,21 @@ import (
 )
 
 var (
-	// GVR definitions for Gas Town CRDs
+	// RigGVR is the GroupVersionResource for cluster-scoped Rig resources.
 	RigGVR = schema.GroupVersionResource{
 		Group:    "gastown.gastown.io",
 		Version:  "v1alpha1",
 		Resource: "rigs",
 	}
 
+	// PolecatGVR is the GroupVersionResource for namespace-scoped Polecat resources.
 	PolecatGVR = schema.GroupVersionResource{
 		Group:    "gastown.gastown.io",
 		Version:  "v1alpha1",
 		Resource: "polecats",
 	}
 
+	// ConvoyGVR is the GroupVersionResource for namespace-scoped Convoy resources.
 	ConvoyGVR = schema.GroupVersionResource{
 		Group:    "gastown.gastown.io",
 		Version:  "v1alpha1",

@@ -45,8 +45,9 @@ const (
 	// Uses RequeueShort for active polecat monitoring.
 	PolecatSyncInterval = RequeueShort
 
-	// Condition types for Polecat
-	ConditionPolecatReady   = "Ready"
+	// ConditionPolecatReady indicates the polecat is in a healthy state.
+	ConditionPolecatReady = "Ready"
+	// ConditionPolecatWorking indicates the polecat is actively processing a bead.
 	ConditionPolecatWorking = "Working"
 
 	// polecatFinalizer ensures cleanup of Pod resources

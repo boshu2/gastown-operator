@@ -56,9 +56,12 @@ type RigSettings struct {
 type RigPhase string
 
 const (
+	// RigPhaseInitializing indicates the rig is setting up child resources.
 	RigPhaseInitializing RigPhase = "Initializing"
-	RigPhaseReady        RigPhase = "Ready"
-	RigPhaseDegraded     RigPhase = "Degraded"
+	// RigPhaseReady indicates the rig is fully operational with Witness and Refinery provisioned.
+	RigPhaseReady RigPhase = "Ready"
+	// RigPhaseDegraded indicates the rig is operational but experiencing issues.
+	RigPhaseDegraded RigPhase = "Degraded"
 )
 
 // RigStatus defines the observed state of Rig
