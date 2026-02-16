@@ -195,6 +195,50 @@ func (r *PolecatReconciler) ensureWorking(ctx context.Context, polecat *gastownv
 		return ctrl.Result{RequeueAfter: RequeueDefault}, nil
 	}
 
+	// Audit log: Pod created with secret mounts
+	auditSecrets := []string{}
+	if polecat.Spec.Kubernetes.GitSecretRef.Name != "" {
+		auditSecrets = append(auditSecrets, polecat.Spec.Kubernetes.GitSecretRef.Name)
+	}
+	if polecat.Spec.Kubernetes.ClaudeCredsSecretRef != nil && polecat.Spec.Kubernetes.ClaudeCredsSecretRef.Name != "" {
+		auditSecrets = append(auditSecrets, polecat.Spec.Kubernetes.ClaudeCredsSecretRef.Name)
+	}
+	if polecat.Spec.Kubernetes.ApiKeySecretRef != nil && polecat.Spec.Kubernetes.ApiKeySecretRef.Name != "" {
+		auditSecrets = append(auditSecrets, polecat.Spec.Kubernetes.ApiKeySecretRef.Name)
+	}
+	log.Info("AUDIT: Pod created with secret mounts",
+		"resource", polecat.Name,
+		"namespace", polecat.Namespace,
+		"podName", podName,
+		"secrets", auditSecrets,
+		"event", "secret_mount")
+
+	// Track secret age and check for staleness
+	degradedReason := "Healthy"
+	degradedMsg := "No issues detected"
+	for _, secretName := range auditSecrets {
+		var secret corev1.Secret
+		secretKey := client.ObjectKey{Namespace: polecat.Namespace, Name: secretName}
+		if err := r.Get(ctx, secretKey, &secret); err != nil {
+			log.Error(err, "Failed to get secret for age tracking", "secret", secretName)
+			continue
+		}
+
+		// Record secret age metric
+		syncTimestamp := secret.Annotations["gastown.io/last-sync"]
+		secretType := string(secret.Type)
+		if err := metrics.RecordSecretAge(polecat.Namespace, secretName, secretType, syncTimestamp); err != nil {
+			log.Error(err, "Failed to record secret age", "secret", secretName)
+		}
+
+		// Check if secret is stale
+		if metrics.IsSecretStale(syncTimestamp) {
+			degradedReason = "StaleSecret"
+			degradedMsg = fmt.Sprintf("Secret %s is stale (>%d days old)", secretName, metrics.SecretStaleThresholdDays)
+			log.Info("Secret staleness detected", "secret", secretName, "threshold_days", metrics.SecretStaleThresholdDays)
+		}
+	}
+
 	// Update status with pod info
 	polecat.Status.PodName = podName
 	polecat.Status.Phase = gastownv1alpha1.PolecatPhaseWorking
@@ -209,8 +253,12 @@ func (r *PolecatReconciler) ensureWorking(ctx context.Context, polecat *gastownv
 		"Pod created, work starting")
 	r.setCondition(polecat, ConditionAvailable, metav1.ConditionFalse, "NotReady",
 		"Work in progress")
-	r.setCondition(polecat, ConditionDegraded, metav1.ConditionFalse, "Healthy",
-		"No issues detected")
+	// Set Degraded condition based on secret staleness check
+	degradedStatus := metav1.ConditionFalse
+	if degradedReason != "Healthy" {
+		degradedStatus = metav1.ConditionTrue
+	}
+	r.setCondition(polecat, ConditionDegraded, degradedStatus, degradedReason, degradedMsg)
 
 	if err := r.Status().Update(ctx, polecat); err != nil {
 		timer.RecordResult(metrics.ResultError)

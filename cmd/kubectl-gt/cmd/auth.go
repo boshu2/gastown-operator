@@ -209,6 +209,14 @@ func runAuthSync(claudeDir string, force bool, dryRun bool) error {
 		return fmt.Errorf("failed to create/update Secret: %w", err)
 	}
 
+	// Audit log: Credential sync operation
+	operation := "create"
+	if existing != nil && existing.Name != "" {
+		operation = "update"
+	}
+	fmt.Printf("AUDIT: Credential sync - operation=%s namespace=%s secret=%s files=%d timestamp=%s\n",
+		operation, namespace, claudeCredsSecretName, len(data), time.Now().UTC().Format(time.RFC3339))
+
 	fmt.Printf("Synced %d files to Secret %s/%s\n", len(data), namespace, claudeCredsSecretName)
 	fmt.Println("\nPolecats can now use your Claude credentials.")
 	return nil
