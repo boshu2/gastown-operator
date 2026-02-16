@@ -16,8 +16,9 @@ metadata:
   namespace: system
 spec:
   podSelector:
-    matchLabels:
-      gastown.io/polecat: "true"
+    matchExpressions:
+      - key: gastown.io/polecat
+        operator: Exists
   policyTypes:
     - Egress
   egress:

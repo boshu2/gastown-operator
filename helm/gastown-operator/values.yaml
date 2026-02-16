@@ -47,9 +47,9 @@ securityContext:
   capabilities:
     drop:
       - ALL
-  readOnlyRootFilesystem: false
-  runAsNonRoot: false
-  runAsUser: 0  # Need root to access host paths
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532  # nonroot user (root only needed when volumes.enabled: true)
 
 resources:
   limits:

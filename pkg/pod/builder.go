@@ -158,9 +158,10 @@ func (b *Builder) Build() (*corev1.Pod, error) {
 			},
 		},
 		Spec: corev1.PodSpec{
-			RestartPolicy:         corev1.RestartPolicyNever,
-			ActiveDeadlineSeconds: k8sSpec.ActiveDeadlineSeconds,
-			SecurityContext:       b.buildPodSecurityContext(),
+			RestartPolicy:                corev1.RestartPolicyNever,
+			ActiveDeadlineSeconds:        k8sSpec.ActiveDeadlineSeconds,
+			AutomountServiceAccountToken: boolPtr(false),
+			SecurityContext:              b.buildPodSecurityContext(),
 			InitContainers: []corev1.Container{
 				b.buildGitInitContainer(),
 			},
@@ -628,7 +629,8 @@ func (b *Builder) buildVolumes() []corev1.Volume {
 			Name: ClaudeCredsVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: k8sSpec.ClaudeCredsSecretRef.Name,
+					SecretName:  k8sSpec.ClaudeCredsSecretRef.Name,
+					DefaultMode: int32Ptr(0400),
 				},
 			},
 		})

@@ -228,6 +228,99 @@ rules:
     verbs: ["get"]
 ```
 
+### Cluster-Wide Secret Access
+
+**⚠️ SECURITY CONSIDERATION**: The operator requires cluster-wide secret read access (`get`, `list`, `watch` on secrets across all namespaces).
+
+#### Why This Access Is Required
+
+The operator needs to read secrets referenced by Polecat CRDs:
+- **GitSecretRef**: SSH keys for git operations
+- **ClaudeCredsSecretRef**: Claude OAuth credentials
+- **APIKeySecretRef**: Anthropic API keys
+
+Secret names are user-defined in CRD specs (e.g., `spec.kubernetes.gitSecretRef.name`), so RBAC cannot be scoped to specific named secrets using `resourceNames`.
+
+#### Security Implications
+
+| Risk | Severity | Impact |
+|------|----------|--------|
+| Compromised operator can read ALL cluster secrets | **HIGH** | Complete credential exposure |
+| Privilege escalation via operator exploit | **HIGH** | Cluster-wide secret access |
+| Insider threat: malicious operator maintainer | **MEDIUM** | Credential theft |
+
+#### Mitigation Strategies
+
+1. **Read-Only Access** - No create/update/delete permissions on secrets
+2. **Namespace Isolation** - Secrets only accessed in the same namespace as the Polecat
+3. **No Secret Logging** - Operator never logs secret contents
+4. **Webhook Validation** - Validate that secret references are same-namespace only (see below)
+
+#### Namespace-Scoped Deployment Option
+
+For environments requiring strict namespace isolation, you can deploy the operator in **namespace-scoped mode**:
+
+**Community Edition (ClusterRole)**:
+```yaml
+# Default: cluster-wide access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gastown-operator
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+```
+
+**Namespace-Scoped Mode (Role per namespace)**:
+```yaml
+# Restrict to single namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gastown-operator
+  namespace: gastown-polecats  # Repeat per namespace
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+```
+
+**Tradeoffs**:
+- ✅ Stronger isolation: operator cannot read secrets in other namespaces
+- ❌ Requires RBAC per namespace where Polecats run
+- ❌ Cannot support cross-namespace secret references
+
+#### Webhook Validation Alternative
+
+For clusters that require cluster-wide CRD deployment but want to prevent cross-namespace secret access, implement a **validating webhook** that rejects Polecat CRs referencing secrets in other namespaces:
+
+```go
+// Pseudo-code for webhook validation
+func (v *PolecatValidator) ValidateCreate(ctx context.Context, obj runtime.Object) error {
+    polecat := obj.(*gastownv1alpha1.Polecat)
+
+    // Reject cross-namespace secret references
+    if polecat.Spec.Kubernetes.GitSecretRef.Namespace != "" &&
+       polecat.Spec.Kubernetes.GitSecretRef.Namespace != polecat.Namespace {
+        return fmt.Errorf("cross-namespace secret references are not allowed")
+    }
+
+    return nil
+}
+```
+
+This enforces same-namespace secrets at admission time, reducing the blast radius of a compromised operator.
+
+#### Recommendation
+
+- **Default deployments**: Accept cluster-wide secret access with read-only RBAC
+- **High-security environments**: Use namespace-scoped RBAC + manual per-namespace deployment
+- **Defense-in-depth**: Implement webhook validation to prevent cross-namespace secret references
+
+See `config/rbac/SECURITY.md` for detailed RBAC configuration.
+
 ---
 
 ## Pod Security
