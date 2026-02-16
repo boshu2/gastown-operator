@@ -237,6 +237,9 @@ fi
 `, PreVerifiedSSHKnownHosts, k8sSpec.GitRepository)
 	}
 
+	// SECURITY: Pass Git configuration via environment variables instead of string interpolation
+	// to prevent shell injection attacks if webhook validation is bypassed.
+	// Environment variables: $GIT_REPO, $GIT_BRANCH, $WORK_BRANCH
 	gitScript := fmt.Sprintf(`
 set -e
 
@@ -249,21 +252,20 @@ chmod 600 ~/.ssh/id_rsa
 echo "StrictHostKeyChecking %s" >> ~/.ssh/config
 %s
 
-# Clone the repository
-echo "Cloning %s branch %s..."
-git clone --depth=1 -b %s %s %s/repo
+# Clone the repository (using environment variables to prevent injection)
+echo "Cloning $GIT_REPO branch $GIT_BRANCH..."
+git clone --depth=1 -b "$GIT_BRANCH" "$GIT_REPO" %s/repo
 
 # Create work branch
 cd %s/repo
-git checkout -b %s
-echo "Git setup complete. Working branch: %s"
+git checkout -b "$WORK_BRANCH"
+echo "Git setup complete. Working branch: $WORK_BRANCH"
 `,
 		GitCredsMountPath, GitCredsMountPath,
 		strictHostKeyChecking,
 		knownHostsSetup,
-		k8sSpec.GitRepository, k8sSpec.GitBranch,
-		k8sSpec.GitBranch, k8sSpec.GitRepository, WorkspaceMountPath,
-		WorkspaceMountPath, workBranch, workBranch,
+		WorkspaceMountPath,
+		WorkspaceMountPath,
 	)
 
 	return corev1.Container{
@@ -276,6 +278,18 @@ echo "Git setup complete. Working branch: %s"
 			{
 				Name:  "HOME",
 				Value: HomeMountPath,
+			},
+			{
+				Name:  "GIT_REPO",
+				Value: k8sSpec.GitRepository,
+			},
+			{
+				Name:  "GIT_BRANCH",
+				Value: k8sSpec.GitBranch,
+			},
+			{
+				Name:  "WORK_BRANCH",
+				Value: workBranch,
 			},
 		},
 		VolumeMounts: b.buildGitInitVolumeMounts(),

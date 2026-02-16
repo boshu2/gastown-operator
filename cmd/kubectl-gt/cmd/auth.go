@@ -34,6 +34,7 @@ func newAuthCmd() *cobra.Command {
 func newAuthSyncCmd() *cobra.Command {
 	var claudeDir string
 	var force bool
+	var dryRun bool
 
 	cmd := &cobra.Command{
 		Use:   "sync",
@@ -41,9 +42,15 @@ func newAuthSyncCmd() *cobra.Command {
 		Long: `Sync Claude credentials from local ~/.claude/ directory to a Kubernetes Secret.
 
 This allows polecats running in the cluster to use your Claude account.
-The Secret is created in the target namespace (default: gastown).`,
+The Secret is created in the target namespace (default: gastown).
+
+SECURITY: Only credential files are synced (.credentials.json, settings.json).
+Other files (conversation history, cache) are not uploaded for GDPR data minimization.`,
 		Example: `  # Sync credentials
   kubectl gt auth sync
+
+  # Preview what would be synced (dry-run)
+  kubectl gt auth sync --dry-run
 
   # Sync from custom location
   kubectl gt auth sync --claude-dir /path/to/.claude
@@ -51,7 +58,7 @@ The Secret is created in the target namespace (default: gastown).`,
   # Force sync even if up to date
   kubectl gt auth sync --force`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAuthSync(claudeDir, force)
+			return runAuthSync(claudeDir, force, dryRun)
 		},
 	}
 
@@ -60,6 +67,7 @@ The Secret is created in the target namespace (default: gastown).`,
 
 	cmd.Flags().StringVar(&claudeDir, "claude-dir", defaultClaudeDir, "Path to Claude config directory")
 	cmd.Flags().BoolVar(&force, "force", false, "Force sync even if Secret exists")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview files to sync without uploading")
 
 	return cmd
 }
@@ -78,36 +86,81 @@ func newAuthStatusCmd() *cobra.Command {
 	return cmd
 }
 
-func runAuthSync(claudeDir string, force bool) error {
+// Allowlist of credential files to sync (GDPR data minimization)
+var allowedFiles = []string{
+	".credentials.json", // OAuth credentials
+	"settings.json",     // User settings (API keys if configured)
+}
+
+func runAuthSync(claudeDir string, force bool, dryRun bool) error {
 	// Check Claude directory exists
 	if _, err := os.Stat(claudeDir); os.IsNotExist(err) {
 		return fmt.Errorf("claude config directory not found: %s (run 'claude login' first)", claudeDir)
 	}
 
-	// Read all files in Claude directory
+	// Read only allowlisted credential files (GDPR data minimization)
 	data := make(map[string][]byte)
-	err := filepath.Walk(claudeDir, func(path string, info os.FileInfo, err error) error {
+	var foundFiles []string
+	var missingFiles []string
+
+	for _, fileName := range allowedFiles {
+		filePath := filepath.Join(claudeDir, fileName)
+		// nolint:gosec // G304: path is constrained to allowlisted files only
+		content, err := os.ReadFile(filePath)
 		if err != nil {
-			return err
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("failed to read %s: %w", fileName, err)
+			}
+			missingFiles = append(missingFiles, fileName)
+			continue
 		}
-		if info.IsDir() {
-			return nil
-		}
-		relPath, _ := filepath.Rel(claudeDir, path)
-		// nolint:gosec // G304: path is constrained to claudeDir by filepath.Walk
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		data[relPath] = content
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to read Claude directory: %w", err)
+		data[fileName] = content
+		foundFiles = append(foundFiles, fileName)
 	}
 
 	if len(data) == 0 {
-		return fmt.Errorf("no files found in %s", claudeDir)
+		return fmt.Errorf("no credential files found in %s (expected: %v)", claudeDir, allowedFiles)
+	}
+
+	// Warn about unexpected files in ~/.claude/ (data minimization)
+	err := filepath.Walk(claudeDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil // Ignore errors and directories
+		}
+		relPath, _ := filepath.Rel(claudeDir, path)
+		isAllowed := false
+		for _, allowed := range allowedFiles {
+			if relPath == allowed {
+				isAllowed = true
+				break
+			}
+		}
+		if !isAllowed {
+			fmt.Printf("  ⚠️  Skipping: %s (not in allowlist)\n", relPath)
+		}
+		return nil
+	})
+	if err != nil {
+		// Non-fatal: just log the warning check error
+		fmt.Printf("Warning: could not scan for unexpected files: %v\n", err)
+	}
+
+	// Dry-run mode: print what would be synced and exit
+	if dryRun {
+		fmt.Println("Dry-run mode: would sync the following files:")
+		for _, file := range foundFiles {
+			size := len(data[file])
+			fmt.Printf("  ✓ %s (%d bytes)\n", file, size)
+		}
+		if len(missingFiles) > 0 {
+			fmt.Println("\nMissing files (optional):")
+			for _, file := range missingFiles {
+				fmt.Printf("  ✗ %s\n", file)
+			}
+		}
+		fmt.Printf("\nTotal: %d files, %d bytes\n", len(data), sumBytes(data))
+		fmt.Println("\nRe-run without --dry-run to actually sync.")
+		return nil
 	}
 
 	// Get kubernetes client
@@ -217,4 +270,12 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dh", int(d.Hours()))
 	}
 	return fmt.Sprintf("%dd", int(d.Hours()/24))
+}
+
+func sumBytes(data map[string][]byte) int {
+	total := 0
+	for _, content := range data {
+		total += len(content)
+	}
+	return total
 }

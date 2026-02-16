@@ -1,0 +1,33 @@
+# NetworkPolicy for Polecat agent pods - Ingress
+# Denies all inbound traffic except Prometheus scraping from monitoring namespace.
+#
+# This prevents unauthorized access to the telemetry sidecar (port 8080) which
+# exposes metrics and could leak information about polecat execution.
+#
+# Note: This policy uses matchExpressions with Exists operator (same as polecat-egress.yaml)
+# to match pods where the 'gastown.io/polecat' label exists, regardless of value.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: gastown-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: polecat-ingress
+  namespace: system
+spec:
+  podSelector:
+    matchExpressions:
+      - key: gastown.io/polecat
+        operator: Exists
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow Prometheus scraping from monitoring namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - port: 8080
+          protocol: TCP
+    # Default deny-all for ingress (no other rules)

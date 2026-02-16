@@ -113,6 +113,12 @@ func (v *PolecatCustomValidator) validatePolecat(polecat *Polecat) (admission.Wa
 		warnings = append(warnings, warns...)
 	}
 
+	// Validate TaskDescription
+	if polecat.Spec.TaskDescription != "" {
+		errs := validateTaskDescription(polecat.Spec.TaskDescription)
+		allErrs = append(allErrs, errs...)
+	}
+
 	// Validate TTL
 	if polecat.Spec.TTLSecondsAfterFinished != nil && *polecat.Spec.TTLSecondsAfterFinished < 0 {
 		allErrs = append(allErrs, "spec.ttlSecondsAfterFinished: must be non-negative")
@@ -190,6 +196,59 @@ func validateKubernetesSpec(k *KubernetesSpec) []string {
 	// Validate ActiveDeadlineSeconds
 	if k.ActiveDeadlineSeconds != nil && *k.ActiveDeadlineSeconds <= 0 {
 		errs = append(errs, "spec.kubernetes.activeDeadlineSeconds: must be positive")
+	}
+
+	// Validate Image against allowlist (prevent arbitrary container image execution)
+	if k.Image != "" {
+		if err := validateImageRegistry(k.Image); err != nil {
+			errs = append(errs, fmt.Sprintf("spec.kubernetes.image: %s", err.Error()))
+		}
+	}
+
+	return errs
+}
+
+// validateImageRegistry checks that the image is from an allowed registry.
+// This prevents attackers from running arbitrary container images in the cluster.
+var allowedRegistries = []string{
+	"ghcr.io/boshu2/",             // Official Gas Town images
+	"docker.io/boshu2/",           // Docker Hub official images
+	"registry.access.redhat.com/", // Red Hat UBI images for FIPS
+	"quay.io/boshu2/",             // Quay official images
+}
+
+func validateImageRegistry(image string) error {
+	// Allow empty (uses default from builder)
+	if image == "" {
+		return nil
+	}
+
+	// Check against allowlist
+	for _, prefix := range allowedRegistries {
+		if strings.HasPrefix(image, prefix) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("image must be from allowed registries: %s", strings.Join(allowedRegistries, ", "))
+}
+
+// validateTaskDescription validates the task description field.
+// This prevents prompt injection attacks and ensures reasonable size limits.
+func validateTaskDescription(desc string) []string {
+	var errs []string
+
+	// Max length check (4096 characters)
+	if len(desc) > 4096 {
+		errs = append(errs, fmt.Sprintf("spec.taskDescription: exceeds maximum length of 4096 characters (got %d)", len(desc)))
+	}
+
+	// Control character check (reject ASCII control chars except newline, tab, carriage return)
+	for i, r := range desc {
+		if r < 32 && r != '\n' && r != '\t' && r != '\r' {
+			errs = append(errs, fmt.Sprintf("spec.taskDescription: contains control character at position %d (code %d)", i, r))
+			break // Only report first occurrence
+		}
 	}
 
 	return errs
