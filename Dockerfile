@@ -10,7 +10,7 @@
 # Build args allow image override in CI:
 #   --build-arg GO_IMAGE=${REGISTRY}/golang:1.25-alpine
 
-ARG GO_IMAGE=golang:1.25-alpine
+ARG GO_IMAGE=golang:1.26-alpine
 ARG RUNTIME_IMAGE=gcr.io/distroless/static:nonroot
 
 # ------------------------------------------------------------------------------
