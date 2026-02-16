@@ -76,12 +76,12 @@ func (c *Client) ensureKnownHosts() (string, error) {
 	// Write pre-verified host keys from the shared package
 	if _, err := tmpFile.WriteString(pod.PreVerifiedSSHKnownHosts); err != nil {
 		_ = tmpFile.Close()           //nolint:errcheck // best-effort cleanup on error path
-		_ = os.Remove(tmpFile.Name()) //nolint:errcheck // #nosec G703 -- path from os.CreateTemp, not user input
+		_ = os.Remove(tmpFile.Name()) // #nosec G703 -- path from os.CreateTemp, not user input
 		return "", fmt.Errorf("failed to write known_hosts: %w", err)
 	}
 
 	if err := tmpFile.Close(); err != nil {
-		_ = os.Remove(tmpFile.Name()) //nolint:errcheck // #nosec G703 -- path from os.CreateTemp, not user input
+		_ = os.Remove(tmpFile.Name()) // #nosec G703 -- path from os.CreateTemp, not user input
 		return "", fmt.Errorf("failed to close known_hosts file: %w", err)
 	}
 

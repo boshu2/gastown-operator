@@ -401,22 +401,22 @@ func (r *RefineryReconciler) setupGitCredentials(
 	}
 
 	if _, err := keyFile.Write(sshKey); err != nil {
-		_ = os.Remove(keyFile.Name()) //nolint:errcheck // #nosec G703 -- path from os.CreateTemp, not user input
+		_ = os.Remove(keyFile.Name()) // #nosec G703 -- path from os.CreateTemp, not user input
 		return "", nil, fmt.Errorf("failed to write SSH key: %w", err)
 	}
 
 	if err := keyFile.Chmod(0o600); err != nil {
-		_ = os.Remove(keyFile.Name()) //nolint:errcheck // #nosec G703 -- path from os.CreateTemp, not user input
+		_ = os.Remove(keyFile.Name()) // #nosec G703 -- path from os.CreateTemp, not user input
 		return "", nil, fmt.Errorf("failed to chmod SSH key: %w", err)
 	}
 
 	if err := keyFile.Close(); err != nil {
-		_ = os.Remove(keyFile.Name()) //nolint:errcheck // #nosec G703 -- path from os.CreateTemp, not user input
+		_ = os.Remove(keyFile.Name()) // #nosec G703 -- path from os.CreateTemp, not user input
 		return "", nil, fmt.Errorf("failed to close SSH key file: %w", err)
 	}
 
 	cleanup := func() {
-		_ = os.Remove(keyFile.Name()) //nolint:errcheck // #nosec G703 -- path from os.CreateTemp, not user input
+		_ = os.Remove(keyFile.Name()) // #nosec G703 -- path from os.CreateTemp, not user input
 	}
 
 	return keyFile.Name(), cleanup, nil
