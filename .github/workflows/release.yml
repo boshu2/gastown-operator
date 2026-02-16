@@ -281,6 +281,8 @@ jobs:
         run: |
           make build-installer VERSION=${{ needs.preflight.outputs.version }} \
             IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Copy out of dist/ before GoReleaser --clean wipes it
+          cp dist/install.yaml install.yaml
 
       - name: Install Syft (for GoReleaser binary SBOM)
         uses: anchore/sbom-action/download-syft@v0
