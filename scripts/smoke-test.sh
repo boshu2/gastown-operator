@@ -241,7 +241,7 @@ metadata:
   namespace: default
 spec:
   gitURL: "https://github.com/example/test-repo.git"
-  description: "Smoke test rig"
+  beadsPrefix: "st"
 EOF
 
 log_info "Waiting for Rig reconciliation (30s)..."
