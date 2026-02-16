@@ -247,10 +247,13 @@ EOF
 log_info "Waiting for Rig reconciliation (30s)..."
 sleep 5
 
+# Child resources are created in the operator namespace
+CHILD_NS="$NAMESPACE"
+
 # Check Witness auto-created
 WITNESS_FOUND=false
 for i in $(seq 1 6); do
-  if kubectl get witness smoke-test-rig-witness -n default &> /dev/null 2>&1; then
+  if kubectl get witness smoke-test-rig-witness -n "$CHILD_NS" &> /dev/null 2>&1; then
     WITNESS_FOUND=true
     break
   fi
@@ -266,7 +269,7 @@ fi
 # Check Refinery auto-created
 REFINERY_FOUND=false
 for i in $(seq 1 6); do
-  if kubectl get refinery smoke-test-rig-refinery -n default &> /dev/null 2>&1; then
+  if kubectl get refinery smoke-test-rig-refinery -n "$CHILD_NS" &> /dev/null 2>&1; then
     REFINERY_FOUND=true
     break
   fi
@@ -281,16 +284,16 @@ fi
 
 # Test cascade delete
 log_info "Testing cascade delete..."
-kubectl delete rig smoke-test-rig -n default --timeout=30s 2>/dev/null || true
+kubectl delete rig smoke-test-rig --timeout=30s 2>/dev/null || true
 sleep 5
 
-if ! kubectl get witness smoke-test-rig-witness -n default &> /dev/null 2>&1; then
+if ! kubectl get witness smoke-test-rig-witness -n "$CHILD_NS" &> /dev/null 2>&1; then
   log_success "Witness cascade deleted"
 else
   log_warning "Witness still exists after Rig deletion"
 fi
 
-if ! kubectl get refinery smoke-test-rig-refinery -n default &> /dev/null 2>&1; then
+if ! kubectl get refinery smoke-test-rig-refinery -n "$CHILD_NS" &> /dev/null 2>&1; then
   log_success "Refinery cascade deleted"
 else
   log_warning "Refinery still exists after Rig deletion"
