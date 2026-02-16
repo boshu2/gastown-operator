@@ -6,6 +6,7 @@
     ":automergeMinor",
     "group:allNonMajor"
   ],
+  "postUpdateOptions": ["gomodTidy"],
   "labels": ["dependencies"],
   "gomod": {
     "enabled": true
