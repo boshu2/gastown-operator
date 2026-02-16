@@ -118,6 +118,10 @@ demo: setup-test-e2e docker-build-e2e ## Deploy to Kind and show a sample Poleca
 	@echo "Cleanup:"
 	@echo "  make cleanup-test-e2e"
 
+.PHONY: smoke-test
+smoke-test: ## Smoke test published release artifacts in Kind (requires VERSION).
+	./scripts/smoke-test.sh --version $(VERSION)
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	"$(GOLANGCI_LINT)" run
