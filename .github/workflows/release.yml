@@ -272,17 +272,6 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Install Syft (for GoReleaser binary SBOM)
-        uses: anchore/sbom-action/download-syft@v0
-
-      - name: Build kubectl-gt binaries via GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: '~> v2'
-          args: release --clean --skip=publish
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Download SBOM
         uses: actions/download-artifact@v4
         with:
@@ -293,33 +282,14 @@ jobs:
           make build-installer VERSION=${{ needs.preflight.outputs.version }} \
             IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
-      - name: Generate changelog
-        id: changelog
-        run: |
-          # Get commits since last tag
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [[ -n "$PREV_TAG" ]]; then
-            echo "## Changes since ${PREV_TAG}" > release-notes.md
-            git log --pretty=format:"- %s (%h)" ${PREV_TAG}..HEAD >> release-notes.md
-          else
-            echo "## Initial Release" > release-notes.md
-            echo "First release of gastown-operator." >> release-notes.md
-          fi
+      - name: Install Syft (for GoReleaser binary SBOM)
+        uses: anchore/sbom-action/download-syft@v0
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Create GitHub Release via GoReleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
-          tag_name: ${{ needs.preflight.outputs.tag }}
-          name: ${{ needs.preflight.outputs.tag }}
-          body_path: release-notes.md
-          files: |
-            dist/install.yaml
-            dist/kubectl-gt-*
-            dist/checksums.txt
-            dist/*.spdx.json
-            sbom.spdx.json
-            sbom.cyclonedx.json
-          generate_release_notes: true
+          version: '~> v2'
+          args: release --clean --skip=validate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

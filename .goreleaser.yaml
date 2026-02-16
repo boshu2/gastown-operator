@@ -58,6 +58,8 @@ release:
   prerelease: auto
   extra_files:
     - glob: dist/install.yaml
+    - glob: sbom.spdx.json
+    - glob: sbom.cyclonedx.json
   name_template: "v{{.Version}}"
 
 sboms:
