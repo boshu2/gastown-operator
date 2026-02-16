@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/boshu2/gastown-operator/compare/v0.4.3...v0.5.0) (2026-02-15) - Hardening & Developer Experience
+
+### Highlights
+
+- **Path traversal protection**: Webhook validation rejects `../` and URL-encoded traversal in git URLs, repositories, and branches
+- **Circuit breaker expansion**: Refinery controller now has exponential backoff for git operations, matching the Witness pattern
+- **GoReleaser + Renovate**: Automated cross-platform binary releases and dependency management
+- **Product definition**: PRODUCT.md with mission, personas, and value propositions
+- **Comprehensive godoc**: All exported functions and constants documented
+
+### Features
+
+* **security:** add `containsPathTraversal` validation to Polecat and Rig webhooks for git URLs, repositories, and branches
+* **reliability:** add circuit breaker with exponential backoff to Refinery controller for git clone/merge/push operations
+* **docs:** add godoc comments to 36 exported constants and variables across 8 files
+* **release:** add `.goreleaser.yaml` for automated cross-platform kubectl-gt binary releases
+* **deps:** add `renovate.json` for automated dependency management
+* **helm:** add Prometheus ServiceMonitor template to Helm chart
+* **product:** add PRODUCT.md with mission, target personas, and competitive landscape
+* **docs:** add GOALS.yaml with 14 fitness goals for v0.5.0 release validation
+
+### Bug Fixes
+
+* **security:** correct `nosec` annotation format for gosec G703 on `os.CreateTemp` cleanup
+* **release:** add `go mod tidy` check to release workflow and pre-commit hook
+* **deps:** promote `golang.org/x/time` from indirect to direct dependency
+
+### Removed
+
+* **infra:** remove internal GitLab CI and Tekton pipeline configuration (replaced by GitHub Actions)
+* **release:** remove unused `.releaserc.yaml` (semantic-release, GitLab-focused)
+
+### Installation
+
+```bash
+helm install gastown-operator oci://ghcr.io/boshu2/charts/gastown-operator \
+  --version 0.5.0 \
+  --namespace gastown-system \
+  --create-namespace
+```
+
+---
+
 ## [0.4.3](https://github.com/boshu2/gastown-operator/compare/v0.4.2...v0.4.3) (2026-02-04) - Elite Operator Patterns
 
 ### Highlights
