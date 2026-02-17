@@ -92,6 +92,32 @@ How the Gas Town Operator works and why it's designed this way.
 4. When all complete, set phase to `Completed`
 5. If `notifyOnComplete`, send notification
 
+## Resource Scoping
+
+### Cluster-Scoped vs Namespaced
+
+Rig is the only cluster-scoped CRD. All other CRDs are namespaced:
+
+| CRD | Scope | Reason |
+|-----|-------|--------|
+| Rig | Cluster | Represents a physical workspace; one per cluster identity |
+| Polecat | Namespaced | Runs as a Pod; needs namespace for RBAC and resource quotas |
+| Convoy | Namespaced | Groups Polecats; scoped to same namespace as its Polecats |
+| Witness | Namespaced | Monitors a Rig's Polecats; child of cluster-scoped Rig |
+| Refinery | Namespaced | Manages git merges; child of cluster-scoped Rig |
+| BeadStore | Namespaced | Syncs beads state; scoped to operator namespace |
+
+### Child Placement for Cluster-Scoped Parents
+
+Since Rig is cluster-scoped, it cannot use `OwnerReferences` to manage namespaced children (Kubernetes does not allow cross-scope ownership). Instead:
+
+1. **Explicit namespace**: Children are created in a configurable namespace (`GASTOWN_NAMESPACE` env var, default `gastown-system`)
+2. **Naming convention**: Children use `<rig-name>-witness` and `<rig-name>-refinery` naming
+3. **Finalizer cleanup**: Rig uses a finalizer (`gastown.io/rig-cleanup`) to delete children on Rig deletion
+4. **Status tracking**: `rig.status.childNamespace` records where children were placed
+
+This avoids the common pitfall of cluster-scoped CRDs that orphan namespaced resources on deletion.
+
 ## Sync Patterns
 
 ### Pull-Based Sync (Default)
