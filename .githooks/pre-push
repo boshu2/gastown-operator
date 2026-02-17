@@ -17,11 +17,12 @@ echo "[1/6] Running go vet..."
 go vet ./...
 
 # 2. golangci-lint (comprehensive static analysis)
+# Prefer project-local binary (matches project config version)
 echo "[2/6] Running golangci-lint..."
-if command -v golangci-lint &> /dev/null; then
-    golangci-lint run --timeout 3m
-elif [ -f bin/golangci-lint ]; then
+if [ -f bin/golangci-lint ]; then
     ./bin/golangci-lint run --timeout 3m
+elif command -v golangci-lint &> /dev/null; then
+    golangci-lint run --timeout 3m
 else
     echo "  Warning: golangci-lint not found. Run 'make golangci-lint' to install."
     echo "  Skipping lint check..."
