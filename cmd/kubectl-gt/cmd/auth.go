@@ -93,12 +93,40 @@ var allowedFiles = []string{
 }
 
 func runAuthSync(claudeDir string, force bool, dryRun bool) error {
-	// Check Claude directory exists
-	if _, err := os.Stat(claudeDir); os.IsNotExist(err) {
-		return fmt.Errorf("claude config directory not found: %s (run 'claude login' first)", claudeDir)
+	data, foundFiles, missingFiles, err := loadCredentialFiles(claudeDir)
+	if err != nil {
+		return err
 	}
 
-	// Read only allowlisted credential files (GDPR data minimization)
+	warnUnallowedFiles(claudeDir)
+
+	if dryRun {
+		printDryRunPreview(data, foundFiles, missingFiles)
+		return nil
+	}
+
+	operation, err := createOrUpdateSecret(data, force)
+	if err != nil {
+		return err
+	}
+
+	if operation != "" {
+		namespace := GetNamespace()
+		fmt.Printf("AUDIT: Credential sync - operation=%s namespace=%s secret=%s files=%d timestamp=%s\n",
+			operation, namespace, claudeCredsSecretName, len(data), time.Now().UTC().Format(time.RFC3339))
+		fmt.Printf("Synced %d files to Secret %s/%s\n", len(data), namespace, claudeCredsSecretName)
+		fmt.Println("\nPolecats can now use your Claude credentials.")
+	}
+	return nil
+}
+
+// loadCredentialFiles reads allowlisted credential files from the Claude config directory.
+// Returns the file data, lists of found and missing files, or an error.
+func loadCredentialFiles(claudeDir string) (map[string][]byte, []string, []string, error) {
+	if _, err := os.Stat(claudeDir); os.IsNotExist(err) {
+		return nil, nil, nil, fmt.Errorf("claude config directory not found: %s (run 'claude login' first)", claudeDir)
+	}
+
 	data := make(map[string][]byte)
 	var foundFiles []string
 	var missingFiles []string
@@ -109,7 +137,7 @@ func runAuthSync(claudeDir string, force bool, dryRun bool) error {
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			if !os.IsNotExist(err) {
-				return fmt.Errorf("failed to read %s: %w", fileName, err)
+				return nil, nil, nil, fmt.Errorf("failed to read %s: %w", fileName, err)
 			}
 			missingFiles = append(missingFiles, fileName)
 			continue
@@ -119,74 +147,73 @@ func runAuthSync(claudeDir string, force bool, dryRun bool) error {
 	}
 
 	if len(data) == 0 {
-		return fmt.Errorf("no credential files found in %s (expected: %v)", claudeDir, allowedFiles)
+		return nil, nil, nil, fmt.Errorf("no credential files found in %s (expected: %v)", claudeDir, allowedFiles)
 	}
 
-	// Warn about unexpected files in ~/.claude/ (data minimization)
+	return data, foundFiles, missingFiles, nil
+}
+
+// warnUnallowedFiles walks the Claude config directory and prints warnings
+// for any files not in the credential allowlist.
+func warnUnallowedFiles(claudeDir string) {
 	err := filepath.Walk(claudeDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
-			return nil // Ignore errors and directories
+			return nil
 		}
 		relPath, _ := filepath.Rel(claudeDir, path)
-		isAllowed := false
 		for _, allowed := range allowedFiles {
 			if relPath == allowed {
-				isAllowed = true
-				break
+				return nil
 			}
 		}
-		if !isAllowed {
-			fmt.Printf("  ⚠️  Skipping: %s (not in allowlist)\n", relPath)
-		}
+		fmt.Printf("  ⚠️  Skipping: %s (not in allowlist)\n", relPath)
 		return nil
 	})
 	if err != nil {
-		// Non-fatal: just log the warning check error
 		fmt.Printf("Warning: could not scan for unexpected files: %v\n", err)
 	}
+}
 
-	// Dry-run mode: print what would be synced and exit
-	if dryRun {
-		fmt.Println("Dry-run mode: would sync the following files:")
-		for _, file := range foundFiles {
-			size := len(data[file])
-			fmt.Printf("  ✓ %s (%d bytes)\n", file, size)
-		}
-		if len(missingFiles) > 0 {
-			fmt.Println("\nMissing files (optional):")
-			for _, file := range missingFiles {
-				fmt.Printf("  ✗ %s\n", file)
-			}
-		}
-		fmt.Printf("\nTotal: %d files, %d bytes\n", len(data), sumBytes(data))
-		fmt.Println("\nRe-run without --dry-run to actually sync.")
-		return nil
+// printDryRunPreview displays what would be synced without actually uploading.
+func printDryRunPreview(data map[string][]byte, foundFiles []string, missingFiles []string) {
+	fmt.Println("Dry-run mode: would sync the following files:")
+	for _, file := range foundFiles {
+		fmt.Printf("  ✓ %s (%d bytes)\n", file, len(data[file]))
 	}
+	if len(missingFiles) > 0 {
+		fmt.Println("\nMissing files (optional):")
+		for _, file := range missingFiles {
+			fmt.Printf("  ✗ %s\n", file)
+		}
+	}
+	fmt.Printf("\nTotal: %d files, %d bytes\n", len(data), sumBytes(data))
+	fmt.Println("\nRe-run without --dry-run to actually sync.")
+}
 
-	// Get kubernetes client
+// createOrUpdateSecret syncs credential data to a Kubernetes Secret.
+// Returns the operation performed ("create", "update", or "" if skipped) and any error.
+func createOrUpdateSecret(data map[string][]byte, force bool) (string, error) {
 	config, err := KubeFlags.ToRESTConfig()
 	if err != nil {
-		return fmt.Errorf("failed to get kubeconfig: %w", err)
+		return "", fmt.Errorf("failed to get kubeconfig: %w", err)
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return fmt.Errorf("failed to create client: %w", err)
+		return "", fmt.Errorf("failed to create client: %w", err)
 	}
 
 	namespace := GetNamespace()
-
-	// Check if Secret exists
 	ctx := context.Background()
+
 	existing, err := clientset.CoreV1().Secrets(namespace).Get(ctx, claudeCredsSecretName, metav1.GetOptions{})
 	if err == nil && !force {
 		lastSync := existing.Annotations[syncTimestampKey]
 		fmt.Printf("Secret %s already exists (last sync: %s)\n", claudeCredsSecretName, lastSync)
 		fmt.Println("Use --force to overwrite")
-		return nil
+		return "", nil
 	}
 
-	// Create or update Secret
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      claudeCredsSecretName,
@@ -199,27 +226,19 @@ func runAuthSync(claudeDir string, force bool, dryRun bool) error {
 		Data: data,
 	}
 
+	operation := "create"
 	if existing != nil && existing.Name != "" {
 		_, err = clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
+		operation = "update"
 	} else {
 		_, err = clientset.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to create/update Secret: %w", err)
+		return "", fmt.Errorf("failed to create/update Secret: %w", err)
 	}
 
-	// Audit log: Credential sync operation
-	operation := "create"
-	if existing != nil && existing.Name != "" {
-		operation = "update"
-	}
-	fmt.Printf("AUDIT: Credential sync - operation=%s namespace=%s secret=%s files=%d timestamp=%s\n",
-		operation, namespace, claudeCredsSecretName, len(data), time.Now().UTC().Format(time.RFC3339))
-
-	fmt.Printf("Synced %d files to Secret %s/%s\n", len(data), namespace, claudeCredsSecretName)
-	fmt.Println("\nPolecats can now use your Claude credentials.")
-	return nil
+	return operation, nil
 }
 
 func runAuthStatus() error {
