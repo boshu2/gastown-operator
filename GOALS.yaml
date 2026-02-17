@@ -83,3 +83,10 @@ goals:
     description: "FRICTION_POINTS.md covers all webhook validation error messages"
     check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && DOC_REFS=$(grep -c 'Error:' FRICTION_POINTS.md 2>/dev/null || echo 0); test $DOC_REFS -ge 9"
     weight: 4
+
+  # === Meta: Goal Health ===
+
+  - id: goal-checks-can-fail
+    description: "Goal check commands return non-zero on known-bad input (catches silently-passing checks)"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && scripts/validate-goal-checks.sh"
+    weight: 3
