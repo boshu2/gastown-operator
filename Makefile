@@ -156,6 +156,11 @@ release-validate: ## Run full release validation (Kind cluster, both Helm charts
 release-validate-skip-cleanup: ## Run release validation without cleanup (for debugging).
 	./scripts/release-validation.sh --local --skip-cleanup
 
+.PHONY: release-goreleaser-check
+release-goreleaser-check: ## Validate GoReleaser config and run snapshot build (no publish).
+	goreleaser check
+	goreleaser release --snapshot --clean --skip=publish
+
 .PHONY: release-e2e
 release-e2e: ## Run full E2E release validation (dry-run, no actual release).
 	./scripts/e2e-release-validation.sh
