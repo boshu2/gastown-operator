@@ -45,7 +45,7 @@ goals:
 
   - id: go-coverage-floor
     description: "Unit test coverage stays above 60% for controller package"
-    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && go test -cover ./internal/controller/ 2>&1 | grep -oP 'coverage: \\K[0-9.]+' | awk '{exit ($1 < 60)}'"
+    check: "cd /Users/fullerbt/gt/gastown_operator/mayor/rig && go test -cover ./internal/controller/ 2>&1 | grep -oE 'coverage: [0-9]+\\.[0-9]+' | grep -oE '[0-9]+\\.[0-9]+' | awk '{exit ($1 < 60)}'"
     weight: 7
 
   # === Observability ===
