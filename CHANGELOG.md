@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 
-* **security:** add `containsPathTraversal` validation to Polecat and Rig webhooks for git URLs, repositories, and branches
+* **security:** add `containsPathTraversal` validation to Polecat and Rig webhooks for git URLs, repositories, and branches (CWE-22: Path Traversal)
 * **reliability:** add circuit breaker with exponential backoff to Refinery controller for git clone/merge/push operations
 * **docs:** add godoc comments to 36 exported constants and variables across 8 files
 * **release:** add `.goreleaser.yaml` for automated cross-platform kubectl-gt binary releases
@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug Fixes
 
-* **security:** correct `nosec` annotation format for gosec G703 on `os.CreateTemp` cleanup
+* **security:** correct `nosec` annotation format for gosec G703 on `os.CreateTemp` cleanup (CWE-703: Improper Error Handling)
 * **release:** add `go mod tidy` check to release workflow and pre-commit hook
 * **deps:** promote `golang.org/x/time` from indirect to direct dependency
 
