@@ -38,6 +38,7 @@ import (
 	gastownv1alpha1 "github.com/org/gastown-operator/api/v1alpha1"
 	"github.com/org/gastown-operator/internal/controller"
 	gterrors "github.com/org/gastown-operator/pkg/errors"
+	gtmetrics "github.com/org/gastown-operator/pkg/metrics"
 	"github.com/org/gastown-operator/pkg/version"
 	// +kubebuilder:scaffold:imports
 )
@@ -64,6 +65,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var disableWebhooks bool
+	var secretStaleThresholdDays int
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -84,11 +86,15 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.BoolVar(&disableWebhooks, "disable-webhooks", false,
 		"If set, webhooks will be disabled. Use for E2E tests or deployments without cert-manager.")
+	flag.IntVar(&secretStaleThresholdDays, "secret-stale-threshold-days", gtmetrics.DefaultSecretStaleThresholdDays,
+		"Number of days after which a secret is considered stale. Stale secrets trigger Degraded conditions.")
 	opts := zap.Options{
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	gtmetrics.SecretStaleThresholdDays = secretStaleThresholdDays
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 

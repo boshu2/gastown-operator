@@ -141,7 +141,31 @@ func TestRecordSecretAge(t *testing.T) {
 }
 
 func TestSecretStaleThresholdDays(t *testing.T) {
-	if SecretStaleThresholdDays != 90 {
-		t.Errorf("expected SecretStaleThresholdDays=90, got %d", SecretStaleThresholdDays)
+	if DefaultSecretStaleThresholdDays != 90 {
+		t.Errorf("expected DefaultSecretStaleThresholdDays=90, got %d", DefaultSecretStaleThresholdDays)
+	}
+	if SecretStaleThresholdDays != DefaultSecretStaleThresholdDays {
+		t.Errorf("expected SecretStaleThresholdDays to default to %d, got %d",
+			DefaultSecretStaleThresholdDays, SecretStaleThresholdDays)
+	}
+}
+
+func TestIsSecretStaleCustomThreshold(t *testing.T) {
+	original := SecretStaleThresholdDays
+	defer func() { SecretStaleThresholdDays = original }()
+
+	// Set a 30-day threshold
+	SecretStaleThresholdDays = 30
+
+	// 45 days old — stale with 30-day threshold, not stale with default 90-day
+	ts := time.Now().Add(-45 * 24 * time.Hour).Format(time.RFC3339)
+	if !IsSecretStale(ts) {
+		t.Error("expected 45-day-old secret to be stale with 30-day threshold")
+	}
+
+	// 15 days old — not stale even with 30-day threshold
+	ts = time.Now().Add(-15 * 24 * time.Hour).Format(time.RFC3339)
+	if IsSecretStale(ts) {
+		t.Error("expected 15-day-old secret to not be stale with 30-day threshold")
 	}
 }

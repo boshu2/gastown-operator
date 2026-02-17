@@ -21,6 +21,8 @@ gtConfig:
   townRoot: /gt
   # Path to gt binary inside the container (baked into image)
   gtBinary: /usr/local/bin/gt
+  # Number of days after which a secret is considered stale (triggers Degraded condition)
+  secretStaleThresholdDays: 90
 
 # Volume configuration for accessing host filesystem
 # NOTE: hostPath limits deployment to single-node clusters where the path exists

@@ -46,6 +46,7 @@ spec:
             - --metrics-secure=true
             {{- end }}
             {{- end }}
+            - --secret-stale-threshold-days={{ .Values.gtConfig.secretStaleThresholdDays }}
           env:
             - name: GT_TOWN_ROOT
               value: {{ .Values.gtConfig.townRoot }}

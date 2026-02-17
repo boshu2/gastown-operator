@@ -7,11 +7,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
-const (
-	// SecretStaleThresholdDays is the threshold for marking a secret as stale.
-	// Secrets older than this trigger a Degraded condition.
-	SecretStaleThresholdDays = 90
-)
+// DefaultSecretStaleThresholdDays is the default threshold for marking a secret as stale.
+const DefaultSecretStaleThresholdDays = 90
+
+// SecretStaleThresholdDays is the threshold for marking a secret as stale.
+// Secrets older than this trigger a Degraded condition.
+// Configurable via --secret-stale-threshold-days flag.
+var SecretStaleThresholdDays = DefaultSecretStaleThresholdDays
 
 var (
 	// gastownSecretAge tracks the age of secrets in days.
@@ -60,5 +62,5 @@ func IsSecretStale(syncTimestamp string) bool {
 	}
 
 	ageDays := time.Since(syncTime).Hours() / 24
-	return ageDays > SecretStaleThresholdDays
+	return ageDays > float64(SecretStaleThresholdDays)
 }
