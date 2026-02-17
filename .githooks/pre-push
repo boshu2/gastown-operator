@@ -71,6 +71,22 @@ else
     echo "[6/6] Skipping tests (SKIP_TESTS=1)"
 fi
 
+# 7. CHANGELOG enforcement for security commits (warn, not block)
+REMOTE_HEAD=$(git rev-parse @{upstream} 2>/dev/null || echo "")
+if [ -n "$REMOTE_HEAD" ]; then
+    SECURITY_COMMITS=$(git log --oneline "$REMOTE_HEAD"..HEAD --grep="security" --grep="fix(security)" --grep="CVE-" --grep="CWE-" | head -5)
+    if [ -n "$SECURITY_COMMITS" ]; then
+        CHANGELOG_CHANGED=$(git diff --name-only "$REMOTE_HEAD"..HEAD | grep -q "CHANGELOG.md" && echo "yes" || echo "no")
+        if [ "$CHANGELOG_CHANGED" = "no" ]; then
+            echo ""
+            echo "  ⚠ WARNING: Security commits detected but CHANGELOG.md not updated:"
+            echo "$SECURITY_COMMITS" | sed 's/^/    /'
+            echo "  Consider documenting security fixes in CHANGELOG.md for downstream users."
+            echo ""
+        fi
+    fi
+fi
+
 echo ""
 echo "=== Pre-push validation passed ==="
 echo ""
