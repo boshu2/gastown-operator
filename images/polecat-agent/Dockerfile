@@ -25,7 +25,7 @@
 ARG CLAUDE_CODE_VERSION=2.0.22
 # Gas Town CLI: https://github.com/steveyegge/gastown
 ARG GT_VERSION=main
-ARG GOLANG_VERSION=1.24
+ARG GOLANG_VERSION=1.26
 # Base image - Debian slim for glibc compatibility
 ARG DEBIAN_VERSION=bookworm-slim
 
@@ -38,6 +38,7 @@ RUN apk add --no-cache git
 
 WORKDIR /build
 ARG GT_VERSION
+ENV GOTOOLCHAIN=auto
 RUN git clone --depth 1 --branch ${GT_VERSION} https://github.com/steveyegge/gastown.git . && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/gt ./cmd/gt
 

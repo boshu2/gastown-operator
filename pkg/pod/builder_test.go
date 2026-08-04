@@ -609,6 +609,133 @@ func TestContainerEnvironment(t *testing.T) {
 	})
 }
 
+func TestAgentConfigGatewayEnv(t *testing.T) {
+	polecat := &gastownv1alpha1.Polecat{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "gateway-polecat",
+			Namespace: "default",
+		},
+		Spec: gastownv1alpha1.PolecatSpec{
+			Rig:    "test-rig",
+			BeadID: "test-bead",
+			AgentConfig: &gastownv1alpha1.AgentConfig{
+				Provider: gastownv1alpha1.LLMProviderLiteLLM,
+				Model:    "claude-opus-4-8",
+				ModelProvider: &gastownv1alpha1.ModelProviderConfig{
+					Endpoint: "http://litellm.gastown-system.svc:4000",
+					APIKeySecretRef: &gastownv1alpha1.SecretKeyRef{
+						Name: "litellm-auth",
+						Key:  "master-key",
+					},
+				},
+				Env: []corev1.EnvVar{
+					{Name: "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY", Value: "1"},
+				},
+			},
+			Kubernetes: &gastownv1alpha1.KubernetesSpec{
+				GitRepository: "git@github.com:org/repo.git",
+				GitBranch:     "main",
+				GitSecretRef:  gastownv1alpha1.SecretReference{Name: "git-secret"},
+				ApiKeySecretRef: &gastownv1alpha1.SecretKeyRef{
+					Name: "anthropic-api-key",
+					Key:  "api-key",
+				},
+			},
+		},
+	}
+
+	builder := NewBuilder(polecat)
+	pod, err := builder.Build()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	envVars := pod.Spec.Containers[0].Env
+	envMap := make(map[string]corev1.EnvVar, len(envVars))
+	for _, env := range envVars {
+		envMap[env.Name] = env
+	}
+
+	t.Run("sets ANTHROPIC_BASE_URL from modelProvider.endpoint", func(t *testing.T) {
+		got := envMap["ANTHROPIC_BASE_URL"].Value
+		want := "http://litellm.gastown-system.svc:4000"
+		if got != want {
+			t.Errorf("expected ANTHROPIC_BASE_URL=%s, got %s", want, got)
+		}
+	})
+
+	t.Run("sets ANTHROPIC_MODEL from agentConfig.model", func(t *testing.T) {
+		if envMap["ANTHROPIC_MODEL"].Value != "claude-opus-4-8" {
+			t.Errorf("expected ANTHROPIC_MODEL=claude-opus-4-8, got %s", envMap["ANTHROPIC_MODEL"].Value)
+		}
+	})
+
+	t.Run("sets ANTHROPIC_AUTH_TOKEN from modelProvider.apiKeySecretRef", func(t *testing.T) {
+		auth := envMap["ANTHROPIC_AUTH_TOKEN"]
+		if auth.ValueFrom == nil || auth.ValueFrom.SecretKeyRef == nil {
+			t.Fatal("expected ANTHROPIC_AUTH_TOKEN from secret")
+		}
+		if auth.ValueFrom.SecretKeyRef.Name != "litellm-auth" {
+			t.Errorf("expected secret litellm-auth, got %s", auth.ValueFrom.SecretKeyRef.Name)
+		}
+		if auth.ValueFrom.SecretKeyRef.Key != "master-key" {
+			t.Errorf("expected key master-key, got %s", auth.ValueFrom.SecretKeyRef.Key)
+		}
+	})
+
+	t.Run("skips ANTHROPIC_API_KEY when gateway auth is configured", func(t *testing.T) {
+		if _, exists := envMap["ANTHROPIC_API_KEY"]; exists {
+			t.Error("ANTHROPIC_API_KEY should not be set when gateway auth is present")
+		}
+	})
+
+	t.Run("appends agentConfig.env", func(t *testing.T) {
+		if envMap["CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"].Value != "1" {
+			t.Error("expected agentConfig.env to be appended")
+		}
+	})
+}
+
+func TestAgentConfigImageOverride(t *testing.T) {
+	polecat := &gastownv1alpha1.Polecat{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "image-polecat",
+			Namespace: "default",
+		},
+		Spec: gastownv1alpha1.PolecatSpec{
+			Rig: "test-rig",
+			AgentConfig: &gastownv1alpha1.AgentConfig{
+				Image: "ghcr.io/example/custom-agent:v1",
+			},
+			Kubernetes: &gastownv1alpha1.KubernetesSpec{
+				GitRepository:        "git@github.com:org/repo.git",
+				GitSecretRef:         gastownv1alpha1.SecretReference{Name: "git-secret"},
+				ClaudeCredsSecretRef: &gastownv1alpha1.SecretReference{Name: "claude-secret"},
+			},
+		},
+	}
+
+	builder := NewBuilder(polecat)
+	pod, err := builder.Build()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if pod.Spec.Containers[0].Image != "ghcr.io/example/custom-agent:v1" {
+		t.Errorf("expected agentConfig.image override, got %s", pod.Spec.Containers[0].Image)
+	}
+
+	// kubernetes.image should win over agentConfig.image
+	polecat.Spec.Kubernetes.Image = "ghcr.io/example/k8s-override:v2"
+	pod, err = NewBuilder(polecat).Build()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pod.Spec.Containers[0].Image != "ghcr.io/example/k8s-override:v2" {
+		t.Errorf("expected kubernetes.image to win, got %s", pod.Spec.Containers[0].Image)
+	}
+}
+
 func TestClaudeCredsVolumeMount(t *testing.T) {
 	polecat := &gastownv1alpha1.Polecat{
 		ObjectMeta: metav1.ObjectMeta{
