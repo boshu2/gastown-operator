@@ -1,0 +1,186 @@
+# LiteLLM on Docker Desktop Kubernetes
+#
+# Prerequisites:
+#   1. Docker Desktop → Settings → Kubernetes → Enable Kubernetes
+#   2. Apply & wait until green
+#   3. kubectl config use-context docker-desktop
+#
+# Usage:
+#   1. Put MadEye token in a local secret file (not committed):
+#        cp secret.env.example secret.env
+#        # edit MADEYE_API_KEY
+#   2. ./apply-docker-desktop.sh
+#   3. curl http://localhost:4000/v1/messages ...
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gastown-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: gastown-system
+data:
+  config.yaml: |
+    model_list:
+      - model_name: claude-opus-4-8
+        litellm_params:
+          model: openai/claude-opus-4-8
+          api_base: https://madeye.internal.pocketfm.org/v1
+          api_key: "MADEYE_API_KEY_PLACEHOLDER"
+          extra_body:
+            metadata:
+              user_email: "MADEYE_USER_EMAIL_PLACEHOLDER"
+      # Claude Code often requests Haiku for small side calls — map to MadEye model
+      - model_name: claude-haiku-4-5-20251001
+        litellm_params:
+          model: openai/claude-opus-4-8
+          api_base: https://madeye.internal.pocketfm.org/v1
+          api_key: "MADEYE_API_KEY_PLACEHOLDER"
+          extra_body:
+            metadata:
+              user_email: "MADEYE_USER_EMAIL_PLACEHOLDER"
+      - model_name: claude-haiku-4-5
+        litellm_params:
+          model: openai/claude-opus-4-8
+          api_base: https://madeye.internal.pocketfm.org/v1
+          api_key: "MADEYE_API_KEY_PLACEHOLDER"
+          extra_body:
+            metadata:
+              user_email: "MADEYE_USER_EMAIL_PLACEHOLDER"
+      - model_name: claude-sonnet-4
+        litellm_params:
+          model: openai/claude-opus-4-8
+          api_base: https://madeye.internal.pocketfm.org/v1
+          api_key: "MADEYE_API_KEY_PLACEHOLDER"
+          extra_body:
+            metadata:
+              user_email: "MADEYE_USER_EMAIL_PLACEHOLDER"
+      - model_name: claude-sonnet-4-5-20250929
+        litellm_params:
+          model: openai/claude-opus-4-8
+          api_base: https://madeye.internal.pocketfm.org/v1
+          api_key: "MADEYE_API_KEY_PLACEHOLDER"
+          extra_body:
+            metadata:
+              user_email: "MADEYE_USER_EMAIL_PLACEHOLDER"
+    litellm_settings:
+      drop_params: true
+      # MadEye only supports OpenAI /v1/chat/completions (NOT Responses API).
+      # Without this, Claude Code /v1/messages is translated via Responses and
+      # MadEye rejects with "assistant message prefill".
+      use_chat_completions_url_for_anthropic_messages: true
+      # MadEye rejects assistant prefills (Claude Code sends them).
+      callbacks: strip_prefill.proxy_handler_instance
+    general_settings:
+      master_key: "LITELLM_MASTER_KEY_PLACEHOLDER"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+  namespace: gastown-system
+  labels:
+    app: litellm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: litellm
+  template:
+    metadata:
+      labels:
+        app: litellm
+    spec:
+      containers:
+        - name: litellm
+          image: ghcr.io/berriai/litellm:main-latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "/app/k8s-entrypoint.sh"]
+          ports:
+            - containerPort: 4000
+              name: http
+          env:
+            - name: MADEYE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-secrets
+                  key: MADEYE_API_KEY
+            - name: MADEYE_USER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-secrets
+                  key: MADEYE_USER_EMAIL
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-secrets
+                  key: LITELLM_MASTER_KEY
+            - name: PYTHONPATH
+              value: /app
+            # Force Anthropic /v1/messages → OpenAI /chat/completions (not /responses).
+            # YAML key is unreliable in some LiteLLM builds; env var is authoritative.
+            - name: LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES
+              value: "true"
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.template.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: callbacks
+              mountPath: /app/strip_prefill.py
+              subPath: strip_prefill.py
+              readOnly: true
+            - name: callbacks
+              mountPath: /app/prefill_proxy.py
+              subPath: prefill_proxy.py
+              readOnly: true
+            - name: callbacks
+              mountPath: /app/k8s-entrypoint.sh
+              subPath: k8s-entrypoint.sh
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+      volumes:
+        - name: config
+          configMap:
+            name: litellm-config
+        - name: callbacks
+          configMap:
+            name: litellm-callbacks
+---
+# NodePort so Docker Desktop exposes LiteLLM on localhost without port-forward
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm
+  namespace: gastown-system
+spec:
+  type: NodePort
+  selector:
+    app: litellm
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+      nodePort: 30040

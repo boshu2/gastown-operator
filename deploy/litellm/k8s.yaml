@@ -1,0 +1,138 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gastown-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: litellm-secrets
+  namespace: gastown-system
+type: Opaque
+stringData:
+  # MadEye Bearer token (Authorization: Bearer …)
+  MADEYE_API_KEY: "REPLACE_WITH_MADEYE_TOKEN"
+  # Required by MadEye metadata
+  MADEYE_USER_EMAIL: "priyanshu.rajput@pocketfm.com"
+  # Key Claude Code / Polecats use as ANTHROPIC_AUTH_TOKEN
+  LITELLM_MASTER_KEY: "sk-local-litellm"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: gastown-system
+data:
+  config.yaml: |
+    model_list:
+      - model_name: claude-opus-4-8
+        litellm_params:
+          model: openai/claude-opus-4-8
+          api_base: https://madeye.internal.pocketfm.org/v1
+          api_key: os.environ/MADEYE_API_KEY
+          extra_body:
+            metadata:
+              user_email: priyanshu.rajput@pocketfm.com
+      - model_name: claude-sonnet-4
+        litellm_params:
+          model: openai/claude-opus-4-8
+          api_base: https://madeye.internal.pocketfm.org/v1
+          api_key: os.environ/MADEYE_API_KEY
+          extra_body:
+            metadata:
+              user_email: priyanshu.rajput@pocketfm.com
+    litellm_settings:
+      drop_params: true
+      use_chat_completions_url_for_anthropic_messages: true
+      callbacks: strip_prefill.proxy_handler_instance
+    general_settings:
+      master_key: os.environ/LITELLM_MASTER_KEY
+---
+# Apply strip_prefill.py / prefill_proxy separately via ConfigMap litellm-callbacks.
+# Also set env LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES=true.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+  namespace: gastown-system
+  labels:
+    app: litellm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: litellm
+  template:
+    metadata:
+      labels:
+        app: litellm
+    spec:
+      containers:
+        - name: litellm
+          image: ghcr.io/berriai/litellm:main-latest
+          args: ["--config", "/app/config.yaml", "--port", "4000", "--host", "0.0.0.0"]
+          ports:
+            - containerPort: 4000
+              name: http
+          env:
+            - name: MADEYE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-secrets
+                  key: MADEYE_API_KEY
+            - name: MADEYE_USER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-secrets
+                  key: MADEYE_USER_EMAIL
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-secrets
+                  key: LITELLM_MASTER_KEY
+            - name: PYTHONPATH
+              value: /app
+            - name: LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES
+              value: "true"
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: callbacks
+              mountPath: /app/strip_prefill.py
+              subPath: strip_prefill.py
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+      volumes:
+        - name: config
+          configMap:
+            name: litellm-config
+        - name: callbacks
+          configMap:
+            name: litellm-callbacks
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm
+  namespace: gastown-system
+spec:
+  selector:
+    app: litellm
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http

@@ -1,0 +1,52 @@
+# Example Polecat routed through in-cluster LiteLLM → MadEye
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Polecat
+metadata:
+  name: madeye-smoke
+  namespace: gastown-system
+spec:
+  rig: smoke
+  desiredState: Working
+  beadID: smoke-001
+  taskDescription: |
+    Reply with a short hello and confirm which model you are using.
+    Do not modify any files. Exit after the reply.
+  executionMode: kubernetes
+  agent: claude-code
+  agentConfig:
+    provider: litellm
+    model: claude-opus-4-8
+    modelProvider:
+      # Claude Code Anthropic-compatible endpoint (LiteLLM Service)
+      endpoint: http://litellm.gastown-system.svc:4000
+      apiKeySecretRef:
+        name: litellm-auth
+        key: master-key
+    env:
+      - name: CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY
+        value: "1"
+  kubernetes:
+    gitRepository: git@github.com:example/smoke-repo.git
+    gitBranch: main
+    gitSecretRef:
+      name: git-creds
+    # No direct Anthropic key — gateway auth comes from agentConfig
+    activeDeadlineSeconds: 600
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+---
+# Secret referenced by agentConfig.modelProvider.apiKeySecretRef
+# Value must match LITELLM_MASTER_KEY in litellm-secrets
+apiVersion: v1
+kind: Secret
+metadata:
+  name: litellm-auth
+  namespace: gastown-system
+type: Opaque
+stringData:
+  master-key: sk-local-litellm

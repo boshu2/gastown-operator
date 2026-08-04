@@ -79,26 +79,26 @@ spec:
   agent: claude-code
 
   # Agent customization (optional)
-  # Use for custom LLM providers or gateway endpoints
+  # Use for LiteLLM / custom LLM gateways (e.g. MadEye via LiteLLM).
+  # See docs/LITE_LLM.md
   # agentConfig:
-  #   # LLM provider
   #   provider: litellm  # litellm, anthropic, openai, ollama
-  #   model: claude-sonnet-4
+  #   model: claude-opus-4-8
   #
-  #   # Custom API endpoint (for LiteLLM gateway)
+  #   # Claude Code talks Anthropic format to this URL (ANTHROPIC_BASE_URL)
   #   modelProvider:
-  #     endpoint: https://ai-gateway.example.com/v1
-  #     apiKeySecretRef:
-  #       name: litellm-api-key
-  #       key: api-key
+  #     endpoint: http://litellm.gastown-system.svc:4000
+  #     apiKeySecretRef:          # → ANTHROPIC_AUTH_TOKEN (Bearer)
+  #       name: litellm-auth
+  #       key: master-key
   #
   #   # Custom container image
   #   image: ghcr.io/boshu2/polecat-agent:custom
   #
   #   # Extra environment variables
   #   env:
-  #     - name: LOG_LEVEL
-  #       value: "debug"
+  #     - name: CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY
+  #       value: "1"
 
   # ============================================
   # KUBERNETES EXECUTION CONFIG

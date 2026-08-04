@@ -118,6 +118,10 @@ demo: setup-test-e2e docker-build-e2e ## Deploy to Kind and show a sample Poleca
 	@echo "Cleanup:"
 	@echo "  make cleanup-test-e2e"
 
+.PHONY: demo-docker-desktop
+demo-docker-desktop: ## Deploy full stack (operator + LiteLLM/MadEye + smoke Polecat) to Docker Desktop K8s.
+	./deploy/docker-desktop/apply-full-stack.sh
+
 .PHONY: smoke-test
 smoke-test: ## Smoke test published release artifacts in Kind (requires VERSION).
 	./scripts/smoke-test.sh --version $(VERSION)
