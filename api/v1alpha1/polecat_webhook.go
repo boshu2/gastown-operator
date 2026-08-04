@@ -94,7 +94,7 @@ func (v *PolecatCustomValidator) validatePolecat(polecat *Polecat) (admission.Wa
 		if polecat.Spec.Kubernetes == nil {
 			allErrs = append(allErrs, "spec.kubernetes: is required when executionMode is 'kubernetes'")
 		} else {
-			errs := validateKubernetesSpec(polecat.Spec.Kubernetes)
+			errs := validateKubernetesSpec(polecat.Spec.Kubernetes, polecat.Spec.AgentConfig)
 			allErrs = append(allErrs, errs...)
 		}
 	}
@@ -163,7 +163,7 @@ func containsPathTraversal(s string) bool {
 }
 
 // validateKubernetesSpec validates the kubernetes execution spec.
-func validateKubernetesSpec(k *KubernetesSpec) []string {
+func validateKubernetesSpec(k *KubernetesSpec, agentConfig *AgentConfig) []string {
 	var errs []string
 
 	// GitRepository is required (validated by CRD, but double-check)
@@ -186,11 +186,15 @@ func validateKubernetesSpec(k *KubernetesSpec) []string {
 		errs = append(errs, "spec.kubernetes.gitSecretRef.name: is required")
 	}
 
-	// Either ClaudeCredsSecretRef or ApiKeySecretRef is required for authentication
+	// Auth: OAuth creds, direct API key, or LiteLLM/gateway key via agentConfig
 	hasOAuth := k.ClaudeCredsSecretRef != nil && k.ClaudeCredsSecretRef.Name != ""
 	hasAPIKey := k.ApiKeySecretRef != nil && k.ApiKeySecretRef.Name != ""
-	if !hasOAuth && !hasAPIKey {
-		errs = append(errs, "spec.kubernetes: either claudeCredsSecretRef or apiKeySecretRef is required")
+	hasGateway := agentConfig != nil &&
+		agentConfig.ModelProvider != nil &&
+		agentConfig.ModelProvider.APIKeySecretRef != nil &&
+		agentConfig.ModelProvider.APIKeySecretRef.Name != ""
+	if !hasOAuth && !hasAPIKey && !hasGateway {
+		errs = append(errs, "spec.kubernetes: either claudeCredsSecretRef, apiKeySecretRef, or agentConfig.modelProvider.apiKeySecretRef is required")
 	}
 
 	// Validate ActiveDeadlineSeconds
@@ -210,11 +214,13 @@ func validateKubernetesSpec(k *KubernetesSpec) []string {
 
 // validateImageRegistry checks that the image is from an allowed registry.
 // This prevents attackers from running arbitrary container images in the cluster.
+// Local Docker Desktop builds (polecat-agent:local) are allowed in addition to published registries.
 var allowedRegistries = []string{
 	"ghcr.io/boshu2/",             // Official Gas Town images
 	"docker.io/boshu2/",           // Docker Hub official images
 	"registry.access.redhat.com/", // Red Hat UBI images for FIPS
 	"quay.io/boshu2/",             // Quay official images
+	"polecat-agent:",              // Local Docker Desktop image (name:tag, no registry)
 }
 
 func validateImageRegistry(image string) error {

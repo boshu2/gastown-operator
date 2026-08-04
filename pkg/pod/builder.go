@@ -335,9 +335,13 @@ func (b *Builder) buildGitInitVolumeMounts() []corev1.VolumeMount {
 // buildClaudeContainer creates the Claude agent container spec
 func (b *Builder) buildClaudeContainer() corev1.Container {
 	k8sSpec := b.polecat.Spec.Kubernetes
+	agentConfig := b.polecat.Spec.AgentConfig
 
-	// Use custom image if specified, otherwise use configured default
+	// Image precedence: kubernetes.image > agentConfig.image > env/default
 	image := GetClaudeImage()
+	if agentConfig != nil && agentConfig.Image != "" {
+		image = agentConfig.Image
+	}
 	if k8sSpec.Image != "" {
 		image = k8sSpec.Image
 	}
@@ -435,8 +439,11 @@ exec claude --print --dangerously-skip-permissions "$PROMPT"
 		},
 	}
 
-	// Add API key from secret if configured
-	if k8sSpec.ApiKeySecretRef != nil {
+	envVars = append(envVars, b.buildAgentConfigEnv()...)
+
+	// Direct Anthropic API key (used when not routing through a gateway).
+	// Gateway auth from agentConfig.modelProvider takes precedence via ANTHROPIC_AUTH_TOKEN.
+	if k8sSpec.ApiKeySecretRef != nil && !b.hasGatewayAuth() {
 		envVars = append(envVars, corev1.EnvVar{
 			Name: "ANTHROPIC_API_KEY",
 			ValueFrom: &corev1.EnvVarSource{
@@ -493,6 +500,70 @@ exec claude --print --dangerously-skip-permissions "$PROMPT"
 	}
 
 	return container
+}
+
+// hasGatewayAuth reports whether agentConfig provides a gateway API key secret.
+// When true, Claude Code should authenticate with ANTHROPIC_AUTH_TOKEN (Bearer)
+// instead of ANTHROPIC_API_KEY (x-api-key).
+func (b *Builder) hasGatewayAuth() bool {
+	ac := b.polecat.Spec.AgentConfig
+	return ac != nil &&
+		ac.ModelProvider != nil &&
+		ac.ModelProvider.APIKeySecretRef != nil
+}
+
+// buildAgentConfigEnv injects LLM gateway settings from Polecat agentConfig.
+// This wires LiteLLM / custom OpenAI-compatible backends for Claude Code:
+//   - ANTHROPIC_BASE_URL from modelProvider.endpoint
+//   - ANTHROPIC_AUTH_TOKEN from modelProvider.apiKeySecretRef (Bearer auth)
+//   - ANTHROPIC_MODEL from agentConfig.model
+//   - any extra agentConfig.env entries
+func (b *Builder) buildAgentConfigEnv() []corev1.EnvVar {
+	ac := b.polecat.Spec.AgentConfig
+	if ac == nil {
+		return nil
+	}
+
+	var envVars []corev1.EnvVar
+
+	if ac.Model != "" {
+		envVars = append(envVars,
+			corev1.EnvVar{Name: "ANTHROPIC_MODEL", Value: ac.Model},
+			// Keep Claude Code's haiku/sonnet side-calls on the same allowed model.
+			corev1.EnvVar{Name: "ANTHROPIC_DEFAULT_OPUS_MODEL", Value: ac.Model},
+			corev1.EnvVar{Name: "ANTHROPIC_DEFAULT_SONNET_MODEL", Value: ac.Model},
+			corev1.EnvVar{Name: "ANTHROPIC_DEFAULT_HAIKU_MODEL", Value: ac.Model},
+		)
+	}
+
+	if ac.ModelProvider != nil {
+		if ac.ModelProvider.Endpoint != "" {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "ANTHROPIC_BASE_URL",
+				Value: ac.ModelProvider.Endpoint,
+			})
+		}
+		if ac.ModelProvider.APIKeySecretRef != nil {
+			ref := ac.ModelProvider.APIKeySecretRef
+			envVars = append(envVars, corev1.EnvVar{
+				Name: "ANTHROPIC_AUTH_TOKEN",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: ref.Name,
+						},
+						Key: ref.Key,
+					},
+				},
+			})
+		}
+	}
+
+	if len(ac.Env) > 0 {
+		envVars = append(envVars, ac.Env...)
+	}
+
+	return envVars
 }
 
 // buildTelemetrySidecar creates the telemetry sidecar container spec

@@ -136,7 +136,7 @@ func TestPolecatCustomValidator_ValidateCreate(t *testing.T) {
 				},
 			},
 			wantErr:     true,
-			errContains: "spec.kubernetes: either claudeCredsSecretRef or apiKeySecretRef is required",
+			errContains: "spec.kubernetes: either claudeCredsSecretRef, apiKeySecretRef, or agentConfig.modelProvider.apiKeySecretRef is required",
 		},
 		{
 			name: "high resource usage warning",
@@ -537,7 +537,7 @@ func TestValidateKubernetesSpec(t *testing.T) {
 			errContains: []string{
 				"spec.kubernetes.gitRepository: is required",
 				"spec.kubernetes.gitSecretRef.name: is required",
-				"spec.kubernetes: either claudeCredsSecretRef or apiKeySecretRef is required",
+				"spec.kubernetes: either claudeCredsSecretRef, apiKeySecretRef, or agentConfig.modelProvider.apiKeySecretRef is required",
 			},
 		},
 		{
@@ -586,7 +586,7 @@ func TestValidateKubernetesSpec(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			errs := validateKubernetesSpec(tt.spec)
+			errs := validateKubernetesSpec(tt.spec, nil)
 			assert.Len(t, errs, tt.wantErrs)
 			for _, expected := range tt.errContains {
 				found := false

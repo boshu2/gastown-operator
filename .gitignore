@@ -50,5 +50,9 @@ cover.out
 # Local config
 config.toml
 !config.example.toml
+.env
+deploy/litellm/.env
+deploy/litellm/secret.env
+deploy/docker-desktop/secret.env
 cmd/kubectl-gt/kubectl-gt
 cmd/kubectl-gt/bin/kubectl-gt-*

@@ -1,0 +1,133 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: promo-api
+  namespace: gastown-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: promo-api
+  namespace: gastown-system
+rules:
+  - apiGroups: ["gastown.gastown.io"]
+    resources: ["polecats"]
+    verbs: ["create", "get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: promo-api
+  namespace: gastown-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: promo-api
+subjects:
+  - kind: ServiceAccount
+    name: promo-api
+    namespace: gastown-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: promo-api-rig-reader
+rules:
+  - apiGroups: ["gastown.gastown.io"]
+    resources: ["rigs"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: promo-api-rig-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promo-api-rig-reader
+subjects:
+  - kind: ServiceAccount
+    name: promo-api
+    namespace: gastown-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: promo-api
+  namespace: gastown-system
+  labels:
+    app: promo-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: promo-api
+  template:
+    metadata:
+      labels:
+        app: promo-api
+    spec:
+      serviceAccountName: promo-api
+      containers:
+        - name: promo-api
+          image: promo-api:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: PORT
+              value: "8080"
+            - name: NAMESPACE
+              value: gastown-system
+            - name: RIG_NAME
+              value: local-smoke
+            - name: GIT_REPO
+              value: git@github.com:priyanshur01/gastown-static.git
+            - name: GIT_BRANCH
+              value: main
+            - name: GIT_SECRET
+              value: git-creds
+            - name: LITELLM_URL
+              value: http://litellm.gastown-system.svc:4000
+            - name: LITELLM_AUTH_SECRET
+              value: litellm-auth
+            - name: AGENT_IMAGE
+              value: polecat-agent:local
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: promo-api
+  namespace: gastown-system
+spec:
+  type: NodePort
+  selector:
+    app: promo-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: 30080
