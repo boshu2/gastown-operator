@@ -1,0 +1,37 @@
+# LiteLLM config: Anthropic-compatible front door → MadEye OpenAI backend
+#
+# Claude Code talks Anthropic /v1/messages to this proxy.
+# LiteLLM translates to MadEye OpenAI /v1/chat/completions.
+#
+# Placeholders replaced by deploy scripts / docker-compose:
+#   ${MADEYE_API_BASE}   default https://madeye.internal.pocketfm.org/v1
+#   ${MADEYE_USER_EMAIL} required PocketFM user email for MadEye metadata
+
+model_list:
+  - model_name: claude-opus-4-8
+    litellm_params:
+      model: openai/claude-opus-4-8
+      api_base: ${MADEYE_API_BASE}
+      api_key: os.environ/MADEYE_API_KEY
+      extra_body:
+        metadata:
+          user_email: ${MADEYE_USER_EMAIL}
+
+  - model_name: claude-sonnet-4
+    litellm_params:
+      model: openai/claude-opus-4-8
+      api_base: ${MADEYE_API_BASE}
+      api_key: os.environ/MADEYE_API_KEY
+      extra_body:
+        metadata:
+          user_email: ${MADEYE_USER_EMAIL}
+
+litellm_settings:
+  drop_params: true
+  set_verbose: false
+  use_chat_completions_url_for_anthropic_messages: true
+  # MadEye rejects assistant prefills; strip them before the upstream call.
+  callbacks: strip_prefill.proxy_handler_instance
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

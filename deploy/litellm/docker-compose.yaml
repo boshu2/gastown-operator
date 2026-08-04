@@ -1,0 +1,23 @@
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    environment:
+      MADEYE_API_KEY: ${MADEYE_API_KEY:?set MADEYE_API_KEY}
+      MADEYE_USER_EMAIL: ${MADEYE_USER_EMAIL:?set MADEYE_USER_EMAIL}
+      MADEYE_API_BASE: ${MADEYE_API_BASE:-https://madeye.internal.pocketfm.org/v1}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-local-litellm}
+      PYTHONPATH: /app
+      LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES: "true"
+    volumes:
+      - ./config.yaml:/app/config.template.yaml:ro
+      - ./entrypoint.sh:/app/entrypoint.sh:ro
+      - ./strip_prefill.py:/app/strip_prefill.py:ro
+      - ./prefill_proxy.py:/app/prefill_proxy.py:ro
+    entrypoint: ["/bin/sh", "/app/entrypoint.sh"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health/liveliness"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
