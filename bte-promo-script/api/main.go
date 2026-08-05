@@ -55,7 +55,8 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("promo-api listening on :%d (namespace=%s rig=%s)", cfg.Port, cfg.Namespace, cfg.RigName)
+		log.Printf("promo-api listening on :%d (namespace=%s rig=%s webhook=%s)",
+			cfg.Port, cfg.Namespace, cfg.RigName, cfg.WebhookURL)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %v", err)
 		}
@@ -79,19 +80,25 @@ type config struct {
 	LiteLLMURL     string
 	LiteLLMAuthSec string
 	AgentImage     string
+	WebhookURL     string
+	GenAxisAPIKey  string
+	PromoAPIURL    string
 }
 
 func loadConfig() config {
 	return config{
 		Port:           envInt("PORT", 8080),
 		Namespace:      envOr("NAMESPACE", "gastown-system"),
-		RigName:        envOr("RIG_NAME", "local-smoke"),
-		GitRepo:        envOr("GIT_REPO", "git@github.com:priyanshur01/gastown-static.git"),
-		GitBranch:      envOr("GIT_BRANCH", "main"),
+		RigName:        DefaultRigName,
+		GitRepo:        DefaultGitRepo,
+		GitBranch:      DefaultGitBranch,
 		GitSecret:      envOr("GIT_SECRET", "git-creds"),
 		LiteLLMURL:     envOr("LITELLM_URL", "http://litellm.gastown-system.svc:4000"),
 		LiteLLMAuthSec: envOr("LITELLM_AUTH_SECRET", "litellm-auth"),
 		AgentImage:     envOr("AGENT_IMAGE", "polecat-agent:local"),
+		WebhookURL:     envOr("GENAXIS_WEBHOOK_URL", genAxisWebhookURL()),
+		GenAxisAPIKey:  os.Getenv("GENAXIS_API_KEY"),
+		PromoAPIURL:    strings.TrimRight(envOr("PROMO_API_URL", DefaultPromoAPIURL), "/"),
 	}
 }
 
@@ -120,6 +127,9 @@ func newRouter(cfg config, k8s client.Client) http.Handler {
 	mux.HandleFunc("GET /healthz", handleHealth(cfg, k8s))
 	mux.HandleFunc("POST /v1/promo/generate", handleGenerate(cfg, k8s))
 	mux.HandleFunc("GET /v1/promo/jobs/{name}", handleJobStatus(cfg, k8s))
+	mux.HandleFunc("POST /v1/promo/jobs/{name}/upload", handleJobUpload(cfg, k8s))
+	mux.HandleFunc("POST /v1/promo/jobs/{name}/webhook", handleJobWebhook(cfg, k8s))
+	mux.HandleFunc("POST /v1/promo/jobs/{name}/complete", handleJobComplete(cfg, k8s))
 	return mux
 }
 
@@ -200,13 +210,15 @@ func handleHealth(cfg config, k8s client.Client) http.HandlerFunc {
 }
 
 type generateRequest struct {
-	Prompt string `json:"prompt"`
-	Name   string `json:"name,omitempty"`
-	Branch string `json:"branch,omitempty"`
+	Prompt    string `json:"prompt"`
+	RequestID string `json:"request_id"`
+	Name      string `json:"name,omitempty"`
+	Branch    string `json:"branch,omitempty"`
 }
 
 type generateResponse struct {
 	JobName   string `json:"job_name"`
+	RequestID string `json:"request_id"`
 	Namespace string `json:"namespace"`
 	Rig       string `json:"rig"`
 	StatusURL string `json:"status_url"`
@@ -229,6 +241,15 @@ func handleGenerate(cfg config, k8s client.Client) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "prompt too long (max 4000 chars)")
 			return
 		}
+		requestID := strings.TrimSpace(req.RequestID)
+		if requestID == "" {
+			writeErr(w, http.StatusBadRequest, "request_id is required")
+			return
+		}
+		if len(requestID) > 128 {
+			writeErr(w, http.StatusBadRequest, "request_id too long (max 128 chars)")
+			return
+		}
 
 		name := sanitizeName(req.Name)
 		if name == "" {
@@ -242,36 +263,51 @@ func handleGenerate(cfg config, k8s client.Client) http.HandlerFunc {
 		workBranch := fmt.Sprintf("feature/%s", name)
 		deadline := int64(3600)
 
-		task := fmt.Sprintf(`You are generating promo scripts in this repository.
+		task := fmt.Sprintf(`You are generating promo scripts. Use this repository only as read-only context (conventions, canon, examples).
 
 USER REQUEST:
 %s
 
+JOB NAME: %s
+REQUEST ID: %s
+
 INSTRUCTIONS:
 1. Explore the repo structure and existing promo/script conventions.
-2. Generate or update the promo script(s) needed for the request.
+2. Generate the promo script needed for the request (write it under the workspace, e.g. /tmp/promo-output.md or a new file in the working tree).
 3. Keep changes focused; do not refactor unrelated code.
-4. After finishing:
-   - git add relevant files
-   - git commit -m 'feat(%s): promo script generation'
-   - git push origin HEAD
-   - create a PR if gh is available (gh pr create --fill), otherwise leave the branch pushed
-`, prompt, name)
+4. Do NOT git add, commit, push, or create a pull request. Leave git untouched.
+5. Do NOT call any HTTP API yourself.
+6. When W4 is complete, run promo-finish (do not curl any API yourself):
+
+   Keys (fixed every run):
+   - map    → W2 map file you wrote
+   - briefs → W3 briefs file you wrote
+   - script → W4 script file you wrote
+   - receipt → W4 receipts file you wrote
+
+   promo-finish finish map=<path> briefs=<path> script=<path> receipt=<path>
+
+   Use the actual paths where you saved each file. Stop when you see PROMO_FINISH_OK on stderr.
+`, prompt, name, requestID)
 
 		polecat := &gastownv1alpha1.Polecat{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: cfg.Namespace,
 				Labels: map[string]string{
-					"app.kubernetes.io/name":      "promo-api",
-					"gastown.io/flow":             "promo-script",
-					"gastown.io/rig":              cfg.RigName,
+					"app.kubernetes.io/name": "promo-api",
+					"gastown.io/flow":        "promo-script",
+					"gastown.io/rig":         cfg.RigName,
+					"gastown.io/request-id":  sanitizeLabel(requestID),
+				},
+				Annotations: map[string]string{
+					annotationRequestID: requestID,
 				},
 			},
 			Spec: gastownv1alpha1.PolecatSpec{
 				Rig:             cfg.RigName,
 				DesiredState:    gastownv1alpha1.PolecatDesiredWorking,
-				BeadID:          "ls-" + name,
+				BeadID:          "pst-" + name,
 				TaskDescription: task,
 				ExecutionMode:   gastownv1alpha1.ExecutionModeKubernetes,
 				Agent:           gastownv1alpha1.AgentTypeClaudeCode,
@@ -291,6 +327,9 @@ INSTRUCTIONS:
 						{Name: "ANTHROPIC_DEFAULT_OPUS_MODEL", Value: "claude-opus-4-8"},
 						{Name: "ANTHROPIC_DEFAULT_SONNET_MODEL", Value: "claude-opus-4-8"},
 						{Name: "ANTHROPIC_DEFAULT_HAIKU_MODEL", Value: "claude-opus-4-8"},
+						{Name: "PROMO_API_URL", Value: cfg.PromoAPIURL},
+						{Name: "PROMO_JOB_NAME", Value: name},
+						{Name: "GENAXIS_REQUEST_ID", Value: requestID},
 					},
 				},
 				Kubernetes: &gastownv1alpha1.KubernetesSpec{
@@ -332,11 +371,20 @@ INSTRUCTIONS:
 
 		writeJSON(w, http.StatusAccepted, generateResponse{
 			JobName:   name,
+			RequestID: requestID,
 			Namespace: cfg.Namespace,
 			Rig:       cfg.RigName,
 			StatusURL: fmt.Sprintf("/v1/promo/jobs/%s", name),
 			Message:   "promo script generation started",
 		})
+
+		go postGenAxisWebhook(cfg, GenAxisTypePromoStarted, requestID, map[string]any{
+			"job_name":  name,
+			"status":    "started",
+			"prompt":    prompt,
+			"namespace": cfg.Namespace,
+			"rig":       cfg.RigName,
+		}, "")
 	}
 }
 
@@ -411,6 +459,27 @@ func sanitizeName(in string) string {
 	out := strings.Trim(b.String(), "-")
 	if len(out) > 40 {
 		out = out[:40]
+	}
+	return out
+}
+
+// sanitizeLabel makes a value safe for a Kubernetes label (DNS-ish subset).
+func sanitizeLabel(in string) string {
+	in = strings.ToLower(strings.TrimSpace(in))
+	var b strings.Builder
+	for _, r := range in {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '.' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-_.")
+	if out == "" {
+		return "unknown"
+	}
+	if len(out) > 63 {
+		out = out[:63]
 	}
 	return out
 }

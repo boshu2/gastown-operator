@@ -119,8 +119,8 @@ demo: setup-test-e2e docker-build-e2e ## Deploy to Kind and show a sample Poleca
 	@echo "  make cleanup-test-e2e"
 
 .PHONY: demo-docker-desktop
-demo-docker-desktop: ## Deploy full stack (operator + LiteLLM/MadEye + smoke Polecat) to Docker Desktop K8s.
-	./deploy/docker-desktop/apply-full-stack.sh
+demo-docker-desktop: ## Deploy full BTE stack (operator + LiteLLM/MadEye + Rig) to Docker Desktop K8s.
+	./bte-promo-script/deploy/apply-full-stack.sh
 
 .PHONY: smoke-test
 smoke-test: ## Smoke test published release artifacts in Kind (requires VERSION).
@@ -377,7 +377,7 @@ endef
 
 .PHONY: polecat-agent-build
 polecat-agent-build: ## Build polecat-agent image locally (single arch).
-	docker build -t polecat-agent:local images/polecat-agent/
+	docker build -f images/polecat-agent/Dockerfile -t polecat-agent:local .
 
 .PHONY: polecat-agent-release
 polecat-agent-release: ## Build and push polecat-agent with SBOM and Trivy scan.

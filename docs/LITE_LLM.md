@@ -148,7 +148,7 @@ agentConfig:
 
 ## Local Kind path (operator + LiteLLM)
 
-Prefer Docker Desktop full stack: see [deploy/docker-desktop/README.md](../deploy/docker-desktop/README.md) or `make demo-docker-desktop`.
+Prefer Docker Desktop full stack: see [bte-promo-script/README.md](../bte-promo-script/README.md) or `make demo-docker-desktop`.
 
 ```bash
 # 1. Build/load operator into Kind (or make demo)

@@ -83,12 +83,6 @@ spec:
               value: "8080"
             - name: NAMESPACE
               value: gastown-system
-            - name: RIG_NAME
-              value: local-smoke
-            - name: GIT_REPO
-              value: git@github.com:priyanshur01/gastown-static.git
-            - name: GIT_BRANCH
-              value: main
             - name: GIT_SECRET
               value: git-creds
             - name: LITELLM_URL
@@ -97,6 +91,11 @@ spec:
               value: litellm-auth
             - name: AGENT_IMAGE
               value: polecat-agent:local
+            - name: GENAXIS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: genaxis-auth
+                  key: api-key
           readinessProbe:
             httpGet:
               path: /healthz

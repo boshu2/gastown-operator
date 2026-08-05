@@ -9,14 +9,15 @@
 # Usage:
 #   docker pull ghcr.io/boshu2/polecat-agent:latest
 #
-# Build:
-#   docker build -t polecat-agent:latest images/polecat-agent/
+# Build (from repo root — needed for promo-finish):
+#   docker build -f images/polecat-agent/Dockerfile -t polecat-agent:local .
 #
 # Multi-arch build with attestations:
 #   docker buildx build --platform linux/amd64,linux/arm64 \
 #     --sbom=true --provenance=true \
+#     -f images/polecat-agent/Dockerfile \
 #     -t ghcr.io/boshu2/polecat-agent:0.4.0 \
-#     --push images/polecat-agent/
+#     --push .
 
 # ==============================================================================
 # Version Pins - Update these for each release
@@ -41,6 +42,19 @@ ARG GT_VERSION
 ENV GOTOOLCHAIN=auto
 RUN git clone --depth 1 --branch ${GT_VERSION} https://github.com/steveyegge/gastown.git . && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/gt ./cmd/gt
+
+# ==============================================================================
+# Stage 1b: Build promo-finish (orchestrator handoff tool)
+# Build with context = repo root:
+#   docker build -f images/polecat-agent/Dockerfile -t polecat-agent:local .
+# ==============================================================================
+FROM golang:${GOLANG_VERSION}-alpine AS promo-finish-builder
+WORKDIR /src
+ENV GOTOOLCHAIN=auto
+COPY go.mod go.sum ./
+RUN go mod download
+COPY bte-promo-script/finish ./bte-promo-script/finish
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/promo-finish ./bte-promo-script/finish
 
 # ==============================================================================
 # Stage 2: Build polecat-agent image
@@ -81,9 +95,10 @@ RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION} && 
     # Verify installation
     /usr/local/bin/claude --version
 
-# Copy gt CLI from builder
+# Copy gt CLI + promo-finish from builders
 COPY --from=gt-builder /out/gt /usr/local/bin/gt
-RUN chmod +x /usr/local/bin/gt
+COPY --from=promo-finish-builder /out/promo-finish /usr/local/bin/promo-finish
+RUN chmod +x /usr/local/bin/gt /usr/local/bin/promo-finish
 
 # Setup SSH directory with proper permissions
 RUN mkdir -p /home/nonroot/.ssh && \
@@ -110,6 +125,7 @@ WORKDIR /workspace
 RUN echo "=== Installed Versions ===" && \
     echo "Claude Code: $(claude --version)" && \
     echo "gt CLI: $(gt version 2>/dev/null || echo 'installed')" && \
+    echo "promo-finish: $(promo-finish --help 2>&1 | head -1 || echo 'installed')" && \
     echo "git: $(git --version)" && \
     echo "=========================="
 
