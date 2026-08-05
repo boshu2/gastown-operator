@@ -4,9 +4,11 @@ import "strings"
 
 // Non-secret promo-api constants. Change here, then rebuild promo-api.
 const (
-	DefaultGitRepo     = "git@github.com:priyanshur01/gastown-static.git"
-	DefaultGitBranch   = "main"
-	DefaultRigName    = "promo-script-tool"
+	DefaultRigName = "promo-script-tool"
+	// Rig metadata only — Polecats use skipGitInit and do not clone a git repo.
+	DefaultRigGitURL = "file:///promo-tool"
+	// Static promo pipeline workspace inside the polecat-agent image (writable copy on emptyDir).
+	DefaultPromoWorkspacePath = "/workspace/promo-tool"
 	DefaultGenAxisURL = "https://gen-axis.pocketfm.com"
 	GenAxisWebhookPath  = "/v1/bte/internal/webhook"
 	// In-cluster promo-api URL used by Polecats for design-B handoff.

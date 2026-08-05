@@ -6,9 +6,12 @@ PocketFM BTE promo pipeline — API, finish tool, deploy manifests, and config.
 
 ```
 bte-promo-script/
-  .env.example        secrets template (copy to .env — infra injects at deploy)
+  .env.example        local defaults (email, LiteLLM key) — committed
+  .env                infra secrets only (gitignored)
   api/                promo-api HTTP service
   finish/             promo-finish CLI (runs on Polecat)
+  repos/
+    bte-promo-script-repo/   promo pipeline tool (workflows, canon, PROMO_FINISH)
   deploy/
     bte-promo-script.yaml   K8s Deployment + Service + RBAC
     rig.yaml.tpl            Rig CR template
@@ -20,34 +23,39 @@ bte-promo-script/
 ## Flow
 
 1. GenAxis → `POST /v1/promo/generate` → Polecat + `PROMO_SCRIPT_STARTED`
-2. Claude runs W2→W3→W4 (gastown-static pipeline)
+2. Polecat uses a **static pipeline** at `/workspace/promo-tool` (baked into `polecat-agent`, no git clone); Claude runs W2→W3→W4
 3. `promo-finish finish map=… briefs=… script=… receipt=…` → `PROMO_SCRIPT_COMPLETED`
 
-Finish instructions: `scripts/PROMO_FINISH.md` in **gastown-static**.
+Finish instructions: `repos/bte-promo-script-repo/scripts/PROMO_FINISH.md`
 
 ## Config
 
 | Type | Location |
 |------|----------|
-| Secrets | `bte-promo-script/.env` (from `.env.example`) |
-| Non-secret | `api/defaults.go` (git repo, rig, GenAxis webhook URL) |
+| Infra secrets | `bte-promo-script/.env` (gitignored) |
+| Local defaults | `bte-promo-script/.env.example` (email, LiteLLM key) |
+| Non-secret | `api/defaults.go` (rig, workspace path, GenAxis webhook URL) |
 
-**`.env` variables (infra injects):**
+**`.env` (infra injects):**
 
 | Variable | Purpose |
 |----------|---------|
 | `GENAXIS_API_KEY` | GenAxis webhook `X-API-Key` |
 | `MADEYE_API_KEY` | MadEye Bearer token (LiteLLM) |
+
+**`.env.example` (committed defaults):**
+
+| Variable | Purpose |
+|----------|---------|
 | `MADEYE_USER_EMAIL` | MadEye metadata |
 | `LITELLM_MASTER_KEY` | Polecats → LiteLLM auth |
-| `GIT_SSH_PRIVATE_KEY_PATH` | SSH key path for git clone |
 
 **`defaults.go` constants:**
 
 | Constant | Default |
 |----------|---------|
 | GenAxis webhook | `https://gen-axis.pocketfm.com/v1/bte/internal/webhook` |
-| Git repo | `git@github.com:priyanshur01/gastown-static.git` |
+| Promo workspace | `/workspace/promo-tool` (copied from image at pod start) |
 | Rig | `promo-script-tool` |
 
 Upload/S3: stub — logs paths, returns hardcoded URLs until real S3 (`api/s3.go`).
@@ -65,8 +73,8 @@ kubectl -n gastown-system port-forward svc/promo-api 30080:8080
 
 **Infra production:**
 
-1. Build/push `promo-api` and `polecat-agent` images (`promo-finish` must be in agent)
-2. Inject secrets from `.env` → K8s secrets (`genaxis-auth`, `git-creds`, `litellm-auth`)
+1. Build/push `promo-api` and `polecat-agent` images (`promo-finish` + pipeline repo must be in agent)
+2. Inject secrets from `.env` → K8s secrets (`genaxis-auth`, `litellm-auth`)
 3. Apply `deploy/bte-promo-script.yaml` (set image tags)
 4. Apply Rig from `deploy/rig.yaml.tpl`
 5. Smoke: `POST /v1/promo/generate` → STARTED → Claude → `promo-finish` → COMPLETED

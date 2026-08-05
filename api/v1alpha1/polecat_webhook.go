@@ -166,24 +166,34 @@ func containsPathTraversal(s string) bool {
 func validateKubernetesSpec(k *KubernetesSpec, agentConfig *AgentConfig) []string {
 	var errs []string
 
-	// GitRepository is required (validated by CRD, but double-check)
-	if k.GitRepository == "" {
-		errs = append(errs, "spec.kubernetes.gitRepository: is required")
-	}
+	if k.SkipGitInit {
+		if k.WorkspacePath == "" {
+			errs = append(errs, "spec.kubernetes.workspacePath: is required when skipGitInit is true")
+		} else if containsPathTraversal(k.WorkspacePath) {
+			errs = append(errs, "spec.kubernetes.workspacePath: must not contain path traversal sequences")
+		} else if !strings.HasPrefix(k.WorkspacePath, "/") {
+			errs = append(errs, "spec.kubernetes.workspacePath: must be an absolute path")
+		}
+	} else {
+		// GitRepository is required unless skipGitInit
+		if k.GitRepository == "" {
+			errs = append(errs, "spec.kubernetes.gitRepository: is required")
+		}
 
-	// Reject path traversal in GitRepository
-	if k.GitRepository != "" && containsPathTraversal(k.GitRepository) {
-		errs = append(errs, "spec.kubernetes.gitRepository: must not contain path traversal sequences")
+		// Reject path traversal in GitRepository
+		if k.GitRepository != "" && containsPathTraversal(k.GitRepository) {
+			errs = append(errs, "spec.kubernetes.gitRepository: must not contain path traversal sequences")
+		}
+
+		// GitSecretRef is required unless skipGitInit
+		if k.GitSecretRef.Name == "" {
+			errs = append(errs, "spec.kubernetes.gitSecretRef.name: is required")
+		}
 	}
 
 	// Reject path traversal in GitBranch
 	if k.GitBranch != "" && containsPathTraversal(k.GitBranch) {
 		errs = append(errs, "spec.kubernetes.gitBranch: must not contain path traversal sequences")
-	}
-
-	// GitSecretRef is required
-	if k.GitSecretRef.Name == "" {
-		errs = append(errs, "spec.kubernetes.gitSecretRef.name: is required")
 	}
 
 	// Auth: OAuth creds, direct API key, or LiteLLM/gateway key via agentConfig
@@ -350,8 +360,11 @@ func (d *PolecatCustomDefaulter) Default(ctx context.Context, polecat *Polecat) 
 
 	// Set kubernetes defaults
 	if polecat.Spec.ExecutionMode == ExecutionModeKubernetes && polecat.Spec.Kubernetes != nil {
-		// Set default git branch
-		if polecat.Spec.Kubernetes.GitBranch == "" {
+		if polecat.Spec.Kubernetes.SkipGitInit {
+			if polecat.Spec.Kubernetes.WorkspacePath == "" {
+				polecat.Spec.Kubernetes.WorkspacePath = "/workspace/promo-tool"
+			}
+		} else if polecat.Spec.Kubernetes.GitBranch == "" {
 			polecat.Spec.Kubernetes.GitBranch = "main"
 		}
 

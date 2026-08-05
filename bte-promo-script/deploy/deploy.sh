@@ -45,12 +45,12 @@ kubectl -n gastown-system set env deploy/promo-api GIT_REPO- GIT_BRANCH- WEBHOOK
 echo "==> Ensuring Rig"
 DEFAULTS_GO="${BTE}/api/defaults.go"
 go_default() { sed -n "s/.*${1}[[:space:]]*=[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "${DEFAULTS_GO}" | head -1; }
-GIT_REPO="$(go_default DefaultGitRepo)"
-GIT_BRANCH="$(go_default DefaultGitBranch)"
+RIG_NAME="$(go_default DefaultRigName)"
+GIT_REPO="$(go_default DefaultRigGitURL)"
 TMP_RIG="$(mktemp)"
 sed \
   -e "s|GIT_REPO_PLACEHOLDER|${GIT_REPO}|g" \
-  -e "s|GIT_BRANCH_PLACEHOLDER|${GIT_BRANCH}|g" \
+  -e "s|name: promo-script-tool|name: ${RIG_NAME}|g" \
   "${BTE}/deploy/rig.yaml.tpl" > "${TMP_RIG}"
 kubectl apply -f "${TMP_RIG}"
 rm -f "${TMP_RIG}"

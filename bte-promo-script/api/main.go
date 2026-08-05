@@ -74,9 +74,6 @@ type config struct {
 	Port           int
 	Namespace      string
 	RigName        string
-	GitRepo        string
-	GitBranch      string
-	GitSecret      string
 	LiteLLMURL     string
 	LiteLLMAuthSec string
 	AgentImage     string
@@ -90,9 +87,6 @@ func loadConfig() config {
 		Port:           envInt("PORT", 8080),
 		Namespace:      envOr("NAMESPACE", "gastown-system"),
 		RigName:        DefaultRigName,
-		GitRepo:        DefaultGitRepo,
-		GitBranch:      DefaultGitBranch,
-		GitSecret:      envOr("GIT_SECRET", "git-creds"),
 		LiteLLMURL:     envOr("LITELLM_URL", "http://litellm.gastown-system.svc:4000"),
 		LiteLLMAuthSec: envOr("LITELLM_AUTH_SECRET", "litellm-auth"),
 		AgentImage:     envOr("AGENT_IMAGE", "polecat-agent:local"),
@@ -166,8 +160,8 @@ func handleHealth(cfg config, k8s client.Client) http.HandlerFunc {
 			}
 		}
 
-		// Required secrets
-		for _, name := range []string{cfg.GitSecret, cfg.LiteLLMAuthSec} {
+		// Required secrets (git-creds not needed — Polecats use skipGitInit)
+		for _, name := range []string{cfg.LiteLLMAuthSec} {
 			var sec corev1.Secret
 			if err := k8s.Get(ctx, types.NamespacedName{Namespace: cfg.Namespace, Name: name}, &sec); err != nil {
 				checks["secret:"+name] = "missing"
@@ -256,14 +250,12 @@ func handleGenerate(cfg config, k8s client.Client) http.HandlerFunc {
 			name = "promo-" + shortID()
 		}
 
-		branch := req.Branch
-		if branch == "" {
-			branch = cfg.GitBranch
-		}
-		workBranch := fmt.Sprintf("feature/%s", name)
 		deadline := int64(3600)
 
-		task := fmt.Sprintf(`You are generating promo scripts. Use this repository only as read-only context (conventions, canon, examples).
+		task := fmt.Sprintf(`You are generating promo scripts. The promo pipeline is at a fixed workspace path (no git clone).
+
+PIPELINE ROOT (cd here first):
+%s
 
 USER REQUEST:
 %s
@@ -272,23 +264,16 @@ JOB NAME: %s
 REQUEST ID: %s
 
 INSTRUCTIONS:
-1. Explore the repo structure and existing promo/script conventions.
-2. Generate the promo script needed for the request (write it under the workspace, e.g. /tmp/promo-output.md or a new file in the working tree).
-3. Keep changes focused; do not refactor unrelated code.
-4. Do NOT git add, commit, push, or create a pull request. Leave git untouched.
-5. Do NOT call any HTTP API yourself.
-6. When W4 is complete, run promo-finish (do not curl any API yourself):
-
-   Keys (fixed every run):
-   - map    → W2 map file you wrote
-   - briefs → W3 briefs file you wrote
-   - script → W4 script file you wrote
-   - receipt → W4 receipts file you wrote
+1. cd to the pipeline root above and follow CLAUDE.md / workflows (W2→W3→W4).
+2. Write outputs under working files/ relative to the pipeline root.
+3. Do NOT git add, commit, push, or create a pull request. Leave git untouched.
+4. Do NOT call any HTTP API yourself.
+5. When W4 is complete, run promo-finish — see scripts/PROMO_FINISH.md in the pipeline root:
 
    promo-finish finish map=<path> briefs=<path> script=<path> receipt=<path>
 
-   Use the actual paths where you saved each file. Stop when you see PROMO_FINISH_OK on stderr.
-`, prompt, name, requestID)
+   Use paths relative to the pipeline root or absolute paths. Stop when you see PROMO_FINISH_OK on stderr.
+`, DefaultPromoWorkspacePath, prompt, name, requestID)
 
 		polecat := &gastownv1alpha1.Polecat{
 			ObjectMeta: metav1.ObjectMeta{
@@ -333,10 +318,8 @@ INSTRUCTIONS:
 					},
 				},
 				Kubernetes: &gastownv1alpha1.KubernetesSpec{
-					GitRepository: cfg.GitRepo,
-					GitBranch:     branch,
-					WorkBranch:    workBranch,
-					GitSecretRef:  gastownv1alpha1.SecretReference{Name: cfg.GitSecret},
+					SkipGitInit:   true,
+					WorkspacePath: DefaultPromoWorkspacePath,
 					ApiKeySecretRef: &gastownv1alpha1.SecretKeyRef{
 						Name: cfg.LiteLLMAuthSec,
 						Key:  "master-key",

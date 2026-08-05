@@ -117,6 +117,10 @@ RUN git config --system user.email "polecat@gastown.local" && \
 # Create workspace directory
 RUN mkdir -p /workspace && chown polecat:polecat /workspace
 
+# BTE promo pipeline (static workspace — copied to emptyDir by workspace-init)
+COPY bte-promo-script/repos/bte-promo-script-repo /opt/bte-promo-tool
+RUN chown -R polecat:polecat /opt/bte-promo-tool
+
 # Switch to non-root user
 USER polecat
 WORKDIR /workspace

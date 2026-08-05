@@ -1,0 +1,28 @@
+# WORKFLOW 3 — THE BRIEFS · v2 (the arming layer; arms every scene, writes no prose — and stages scenes people TALK through)
+
+**Input, required on disk:** the LOCKED W2 map · the show's world doc + Essence + HARD BLOCKS · the show ledger (XFER source) · `dependencies/brief_template.md` (the governing law of this workflow — load whole) · `dependencies/exemplar_bank.md` · `dependencies/powerstart.md` (Scene 1 only).
+
+**Output:** `working files/beat sheets/[Series]_[Angle]_Briefs_v[X].md` — one brief per scene, each self-contained, released to the writer ONE AT A TIME per the W4 session protocol. Each brief is exactly the template's seven blocks: WORLD · LISTENER-KNOWS LEDGER · LORE, PRE-STATED · INJUSTICE SPEC · EVENTS, TELEGRAPHED · VOICES · BUDGET/POV/FORMAT.
+
+---
+
+## THE DERIVATION (mechanical; the template's eight laws govern every sentence)
+
+1. **From the map, per scene:** the injustice units land in the INJUSTICE SPEC verbatim from W2; the concept cap becomes the WORLD block's boundary; the seam becomes the closing event. **The budget is re-derived bottom-up from the brief's own event list, exchanges first** (each mapped exchange: floor turns × ~15–25 spoken words; narration is mortar between events, **never a counted unit** — template law 7) — if the derived number falls materially under the map's allocation, the scene is under-staged: route to W2 for material, never inflate the budget and never fill the gap with narration.
+2. **COLD-LISTENER TRANSLATION.** Every WORLD/LORE sentence in a stranger's vocabulary — no source-artifact or institutional jargon transmits untranslated. Test: would a person say it to a friend?
+3. **THE LEDGER, ASSIGNED.** Each listener-knows item is one concrete reusable sentence, assigned to the moment it fires (or tagged background-only). One fact, one home — a fact appears in exactly one block. Cold opens: the ledger is empty; say so.
+4. **LORE, PRE-STATED.** Every backstory fact as a plain sentence with its in-world source named. Hero-facts stated as truth ("He never touched her"), never as ambiguity. **Every number supplied — or the fact restated so no number is needed** (a purse counted in months of medicine, not coins). Mechanisms literal: if canon supplies no "how," restage the event to canon shapes — never transmit a mystery for the writer to hedge.
+5. **EVENTS, TELEGRAPHED.** Bare clauses in order — subject-verb-object, no prose color, nothing transcribable. Exchanges carry numbered turn floors (speaker + speech-act + content-clause; extend while escalating, never shrink; **every map closes on the hero** — an unanswered villain turn stages a passive hero). Objects that act enter through the hero's perception first. Dangers are never pre-announced.
+6. **XFER ROWS.** Verbatim from ledger/canon, each with: the SPEECH-ACT it answers (a required preceding turn is staged) · its ADDRESSEE (a third-person line is performed to the crowd — stage the turn) · provenance. Word-for-word or not at all; collisions (pronoun, speaker, year) surface as **OPEN items with a proposed -adapted resolution** — never silently transmitted, never silently fixed.
+7. **CANON CHECK, every row.** Ages, years, ranks, abilities, pronouns verified against the world doc; HARD BLOCKS cross-checked. Findings surface as OPEN items for the operator.
+8. **SLOT EXEMPLARS.** When a scene contains a position the exemplar bank covers (cold-open weave · reveal · action beat · official speech · mercy-trap offer), attach that slot's operator-authored passage to the brief as register model for that beat — model, never content.
+9. **SCENE 1 ONLY — THE POWERSTART.** Load `powerstart.md`; author 3–5 line-one candidates — **injustice-coded: literal, grounded, victim-coded on first hearing** (a metaphor-parsed or self-incriminating opener is dead at the brief). Optional cold panel (3 zero-context parses per candidate: what literally happened / who do you feel for). Lock one; all candidates ship for operator swap. This is the ONE place W3 writes lines, and they ride as supplied-verbatim material.
+
+## THE W3 SELF-GATE (run before delivery; a brief that fails never reaches a writer)
+
+- **The ban list:** any authored dialogue outside XFERs/powerstart · any authored narration · any rendered prose carried from the map or source docs · any craft advice or rule cross-reference · any thematic phrasing that would read as mush if transcribed ("saving her and feeding are the same act" ✗ → "to take the blood he has to put his mouth to the wound" ✓) · any jargon · any unassigned ledger item · any duplicated fact · any missing number · any turn map ending on the villain · **any budget derivation counting "narration beats" as a unit (law 7)** · **any turn floor built only of XFERs — the floor must stage writer-voiced turns around the rungs (law 8)**.
+- **Prerequisites travel:** a mid/anchor brief lists what earlier scenes established, as plain facts, sufficient for the scene to stand.
+- **Powerstart fact-check:** line one's every fact is checked against Scene 1's staged events — a powerstart that the first scene contradicts ("sent a servant" over a scene that stages the new wife) is dead at the brief.
+- **OPEN items** (canon collisions, restages, -adapted rows) listed at the top of the brief file for operator rulings BEFORE the writer session starts. **Standing OPEN class: canon banter lines whose idiom breaks the world's register ("action hero" in a fantasy march) — surface with a proposed period-neutral -adapted rendering; the operator rules verbatim-vs-adapted per line.**
+
+> **Briefs locked.** Deliver the file; W4's session protocol releases one brief at a time.

@@ -357,13 +357,14 @@ spec:
                     pattern: ^[a-zA-Z0-9._/-]+$
                     type: string
                   gitRepository:
-                    description: GitRepository is the git repo URL to clone (SSH or
-                      HTTPS format)
-                    pattern: ^(git@[a-zA-Z0-9._-]+:|https?://[a-zA-Z0-9._-]+/)[a-zA-Z0-9._/-]+(\.git)?$
+                    description: |-
+                      GitRepository is the git repo URL to clone (SSH or HTTPS format)
+                      Required unless SkipGitInit is true. Format validated by admission webhook.
                     type: string
                   gitSecretRef:
-                    description: GitSecretRef references a Secret containing SSH key
-                      for git
+                    description: |-
+                      GitSecretRef references a Secret containing SSH key for git
+                      Required unless SkipGitInit is true.
                     properties:
                       name:
                         description: name is the name of the secret.
@@ -433,6 +434,11 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  skipGitInit:
+                    description: |-
+                      SkipGitInit skips git clone/checkout and uses a static workspace baked into the agent image.
+                      A workspace-init container copies /opt/bte-promo-tool into WorkspacePath on an emptyDir volume.
+                    type: boolean
                   sshKnownHostsConfigMapRef:
                     description: |-
                       SSHKnownHostsConfigMapRef references a ConfigMap containing SSH known_hosts
@@ -464,9 +470,12 @@ spec:
                       (defaults to feature/<beadID>)
                     pattern: ^[a-zA-Z0-9._/-]+$
                     type: string
-                required:
-                - gitRepository
-                - gitSecretRef
+                  workspacePath:
+                    description: |-
+                      WorkspacePath is the working directory for the agent when SkipGitInit is true.
+                      Defaults to /workspace/promo-tool.
+                    pattern: ^/[a-zA-Z0-9._/-]+$
+                    type: string
                 type: object
               maxIdleSeconds:
                 description: MaxIdleSeconds terminates polecat if idle for this duration

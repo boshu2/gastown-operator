@@ -29,9 +29,14 @@ import (
 
 const (
 	// Container names
-	GitInitContainerName   = "git-init"
-	ClaudeContainerName    = "claude"
-	TelemetryContainerName = "telemetry"
+	GitInitContainerName       = "git-init"
+	WorkspaceInitContainerName = "workspace-init"
+	ClaudeContainerName        = "claude"
+	TelemetryContainerName     = "telemetry"
+
+	// BakedPromoToolImagePath is where polecat-agent stores the static promo pipeline.
+	BakedPromoToolImagePath = "/opt/bte-promo-tool"
+	DefaultSkipGitWorkspace = "/workspace/promo-tool"
 
 	// Volume names
 	WorkspaceVolumeName     = "workspace"
@@ -114,6 +119,17 @@ func NewBuilder(polecat *gastownv1alpha1.Polecat) *Builder {
 	return &Builder{polecat: polecat}
 }
 
+func (b *Builder) skipGitInit() bool {
+	return b.polecat.Spec.Kubernetes != nil && b.polecat.Spec.Kubernetes.SkipGitInit
+}
+
+func (b *Builder) workspacePath() string {
+	if b.polecat.Spec.Kubernetes != nil && b.polecat.Spec.Kubernetes.WorkspacePath != "" {
+		return b.polecat.Spec.Kubernetes.WorkspacePath
+	}
+	return DefaultSkipGitWorkspace
+}
+
 // GetGitImage returns the git image to use, checking environment variable first
 func GetGitImage() string {
 	if img := os.Getenv(EnvGitImage); img != "" {
@@ -147,6 +163,13 @@ func (b *Builder) Build() (*corev1.Pod, error) {
 	k8sSpec := b.polecat.Spec.Kubernetes
 	podName := fmt.Sprintf("polecat-%s", b.polecat.Name)
 
+	initContainers := []corev1.Container{}
+	if b.skipGitInit() {
+		initContainers = append(initContainers, b.buildWorkspaceInitContainer())
+	} else {
+		initContainers = append(initContainers, b.buildGitInitContainer())
+	}
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podName,
@@ -162,18 +185,23 @@ func (b *Builder) Build() (*corev1.Pod, error) {
 			ActiveDeadlineSeconds:        k8sSpec.ActiveDeadlineSeconds,
 			AutomountServiceAccountToken: boolPtr(false),
 			SecurityContext:              b.buildPodSecurityContext(),
-			InitContainers: []corev1.Container{
-				b.buildGitInitContainer(),
-			},
-			Containers: []corev1.Container{
-				b.buildClaudeContainer(),
-				b.buildTelemetrySidecar(),
-			},
-			Volumes: b.buildVolumes(),
+			InitContainers: initContainers,
+			Containers:     b.buildContainers(),
+			Volumes:        b.buildVolumes(),
 		},
 	}
 
 	return pod, nil
+}
+
+func (b *Builder) buildContainers() []corev1.Container {
+	containers := []corev1.Container{b.buildClaudeContainer()}
+	// Promo / static-workspace polecats do not need Prometheus telemetry; the alpine
+	// nc sidecar often exits non-zero and marks the whole pod Failed despite Claude succeeding.
+	if !b.skipGitInit() {
+		containers = append(containers, b.buildTelemetrySidecar())
+	}
+	return containers
 }
 
 // buildGitInitContainer creates the git init container spec
@@ -296,6 +324,32 @@ echo "Git setup complete. Working branch: $WORK_BRANCH"
 	}
 }
 
+// buildWorkspaceInitContainer copies a static workspace from the agent image into emptyDir.
+func (b *Builder) buildWorkspaceInitContainer() corev1.Container {
+	workspaceScript := fmt.Sprintf(`
+set -e
+DEST="%s"
+SRC="%s"
+mkdir -p "$DEST"
+cp -a "${SRC}/." "${DEST}/"
+echo "Static workspace copied from ${SRC} to ${DEST}"
+`, b.workspacePath(), BakedPromoToolImagePath)
+
+	return corev1.Container{
+		Name:            WorkspaceInitContainerName,
+		Image:           b.agentImage(),
+		Command:         []string{"/bin/sh", "-c"},
+		Args:            []string{workspaceScript},
+		SecurityContext: b.buildSecurityContext(),
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      WorkspaceVolumeName,
+				MountPath: WorkspaceMountPath,
+			},
+		},
+	}
+}
+
 // buildGitInitVolumeMounts creates volume mounts for the git init container
 func (b *Builder) buildGitInitVolumeMounts() []corev1.VolumeMount {
 	k8sSpec := b.polecat.Spec.Kubernetes
@@ -335,85 +389,9 @@ func (b *Builder) buildGitInitVolumeMounts() []corev1.VolumeMount {
 // buildClaudeContainer creates the Claude agent container spec
 func (b *Builder) buildClaudeContainer() corev1.Container {
 	k8sSpec := b.polecat.Spec.Kubernetes
-	agentConfig := b.polecat.Spec.AgentConfig
+	image := b.agentImage()
 
-	// Image precedence: kubernetes.image > agentConfig.image > env/default
-	image := GetClaudeImage()
-	if agentConfig != nil && agentConfig.Image != "" {
-		image = agentConfig.Image
-	}
-	if k8sSpec.Image != "" {
-		image = k8sSpec.Image
-	}
-
-	// Build the agent startup script
-	agentScript := fmt.Sprintf(`
-set -e
-
-# Configure npm for non-root global installs
-export NPM_CONFIG_PREFIX="$HOME/.npm-global"
-export PATH="$HOME/.npm-global/bin:$PATH"
-mkdir -p "$HOME/.npm-global"
-
-# Copy Claude credentials from read-only mount to writable HOME
-mkdir -p "$HOME/.claude"
-if [ -f "%s/.credentials.json" ]; then
-    cp "%s/.credentials.json" "$HOME/.claude/.credentials.json"
-    echo "Claude credentials copied to $HOME/.claude/"
-fi
-
-# Configure SSH for git operations (known_hosts already set up by init container)
-mkdir -p "$HOME/.ssh"
-if [ -f "%s/ssh-privatekey" ]; then
-    cp "%s/ssh-privatekey" "$HOME/.ssh/id_rsa"
-    chmod 600 "$HOME/.ssh/id_rsa"
-    echo "Git SSH key configured"
-fi
-
-# Configure git user for commits
-git config --global user.name "Gas Town Polecat"
-git config --global user.email "polecat@gastown.io"
-
-# Verify Claude Code is available (pre-installed in polecat-agent image)
-echo "Verifying Claude Code CLI..."
-claude --version || { echo "ERROR: Claude CLI not found. Use ghcr.io/boshu2/polecat-agent image."; exit 1; }
-
-# SECURITY: --dangerously-skip-permissions is required for headless operation.
-# This grants elevated privileges to the Claude agent. Mitigations:
-# - Pod runs as non-root with read-only root filesystem
-# - Network policies should restrict outbound traffic
-# - RBAC should limit polecat creation to trusted namespaces
-# See docs/SECURITY.md for full threat model.
-echo "Starting Claude Code agent..."
-echo "Working on issue: $GT_ISSUE"
-
-# Build the prompt with task description if available
-if [ -n "$GT_TASK_DESCRIPTION" ]; then
-    echo "=== Task Description ==="
-    echo "$GT_TASK_DESCRIPTION"
-    echo "========================"
-    PROMPT="You are a Gas Town polecat worker. Your task:
-
-ISSUE: $GT_ISSUE
-TASK: $GT_TASK_DESCRIPTION
-
-INSTRUCTIONS:
-1. Implement the task described above
-2. After completing the work:
-   - git add the changed files
-   - git commit -m 'feat($GT_ISSUE): <description>'
-   - git push origin HEAD
-   - gh pr create --fill
-
-Stay focused on this specific task. Do not fix unrelated issues."
-else
-    PROMPT="You are a Gas Town polecat worker assigned to issue $GT_ISSUE. "
-    PROMPT="${PROMPT}Read the repository and implement the task. "
-    PROMPT="${PROMPT}After completing: git add, commit, push, and gh pr create --fill."
-fi
-
-exec claude --print --dangerously-skip-permissions "$PROMPT"
-`, ClaudeCredsMountPath, ClaudeCredsMountPath, GitCredsMountPath, GitCredsMountPath)
+	agentScript := b.buildAgentScript()
 
 	// Build environment variables
 	envVars := []corev1.EnvVar{
@@ -464,11 +442,6 @@ exec claude --print --dangerously-skip-permissions "$PROMPT"
 			MountPath: WorkspaceMountPath,
 		},
 		{
-			Name:      GitCredsVolumeName,
-			MountPath: GitCredsMountPath,
-			ReadOnly:  true,
-		},
-		{
 			Name:      TmpVolumeName,
 			MountPath: TmpMountPath,
 		},
@@ -476,6 +449,14 @@ exec claude --print --dangerously-skip-permissions "$PROMPT"
 			Name:      HomeVolumeName,
 			MountPath: HomeMountPath,
 		},
+	}
+
+	if !b.skipGitInit() {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      GitCredsVolumeName,
+			MountPath: GitCredsMountPath,
+			ReadOnly:  true,
+		})
 	}
 
 	// Add claude creds mount only if configured (for OAuth auth)
@@ -487,12 +468,17 @@ exec claude --print --dangerously-skip-permissions "$PROMPT"
 		})
 	}
 
+	workingDir := fmt.Sprintf("%s/repo", WorkspaceMountPath)
+	if b.skipGitInit() {
+		workingDir = b.workspacePath()
+	}
+
 	container := corev1.Container{
 		Name:            ClaudeContainerName,
 		Image:           image,
 		Command:         []string{"/bin/sh", "-c"},
 		Args:            []string{agentScript},
-		WorkingDir:      fmt.Sprintf("%s/repo", WorkspaceMountPath),
+		WorkingDir:      workingDir,
 		SecurityContext: b.buildSecurityContext(),
 		Env:             envVars,
 		VolumeMounts:    volumeMounts,
@@ -500,6 +486,101 @@ exec claude --print --dangerously-skip-permissions "$PROMPT"
 	}
 
 	return container
+}
+
+func (b *Builder) agentImage() string {
+	k8sSpec := b.polecat.Spec.Kubernetes
+	agentConfig := b.polecat.Spec.AgentConfig
+
+	image := GetClaudeImage()
+	if agentConfig != nil && agentConfig.Image != "" {
+		image = agentConfig.Image
+	}
+	if k8sSpec.Image != "" {
+		image = k8sSpec.Image
+	}
+	return image
+}
+
+func (b *Builder) buildAgentScript() string {
+	credsSetup := fmt.Sprintf(`
+# Copy Claude credentials from read-only mount to writable HOME
+mkdir -p "$HOME/.claude"
+if [ -f "%s/.credentials.json" ]; then
+    cp "%s/.credentials.json" "$HOME/.claude/.credentials.json"
+    echo "Claude credentials copied to $HOME/.claude/"
+fi
+`, ClaudeCredsMountPath, ClaudeCredsMountPath)
+
+	setup := credsSetup
+	instructions := `
+INSTRUCTIONS:
+1. Implement the task described above
+2. After completing the work:
+   - git add the changed files
+   - git commit -m 'feat($GT_ISSUE): <description>'
+   - git push origin HEAD
+   - gh pr create --fill
+
+Stay focused on this specific task. Do not fix unrelated issues.`
+	fallbackTail := " After completing: git add, commit, push, and gh pr create --fill."
+
+	if b.skipGitInit() {
+		instructions = `
+INSTRUCTIONS:
+1. Follow the task description above exactly.
+2. Do not run git add, commit, push, or open pull requests unless the task explicitly asks you to.`
+		fallbackTail = " Follow the task instructions in the repository."
+	} else {
+		setup += fmt.Sprintf(`
+# Configure SSH for git operations (known_hosts already set up by init container)
+mkdir -p "$HOME/.ssh"
+if [ -f "%s/ssh-privatekey" ]; then
+    cp "%s/ssh-privatekey" "$HOME/.ssh/id_rsa"
+    chmod 600 "$HOME/.ssh/id_rsa"
+    echo "Git SSH key configured"
+fi
+
+# Configure git user for commits
+git config --global user.name "Gas Town Polecat"
+git config --global user.email "polecat@gastown.io"
+`, GitCredsMountPath, GitCredsMountPath)
+	}
+
+	return fmt.Sprintf(`
+set -e
+
+# Configure npm for non-root global installs
+export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+export PATH="$HOME/.npm-global/bin:$PATH"
+mkdir -p "$HOME/.npm-global"
+
+%s
+
+# Verify Claude Code is available (pre-installed in polecat-agent image)
+echo "Verifying Claude Code CLI..."
+claude --version || { echo "ERROR: Claude CLI not found. Use ghcr.io/boshu2/polecat-agent image."; exit 1; }
+
+# SECURITY: --dangerously-skip-permissions is required for headless operation.
+echo "Starting Claude Code agent..."
+echo "Working on issue: $GT_ISSUE"
+
+if [ -n "$GT_TASK_DESCRIPTION" ]; then
+    echo "=== Task Description ==="
+    echo "$GT_TASK_DESCRIPTION"
+    echo "========================"
+    PROMPT="You are a Gas Town polecat worker. Your task:
+
+ISSUE: $GT_ISSUE
+TASK: $GT_TASK_DESCRIPTION
+
+%s"
+else
+    PROMPT="You are a Gas Town polecat worker assigned to issue $GT_ISSUE.%s"
+fi
+
+exec claude --print --dangerously-skip-permissions "$PROMPT"
+`, setup, instructions, fallbackTail)
 }
 
 // hasGatewayAuth reports whether agentConfig provides a gateway API key secret.
@@ -680,15 +761,6 @@ func (b *Builder) buildVolumes() []corev1.Volume {
 			},
 		},
 		{
-			Name: GitCredsVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName:  k8sSpec.GitSecretRef.Name,
-					DefaultMode: int32Ptr(0400),
-				},
-			},
-		},
-		{
 			Name: TmpVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
@@ -706,6 +778,18 @@ func (b *Builder) buildVolumes() []corev1.Volume {
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		},
+	}
+
+	if !b.skipGitInit() {
+		volumes = append(volumes, corev1.Volume{
+			Name: GitCredsVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName:  k8sSpec.GitSecretRef.Name,
+					DefaultMode: int32Ptr(0400),
+				},
+			},
+		})
 	}
 
 	// Add claude creds volume only if configured (for OAuth auth)

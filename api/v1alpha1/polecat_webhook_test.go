@@ -522,6 +522,30 @@ func TestValidateKubernetesSpec(t *testing.T) {
 			wantErrs: 0,
 		},
 		{
+			name: "skip git init valid",
+			spec: &KubernetesSpec{
+				SkipGitInit:   true,
+				WorkspacePath: "/workspace/promo-tool",
+				ApiKeySecretRef: &SecretKeyRef{
+					Name: "litellm-auth",
+					Key:  "master-key",
+				},
+			},
+			wantErrs: 0,
+		},
+		{
+			name: "skip git init missing workspace path",
+			spec: &KubernetesSpec{
+				SkipGitInit: true,
+				ApiKeySecretRef: &SecretKeyRef{
+					Name: "litellm-auth",
+					Key:  "master-key",
+				},
+			},
+			wantErrs:    1,
+			errContains: []string{"spec.kubernetes.workspacePath: is required when skipGitInit is true"},
+		},
+		{
 			name: "missing git repository",
 			spec: &KubernetesSpec{
 				GitSecretRef:         SecretReference{Name: "git-secret"},

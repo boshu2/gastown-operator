@@ -151,9 +151,9 @@ type AgentConfig struct {
 // KubernetesSpec defines configuration for kubernetes execution mode
 type KubernetesSpec struct {
 	// GitRepository is the git repo URL to clone (SSH or HTTPS format)
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Pattern=`^(git@[a-zA-Z0-9._-]+:|https?://[a-zA-Z0-9._-]+/)[a-zA-Z0-9._/-]+(\.git)?$`
-	GitRepository string `json:"gitRepository"`
+	// Required unless SkipGitInit is true. Format validated by admission webhook.
+	// +optional
+	GitRepository string `json:"gitRepository,omitempty"`
 
 	// GitBranch is the branch to checkout
 	// +kubebuilder:default=main
@@ -167,8 +167,20 @@ type KubernetesSpec struct {
 	WorkBranch string `json:"workBranch,omitempty"`
 
 	// GitSecretRef references a Secret containing SSH key for git
-	// +kubebuilder:validation:Required
-	GitSecretRef SecretReference `json:"gitSecretRef"`
+	// Required unless SkipGitInit is true.
+	// +optional
+	GitSecretRef SecretReference `json:"gitSecretRef,omitempty"`
+
+	// SkipGitInit skips git clone/checkout and uses a static workspace baked into the agent image.
+	// A workspace-init container copies /opt/bte-promo-tool into WorkspacePath on an emptyDir volume.
+	// +optional
+	SkipGitInit bool `json:"skipGitInit,omitempty"`
+
+	// WorkspacePath is the working directory for the agent when SkipGitInit is true.
+	// Defaults to /workspace/promo-tool.
+	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9._/-]+$`
+	// +optional
+	WorkspacePath string `json:"workspacePath,omitempty"`
 
 	// ClaudeCredsSecretRef references a Secret containing ~/.claude/ contents
 	// Required unless ApiKeySecretRef is provided

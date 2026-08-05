@@ -303,7 +303,15 @@ func (r *PolecatReconciler) syncStatusFromPod(ctx context.Context, polecat *gast
 	// Map Pod phase to Polecat phase and set conditions.
 	// We set BOTH old conditions (Ready, Working) and new standard conditions
 	// (Available, Progressing, Degraded) for backward compatibility during transition.
-	switch p.Status.Phase {
+	podPhase := p.Status.Phase
+	// Agent success is what matters: telemetry sidecar failures must not mark work Stuck.
+	if podPhase == corev1.PodFailed {
+		if code, ok := pod.AgentContainerExitCode(p); ok && code == 0 {
+			podPhase = corev1.PodSucceeded
+		}
+	}
+
+	switch podPhase {
 	case corev1.PodPending:
 		polecat.Status.Phase = gastownv1alpha1.PolecatPhaseWorking
 		polecat.Status.PodActive = false

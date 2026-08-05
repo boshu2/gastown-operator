@@ -62,7 +62,7 @@ Commands:
   webhook '<upload-json>'          One backend webhook with all script URLs
   finish key=path [key=path ...]   upload + webhook in one step
 
-Keys must match scripts/PROMO_FINISH.md in gastown-static (which step produced which file).
+Keys must match repos/bte-promo-script-repo/scripts/PROMO_FINISH.md (which step produced which file).
 
 Example:
   RESULT=$(promo-finish upload \

@@ -787,3 +787,64 @@ func TestClaudeCredsVolumeMount(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildSkipGitInit(t *testing.T) {
+	polecat := &gastownv1alpha1.Polecat{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "promo-test",
+			Namespace: "test-ns",
+		},
+		Spec: gastownv1alpha1.PolecatSpec{
+			Rig:          "promo-script-tool",
+			DesiredState: gastownv1alpha1.PolecatDesiredWorking,
+			BeadID:       "pst-promo-test",
+			ExecutionMode: gastownv1alpha1.ExecutionModeKubernetes,
+			Kubernetes: &gastownv1alpha1.KubernetesSpec{
+				SkipGitInit:   true,
+				WorkspacePath: DefaultSkipGitWorkspace,
+				ApiKeySecretRef: &gastownv1alpha1.SecretKeyRef{
+					Name: "litellm-auth",
+					Key:  "master-key",
+				},
+				Image: "polecat-agent:local",
+			},
+		},
+	}
+
+	pod, err := NewBuilder(polecat).Build()
+	if err != nil {
+		t.Fatalf("Build() error: %v", err)
+	}
+
+	if len(pod.Spec.InitContainers) != 1 {
+		t.Fatalf("expected 1 init container, got %d", len(pod.Spec.InitContainers))
+	}
+	if pod.Spec.InitContainers[0].Name != WorkspaceInitContainerName {
+		t.Errorf("expected workspace-init, got %s", pod.Spec.InitContainers[0].Name)
+	}
+
+	claude := pod.Spec.Containers[0]
+	if claude.WorkingDir != DefaultSkipGitWorkspace {
+		t.Errorf("expected working dir %s, got %s", DefaultSkipGitWorkspace, claude.WorkingDir)
+	}
+
+	for _, vol := range pod.Spec.Volumes {
+		if vol.Name == GitCredsVolumeName {
+			t.Error("git-creds volume should not be present when skipGitInit is true")
+		}
+	}
+	for _, mount := range claude.VolumeMounts {
+		if mount.Name == GitCredsVolumeName {
+			t.Error("git-creds mount should not be present when skipGitInit is true")
+		}
+	}
+
+	if len(pod.Spec.Containers) != 1 {
+		t.Fatalf("expected 1 container (claude only), got %d", len(pod.Spec.Containers))
+	}
+	for _, c := range pod.Spec.Containers {
+		if c.Name == TelemetryContainerName {
+			t.Error("telemetry sidecar should not be present when skipGitInit is true")
+		}
+	}
+}
