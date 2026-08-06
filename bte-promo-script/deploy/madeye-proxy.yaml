@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: madeye-proxy
+  namespace: gastown-system
+  labels:
+    app: madeye-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: madeye-proxy
+  template:
+    metadata:
+      labels:
+        app: madeye-proxy
+    spec:
+      containers:
+        - name: madeye-proxy
+          image: madeye-proxy:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4000
+              name: http
+          env:
+            - name: PORT
+              value: "4000"
+            - name: MADEYE_BASE_URL
+              value: https://madeye-dev.internal.pocketfm.org
+            - name: MADEYE_UPSTREAM_MODEL
+              value: claude-opus-4-8
+            - name: MADEYE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: madeye-proxy-secrets
+                  key: MADEYE_API_KEY
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: madeye-proxy
+  namespace: gastown-system
+spec:
+  type: NodePort
+  selector:
+    app: madeye-proxy
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+      nodePort: 30040

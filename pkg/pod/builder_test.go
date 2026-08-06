@@ -848,3 +848,90 @@ func TestBuildSkipGitInit(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildSkipGitInitDevOutput(t *testing.T) {
+	polecat := &gastownv1alpha1.Polecat{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "promo-dev-out",
+			Namespace: "test-ns",
+			Annotations: map[string]string{
+				AnnotationDevOutputHost: "/tmp/bte-script-test",
+			},
+		},
+		Spec: gastownv1alpha1.PolecatSpec{
+			ExecutionMode: gastownv1alpha1.ExecutionModeKubernetes,
+			Kubernetes: &gastownv1alpha1.KubernetesSpec{
+				SkipGitInit: true,
+				Image:       "polecat-agent:local",
+			},
+		},
+	}
+
+	pod, err := NewBuilder(polecat).Build()
+	if err != nil {
+		t.Fatalf("Build() error: %v", err)
+	}
+
+	foundVol := false
+	for _, vol := range pod.Spec.Volumes {
+		if vol.Name == DevOutputVolumeName {
+			foundVol = true
+			if vol.HostPath == nil || vol.HostPath.Path != "/tmp/bte-script-test" {
+				t.Errorf("unexpected hostPath: %+v", vol.HostPath)
+			}
+		}
+	}
+	if !foundVol {
+		t.Error("expected dev-output hostPath volume")
+	}
+
+	claude := pod.Spec.Containers[0]
+	foundMount := false
+	for _, m := range claude.VolumeMounts {
+		if m.Name == DevOutputVolumeName && m.MountPath == DevOutputMountPath {
+			foundMount = true
+		}
+	}
+	if !foundMount {
+		t.Error("expected dev-output mount on claude container")
+	}
+}
+
+func TestBuildSkipGitInitSourceDocuments(t *testing.T) {
+	urls := `["https://example.com/ep01.docx","https://example.com/ep02.docx"]`
+	polecat := &gastownv1alpha1.Polecat{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "promo-src",
+			Namespace: "test-ns",
+			Annotations: map[string]string{
+				AnnotationSourceDocuments: urls,
+			},
+		},
+		Spec: gastownv1alpha1.PolecatSpec{
+			ExecutionMode: gastownv1alpha1.ExecutionModeKubernetes,
+			Kubernetes: &gastownv1alpha1.KubernetesSpec{
+				SkipGitInit:   true,
+				WorkspacePath: "/workspace/promo-tool",
+				Image:         "polecat-agent:local",
+			},
+		},
+	}
+
+	pod, err := NewBuilder(polecat).Build()
+	if err != nil {
+		t.Fatalf("Build() error: %v", err)
+	}
+
+	found := false
+	for _, ic := range pod.Spec.InitContainers {
+		if ic.Name == SourceFetchContainerName {
+			found = true
+			if ic.Args[1] != "/workspace/promo-tool/show source/promo-src" {
+				t.Errorf("unexpected dest arg: %v", ic.Args)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected source-fetch init container")
+	}
+}

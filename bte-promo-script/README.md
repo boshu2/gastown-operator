@@ -2,21 +2,27 @@
 
 PocketFM BTE promo pipeline — API, finish tool, deploy manifests, and config.
 
+**Infrastructure & flow:** [INFRA-README.md](INFRA-README.md)
+
 ## Layout
 
 ```
 bte-promo-script/
-  .env.example        local defaults (email, LiteLLM key) — committed
-  .env                infra secrets only (gitignored)
+  secrets.env.example   template for K8s secrets (apply once)
+  secrets.env           gitignored — GENAXIS + MADEYE keys
   api/                promo-api HTTP service
-  finish/             promo-finish CLI (runs on Polecat)
+  madeye-proxy/       Anthropic → OpenAI proxy to MadEye
+  tools/
+    finish/           promo-finish CLI (runs on Polecat)
   repos/
     bte-promo-script-repo/   promo pipeline tool (workflows, canon, PROMO_FINISH)
   deploy/
     bte-promo-script.yaml   K8s Deployment + Service + RBAC
+    madeye-proxy.yaml       madeye-proxy Deployment + Service
     rig.yaml.tpl            Rig CR template
-    apply-full-stack.sh     operator + LiteLLM + Rig (local Docker Desktop)
-    deploy.sh               promo-api + polecat-agent images
+    apply-secrets.sh          K8s secrets from secrets.env (run once)
+    deploy-infra.sh         operator + madeye-proxy + Rig (run once)
+    deploy-promo.sh         promo-api + polecat-agent images
   README.md
 ```
 
@@ -32,25 +38,23 @@ Finish instructions: `repos/bte-promo-script-repo/scripts/PROMO_FINISH.md`
 
 | Type | Location |
 |------|----------|
-| Infra secrets | `bte-promo-script/.env` (gitignored) |
-| Local defaults | `bte-promo-script/.env.example` (email, LiteLLM key) |
-| Non-secret | `api/defaults.go` (rig, workspace path, GenAxis webhook URL) |
+| Infra secrets | K8s secrets (`genaxis-auth`, `madeye-proxy-secrets`) via `apply-secrets.sh` |
+| Non-secret constants | `api/defaults.go` (rig, proxy URL, MadEye email, proxy key) |
 
-**`.env` (infra injects):**
+**K8s secrets (injected into pods via `secretKeyRef`):**
 
-| Variable | Purpose |
+| Secret | Key | Pod env | Purpose |
+|--------|-----|---------|---------|
+| `genaxis-auth` | `api-key` | `GENAXIS_API_KEY` | promo-api → GenAxis |
+| `madeye-proxy-secrets` | `MADEYE_API_KEY` | `MADEYE_API_KEY` | madeye-proxy → MadEye |
+
+**`defaults.go` constants (committed, not in `.env`):**
+
+| Constant | Purpose |
 |----------|---------|
-| `GENAXIS_API_KEY` | GenAxis webhook `X-API-Key` |
-| `MADEYE_API_KEY` | MadEye Bearer token (LiteLLM) |
-
-**`.env.example` (committed defaults):**
-
-| Variable | Purpose |
-|----------|---------|
-| `MADEYE_USER_EMAIL` | MadEye metadata |
-| `LITELLM_MASTER_KEY` | Polecats → LiteLLM auth |
-
-**`defaults.go` constants:**
+| `DefaultMadEyeUserEmail` | MadEye metadata |
+| `DefaultProxyMasterKey` | Polecats → madeye-proxy auth |
+| `DefaultMadEyeProxyURL` | In-cluster proxy URL |
 
 | Constant | Default |
 |----------|---------|
@@ -63,18 +67,19 @@ Upload/S3: stub — logs paths, returns hardcoded URLs until real S3 (`api/s3.go
 ## Deploy
 
 ```bash
-cp bte-promo-script/.env.example bte-promo-script/.env
-# edit .env with real secrets
+cp bte-promo-script/secrets.env.example bte-promo-script/secrets.env
+# edit GENAXIS_API_KEY and MADEYE_API_KEY
 
-./bte-promo-script/deploy/apply-full-stack.sh   # once: operator + LiteLLM + Rig
-./bte-promo-script/deploy/deploy.sh             # promo-api + polecat-agent
+./bte-promo-script/deploy/apply-secrets.sh    # once → K8s secrets
+./bte-promo-script/deploy/deploy-infra.sh     # operator + madeye-proxy + Rig
+./bte-promo-script/deploy/deploy-promo.sh     # promo-api + polecat-agent
 kubectl -n gastown-system port-forward svc/promo-api 30080:8080
 ```
 
 **Infra production:**
 
 1. Build/push `promo-api` and `polecat-agent` images (`promo-finish` + pipeline repo must be in agent)
-2. Inject secrets from `.env` → K8s secrets (`genaxis-auth`, `litellm-auth`)
+2. Create K8s secrets (`genaxis-auth`, `madeye-proxy-secrets`) via Vault/CI or `apply-secrets.sh` — only `MADEYE_API_KEY` and `GENAXIS_API_KEY`; proxy master key and email come from `api/defaults.go`
 3. Apply `deploy/bte-promo-script.yaml` (set image tags)
 4. Apply Rig from `deploy/rig.yaml.tpl`
 5. Smoke: `POST /v1/promo/generate` → STARTED → Claude → `promo-finish` → COMPLETED

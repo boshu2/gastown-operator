@@ -80,6 +80,8 @@ func handleJobUpload(cfg config, k8s client.Client) http.HandlerFunc {
 			return
 		}
 
+		go saveDevScript(name, files)
+
 		writeJSON(w, http.StatusOK, uploadResponse{
 			JobName:   name,
 			RequestID: requestID,
@@ -116,9 +118,10 @@ func handleJobWebhook(cfg config, k8s client.Client) http.HandlerFunc {
 			return
 		}
 
-		log.Printf("webhook received: job_name=%q request_id=%q artifacts=%d", name, requestID, len(req.Artifacts))
+		log.Printf("handoff: [promo-finish→promo-api] POST /v1/promo/jobs/%s/webhook job=%q request_id=%q artifacts=%d",
+			name, name, requestID, len(req.Artifacts))
 		for _, a := range req.Artifacts {
-			log.Printf("  webhook input: key=%q path=%q file_url=%q s3_key=%q", a.Key, a.FilePath, a.FileURL, a.S3Key)
+			log.Printf("  handoff artifact: key=%q path=%q file_url=%q s3_key=%q", a.Key, a.FilePath, a.FileURL, a.S3Key)
 		}
 
 		result := map[string]any{
@@ -128,6 +131,7 @@ func handleJobWebhook(cfg config, k8s client.Client) http.HandlerFunc {
 			"files":     artifactsByKey(req.Artifacts),
 			"rig":       cfg.RigName,
 		}
+		log.Printf("handoff: firing GenAxis webhook type=%s request_id=%q (triggered by promo-finish)", GenAxisTypePromoCompleted, requestID)
 		postGenAxisWebhook(cfg, GenAxisTypePromoCompleted, requestID, result, "")
 
 		writeJSON(w, http.StatusOK, webhookResponse{
@@ -173,6 +177,8 @@ func handleJobComplete(cfg config, k8s client.Client) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+
+		go saveDevScript(name, files)
 
 		postGenAxisWebhook(cfg, GenAxisTypePromoCompleted, requestID, map[string]any{
 			"job_name":  name,

@@ -89,13 +89,14 @@ func (r *PolecatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return r.handleDeletion(ctx, &polecat, timer)
 	}
 
-	// Add finalizer if not present
+	// Add finalizer if not present (Patch avoids clobbering spec fields set concurrently).
 	if !controllerutil.ContainsFinalizer(&polecat, polecatFinalizer) {
 		log.Info("Adding finalizer to Polecat",
 			"resource", polecat.Name,
 			"namespace", polecat.Namespace)
+		base := polecat.DeepCopy()
 		controllerutil.AddFinalizer(&polecat, polecatFinalizer)
-		if err := r.Update(ctx, &polecat); err != nil {
+		if err := r.Patch(ctx, &polecat, client.MergeFrom(base)); err != nil {
 			timer.RecordResult(metrics.ResultError)
 			return ctrl.Result{}, gterrors.Wrap(err, "failed to add finalizer")
 		}

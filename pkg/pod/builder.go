@@ -17,8 +17,10 @@ limitations under the License.
 package pod
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -45,6 +47,12 @@ const (
 	TmpVolumeName           = "tmp"
 	HomeVolumeName          = "home"
 	MetricsVolumeName       = "metrics"
+	DevOutputVolumeName     = "dev-output"
+	DevOutputMountPath      = "/workspace/dev-output"
+	AnnotationDevOutputHost = "gastown.io/dev-output-host"
+	DevOutputInitContainerName = "dev-output-init"
+	AnnotationSourceDocuments  = "gastown.io/source-documents"
+	SourceFetchContainerName   = "source-fetch"
 	SSHKnownHostsVolumeName = "ssh-known-hosts"
 
 	// Mount paths
@@ -123,6 +131,28 @@ func (b *Builder) skipGitInit() bool {
 	return b.polecat.Spec.Kubernetes != nil && b.polecat.Spec.Kubernetes.SkipGitInit
 }
 
+func (b *Builder) devOutputHostPath() string {
+	if !b.skipGitInit() {
+		return ""
+	}
+	return b.polecat.Annotations[AnnotationDevOutputHost]
+}
+
+func (b *Builder) sourceDocumentURLs() []string {
+	if !b.skipGitInit() {
+		return nil
+	}
+	raw := strings.TrimSpace(b.polecat.Annotations[AnnotationSourceDocuments])
+	if raw == "" {
+		return nil
+	}
+	var urls []string
+	if err := json.Unmarshal([]byte(raw), &urls); err != nil {
+		return nil
+	}
+	return urls
+}
+
 func (b *Builder) workspacePath() string {
 	if b.polecat.Spec.Kubernetes != nil && b.polecat.Spec.Kubernetes.WorkspacePath != "" {
 		return b.polecat.Spec.Kubernetes.WorkspacePath
@@ -166,6 +196,9 @@ func (b *Builder) Build() (*corev1.Pod, error) {
 	initContainers := []corev1.Container{}
 	if b.skipGitInit() {
 		initContainers = append(initContainers, b.buildWorkspaceInitContainer())
+		if len(b.sourceDocumentURLs()) > 0 {
+			initContainers = append(initContainers, b.buildSourceFetchContainer())
+		}
 	} else {
 		initContainers = append(initContainers, b.buildGitInitContainer())
 	}
@@ -350,6 +383,56 @@ echo "Static workspace copied from ${SRC} to ${DEST}"
 	}
 }
 
+// buildDevOutputInitContainer chmods the hostPath mount so the non-root agent can write W4 exports.
+func (b *Builder) buildDevOutputInitContainer() corev1.Container {
+	script := fmt.Sprintf(`
+set -e
+chmod 777 %s 2>/dev/null || true
+echo "dev-output mount ready at %s"
+`, DevOutputMountPath, DevOutputMountPath)
+
+	runAsRoot := int64(0)
+	return corev1.Container{
+		Name:    DevOutputInitContainerName,
+		Image:   "debian:bookworm-slim",
+		Command: []string{"/bin/sh", "-c"},
+		Args:    []string{script},
+		SecurityContext: &corev1.SecurityContext{
+			RunAsUser: &runAsRoot,
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      DevOutputVolumeName,
+				MountPath: DevOutputMountPath,
+			},
+		},
+	}
+}
+
+// buildSourceFetchContainer downloads optional episode docx URLs into the workspace.
+func (b *Builder) buildSourceFetchContainer() corev1.Container {
+	urls := b.sourceDocumentURLs()
+	dest := fmt.Sprintf("%s/show source/%s", b.workspacePath(), b.polecat.Name)
+	raw, _ := json.Marshal(urls)
+
+	return corev1.Container{
+		Name:    SourceFetchContainerName,
+		Image:   b.agentImage(),
+		Command: []string{"/usr/local/bin/promo-source-fetch"},
+		Args:    []string{"--dest", dest},
+		Env: []corev1.EnvVar{
+			{Name: "PROMO_SOURCE_DOCUMENTS", Value: string(raw)},
+		},
+		SecurityContext: b.buildSecurityContext(),
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      WorkspaceVolumeName,
+				MountPath: WorkspaceMountPath,
+			},
+		},
+	}
+}
+
 // buildGitInitVolumeMounts creates volume mounts for the git init container
 func (b *Builder) buildGitInitVolumeMounts() []corev1.VolumeMount {
 	k8sSpec := b.polecat.Spec.Kubernetes
@@ -459,6 +542,13 @@ func (b *Builder) buildClaudeContainer() corev1.Container {
 		})
 	}
 
+	if b.devOutputHostPath() != "" {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      DevOutputVolumeName,
+			MountPath: DevOutputMountPath,
+		})
+	}
+
 	// Add claude creds mount only if configured (for OAuth auth)
 	if k8sSpec.ClaudeCredsSecretRef != nil {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
@@ -524,6 +614,7 @@ INSTRUCTIONS:
 
 Stay focused on this specific task. Do not fix unrelated issues.`
 	fallbackTail := " After completing: git add, commit, push, and gh pr create --fill."
+	claudeFlags := `--print --dangerously-skip-permissions`
 
 	if b.skipGitInit() {
 		instructions = `
@@ -531,6 +622,7 @@ INSTRUCTIONS:
 1. Follow the task description above exactly.
 2. Do not run git add, commit, push, or open pull requests unless the task explicitly asks you to.`
 		fallbackTail = " Follow the task instructions in the repository."
+		claudeFlags = `--dangerously-skip-permissions --max-turns 100 -p`
 	} else {
 		setup += fmt.Sprintf(`
 # Configure SSH for git operations (known_hosts already set up by init container)
@@ -579,8 +671,8 @@ else
     PROMPT="You are a Gas Town polecat worker assigned to issue $GT_ISSUE.%s"
 fi
 
-exec claude --print --dangerously-skip-permissions "$PROMPT"
-`, setup, instructions, fallbackTail)
+exec claude %s "$PROMPT"
+`, setup, instructions, fallbackTail, claudeFlags)
 }
 
 // hasGatewayAuth reports whether agentConfig provides a gateway API key secret.
@@ -787,6 +879,20 @@ func (b *Builder) buildVolumes() []corev1.Volume {
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  k8sSpec.GitSecretRef.Name,
 					DefaultMode: int32Ptr(0400),
+				},
+			},
+		})
+	}
+
+	// LOCAL TEST ONLY — hostPath export for Docker Desktop (annotation from promo-api).
+	if host := b.devOutputHostPath(); host != "" {
+		hostPathType := corev1.HostPathDirectoryOrCreate
+		volumes = append(volumes, corev1.Volume{
+			Name: DevOutputVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: host,
+					Type: &hostPathType,
 				},
 			},
 		})

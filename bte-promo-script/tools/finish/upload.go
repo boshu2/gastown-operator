@@ -10,6 +10,7 @@ import (
 type filePayload struct {
 	Key      string `json:"key"`
 	FilePath string `json:"file_path"`
+	Script   string `json:"script,omitempty"`
 }
 
 func readLabeledFiles(labeled []labeledFile) ([]filePayload, error) {
@@ -22,7 +23,15 @@ func readLabeledFiles(labeled []labeledFile) ([]filePayload, error) {
 		if _, err := os.Stat(abs); err != nil {
 			return nil, fmt.Errorf("file for key %q not found: %s", lf.Key, abs)
 		}
-		files = append(files, filePayload{Key: lf.Key, FilePath: abs})
+		fp := filePayload{Key: lf.Key, FilePath: abs}
+		if lf.Key == "script" {
+			raw, err := os.ReadFile(abs)
+			if err != nil {
+				return nil, fmt.Errorf("read script for upload: %w", err)
+			}
+			fp.Script = string(raw)
+		}
+		files = append(files, fp)
 	}
 	return files, nil
 }

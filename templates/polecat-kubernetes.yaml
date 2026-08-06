@@ -79,17 +79,17 @@ spec:
   agent: claude-code
 
   # Agent customization (optional)
-  # Use for LiteLLM / custom LLM gateways (e.g. MadEye via LiteLLM).
-  # See docs/LITE_LLM.md
+  # Use for MadEye proxy / custom LLM gateways.
+  # See bte-promo-script/INFRA-README.md
   # agentConfig:
   #   provider: litellm  # litellm, anthropic, openai, ollama
   #   model: claude-opus-4-8
   #
   #   # Claude Code talks Anthropic format to this URL (ANTHROPIC_BASE_URL)
   #   modelProvider:
-  #     endpoint: http://litellm.gastown-system.svc:4000
+  #     endpoint: http://madeye-proxy.gastown-system.svc:4000
   #     apiKeySecretRef:          # → ANTHROPIC_AUTH_TOKEN (Bearer)
-  #       name: litellm-auth
+  #       name: madeye-proxy-auth
   #       key: master-key
   #
   #   # Custom container image

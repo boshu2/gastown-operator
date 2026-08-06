@@ -71,15 +71,14 @@ func main() {
 }
 
 type config struct {
-	Port           int
-	Namespace      string
-	RigName        string
-	LiteLLMURL     string
-	LiteLLMAuthSec string
-	AgentImage     string
-	WebhookURL     string
-	GenAxisAPIKey  string
-	PromoAPIURL    string
+	Port          int
+	Namespace     string
+	RigName       string
+	MadEyeProxyURL string
+	AgentImage    string
+	WebhookURL    string
+	GenAxisAPIKey string
+	PromoAPIURL   string
 }
 
 func loadConfig() config {
@@ -87,8 +86,7 @@ func loadConfig() config {
 		Port:           envInt("PORT", 8080),
 		Namespace:      envOr("NAMESPACE", "gastown-system"),
 		RigName:        DefaultRigName,
-		LiteLLMURL:     envOr("LITELLM_URL", "http://litellm.gastown-system.svc:4000"),
-		LiteLLMAuthSec: envOr("LITELLM_AUTH_SECRET", "litellm-auth"),
+		MadEyeProxyURL: envOr("MADEYE_PROXY_URL", DefaultMadEyeProxyURL),
 		AgentImage:     envOr("AGENT_IMAGE", "polecat-agent:local"),
 		WebhookURL:     envOr("GENAXIS_WEBHOOK_URL", genAxisWebhookURL()),
 		GenAxisAPIKey:  os.Getenv("GENAXIS_API_KEY"),
@@ -161,7 +159,7 @@ func handleHealth(cfg config, k8s client.Client) http.HandlerFunc {
 		}
 
 		// Required secrets (git-creds not needed — Polecats use skipGitInit)
-		for _, name := range []string{cfg.LiteLLMAuthSec} {
+		for _, name := range []string{"genaxis-auth"} {
 			var sec corev1.Secret
 			if err := k8s.Get(ctx, types.NamespacedName{Namespace: cfg.Namespace, Name: name}, &sec); err != nil {
 				checks["secret:"+name] = "missing"
@@ -171,19 +169,19 @@ func handleHealth(cfg config, k8s client.Client) http.HandlerFunc {
 			}
 		}
 
-		// LiteLLM liveliness
-		llURL := strings.TrimRight(cfg.LiteLLMURL, "/") + "/health/liveliness"
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, llURL, nil)
+		// MadEye proxy health
+		proxyURL := strings.TrimRight(cfg.MadEyeProxyURL, "/") + "/healthz"
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, proxyURL, nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			checks["litellm"] = "unreachable: " + err.Error()
+			checks["madeye-proxy"] = "unreachable: " + err.Error()
 			ready = false
 		} else {
 			_ = resp.Body.Close()
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				checks["litellm"] = "ok"
+				checks["madeye-proxy"] = "ok"
 			} else {
-				checks["litellm"] = fmt.Sprintf("http_%d", resp.StatusCode)
+				checks["madeye-proxy"] = fmt.Sprintf("http_%d", resp.StatusCode)
 				ready = false
 			}
 		}
@@ -204,10 +202,11 @@ func handleHealth(cfg config, k8s client.Client) http.HandlerFunc {
 }
 
 type generateRequest struct {
-	Prompt    string `json:"prompt"`
-	RequestID string `json:"request_id"`
-	Name      string `json:"name,omitempty"`
-	Branch    string `json:"branch,omitempty"`
+	Prompt          string   `json:"prompt"`
+	RequestID       string   `json:"request_id"`
+	Name            string   `json:"name,omitempty"`
+	Branch          string   `json:"branch,omitempty"`
+	SourceDocuments []string `json:"source_documents,omitempty"`
 }
 
 type generateResponse struct {
@@ -250,6 +249,12 @@ func handleGenerate(cfg config, k8s client.Client) http.HandlerFunc {
 			name = "promo-" + shortID()
 		}
 
+		sourceDocs, err := normalizeSourceDocuments(req.SourceDocuments)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
 		deadline := int64(3600)
 
 		task := fmt.Sprintf(`You are generating promo scripts. The promo pipeline is at a fixed workspace path (no git clone).
@@ -264,16 +269,45 @@ JOB NAME: %s
 REQUEST ID: %s
 
 INSTRUCTIONS:
-1. cd to the pipeline root above and follow CLAUDE.md / workflows (W2→W3→W4).
-2. Write outputs under working files/ relative to the pipeline root.
-3. Do NOT git add, commit, push, or create a pull request. Leave git untouched.
-4. Do NOT call any HTTP API yourself.
-5. When W4 is complete, run promo-finish — see scripts/PROMO_FINISH.md in the pipeline root:
+1. Your FIRST action must be a tool call (Read CLAUDE.md at the pipeline root). Do not reply with planning-only text.
+2. cd to the pipeline root above and follow CLAUDE.md / workflows (W2→W3→W4).
+3. Write outputs under working files/ relative to the pipeline root.
+4. Do NOT git add, commit, push, or create a pull request. Leave git untouched.
+5. Do NOT call any HTTP API yourself.
+6. When W4 is complete, run promo-finish — see scripts/PROMO_FINISH.md in the pipeline root:
 
    promo-finish finish map=<path> briefs=<path> script=<path> receipt=<path>
 
    Use paths relative to the pipeline root or absolute paths. Stop when you see PROMO_FINISH_OK on stderr.
-`, DefaultPromoWorkspacePath, prompt, name, requestID)
+%s`, DefaultPromoWorkspacePath, prompt, name, requestID, sourceDocumentsTaskBlock(name, len(sourceDocs)))
+
+		agentEnv := []corev1.EnvVar{
+			{Name: "ANTHROPIC_MODEL", Value: "claude-opus-4-8"},
+			{Name: "ANTHROPIC_DEFAULT_OPUS_MODEL", Value: "claude-opus-4-8"},
+			{Name: "ANTHROPIC_DEFAULT_SONNET_MODEL", Value: "claude-opus-4-8"},
+			{Name: "ANTHROPIC_DEFAULT_HAIKU_MODEL", Value: "claude-opus-4-8"},
+			{Name: "ANTHROPIC_AUTH_TOKEN", Value: DefaultProxyMasterKey},
+			{Name: "PROMO_API_URL", Value: cfg.PromoAPIURL},
+			{Name: "PROMO_JOB_NAME", Value: name},
+			{Name: "GENAXIS_REQUEST_ID", Value: requestID},
+			{Name: "PROMO_WORKSPACE_PATH", Value: DefaultPromoWorkspacePath},
+		}
+		annotations := map[string]string{
+			annotationRequestID: requestID,
+		}
+		if len(sourceDocs) > 0 {
+			raw, err := sourceDocumentsAnnotation(sourceDocs)
+			if err != nil {
+				writeErr(w, http.StatusInternalServerError, "source_documents annotation: "+err.Error())
+				return
+			}
+			annotations[AnnotationSourceDocuments] = raw
+		}
+		// LOCAL TEST ONLY — remove before push (see DefaultDevOutputHostPath in defaults.go).
+		if DefaultDevOutputHostPath != "" {
+			annotations[AnnotationDevOutputHost] = DefaultDevOutputHostPath
+			agentEnv = append(agentEnv, corev1.EnvVar{Name: "PROMO_DEV_OUTPUT_DIR", Value: DefaultDevOutputMountPath})
+		}
 
 		polecat := &gastownv1alpha1.Polecat{
 			ObjectMeta: metav1.ObjectMeta{
@@ -285,9 +319,7 @@ INSTRUCTIONS:
 					"gastown.io/rig":         cfg.RigName,
 					"gastown.io/request-id":  sanitizeLabel(requestID),
 				},
-				Annotations: map[string]string{
-					annotationRequestID: requestID,
-				},
+				Annotations: annotations,
 			},
 			Spec: gastownv1alpha1.PolecatSpec{
 				Rig:             cfg.RigName,
@@ -300,30 +332,14 @@ INSTRUCTIONS:
 					Provider: gastownv1alpha1.LLMProviderLiteLLM,
 					Model:    "claude-opus-4-8",
 					ModelProvider: &gastownv1alpha1.ModelProviderConfig{
-						Endpoint: cfg.LiteLLMURL,
-						APIKeySecretRef: &gastownv1alpha1.SecretKeyRef{
-							Name: cfg.LiteLLMAuthSec,
-							Key:  "master-key",
-						},
+						Endpoint: cfg.MadEyeProxyURL,
 					},
 					// Force every Claude Code model tier onto MadEye opus-only access.
-					Env: []corev1.EnvVar{
-						{Name: "ANTHROPIC_MODEL", Value: "claude-opus-4-8"},
-						{Name: "ANTHROPIC_DEFAULT_OPUS_MODEL", Value: "claude-opus-4-8"},
-						{Name: "ANTHROPIC_DEFAULT_SONNET_MODEL", Value: "claude-opus-4-8"},
-						{Name: "ANTHROPIC_DEFAULT_HAIKU_MODEL", Value: "claude-opus-4-8"},
-						{Name: "PROMO_API_URL", Value: cfg.PromoAPIURL},
-						{Name: "PROMO_JOB_NAME", Value: name},
-						{Name: "GENAXIS_REQUEST_ID", Value: requestID},
-					},
+					Env: agentEnv,
 				},
 				Kubernetes: &gastownv1alpha1.KubernetesSpec{
-					SkipGitInit:   true,
-					WorkspacePath: DefaultPromoWorkspacePath,
-					ApiKeySecretRef: &gastownv1alpha1.SecretKeyRef{
-						Name: cfg.LiteLLMAuthSec,
-						Key:  "master-key",
-					},
+					SkipGitInit:           true,
+					WorkspacePath:         DefaultPromoWorkspacePath,
 					Image:                 cfg.AgentImage,
 					ActiveDeadlineSeconds: &deadline,
 					Resources: &corev1.ResourceRequirements{
@@ -350,6 +366,15 @@ INSTRUCTIONS:
 			}
 			writeErr(w, http.StatusInternalServerError, "failed to create polecat: "+err.Error())
 			return
+		}
+
+		// Create can strip skipGitInit/workspacePath (CRD defaulting); merge-patch persists them.
+		patchData := fmt.Sprintf(
+			`{"spec":{"kubernetes":{"skipGitInit":true,"workspacePath":%q}}}`,
+			DefaultPromoWorkspacePath,
+		)
+		if err := k8s.Patch(ctx, polecat, client.RawPatch(types.MergePatchType, []byte(patchData))); err != nil {
+			log.Printf("warn: polecat %s created but skipGitInit patch failed: %v", name, err)
 		}
 
 		writeJSON(w, http.StatusAccepted, generateResponse{

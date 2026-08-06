@@ -119,8 +119,8 @@ demo: setup-test-e2e docker-build-e2e ## Deploy to Kind and show a sample Poleca
 	@echo "  make cleanup-test-e2e"
 
 .PHONY: demo-docker-desktop
-demo-docker-desktop: ## Deploy full BTE stack (operator + LiteLLM/MadEye + Rig) to Docker Desktop K8s.
-	./bte-promo-script/deploy/apply-full-stack.sh
+demo-docker-desktop: ## Deploy BTE infra (operator + madeye-proxy + Rig) to Docker Desktop K8s.
+	./bte-promo-script/deploy/deploy-infra.sh
 
 .PHONY: smoke-test
 smoke-test: ## Smoke test published release artifacts in Kind (requires VERSION).

@@ -22,7 +22,7 @@ func postGenAxisWebhook(cfg config, eventType, requestID string, result map[stri
 		return
 	}
 
-	log.Printf("webhook: POST %s type=%s request_id=%s body=%s", cfg.WebhookURL, eventType, requestID, string(body))
+	log.Printf("webhook: [promo-api→GenAxis] POST %s type=%s request_id=%s body=%s", cfg.WebhookURL, eventType, requestID, string(body))
 
 	if cfg.WebhookURL == "" {
 		log.Printf("webhook: skipped (no URL configured)")

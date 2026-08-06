@@ -1,4 +1,4 @@
-# Example Polecat routed through in-cluster LiteLLM → MadEye
+# Example Polecat routed through in-cluster madeye-proxy → MadEye
 apiVersion: gastown.gastown.io/v1alpha1
 kind: Polecat
 metadata:
@@ -17,10 +17,10 @@ spec:
     provider: litellm
     model: claude-opus-4-8
     modelProvider:
-      # Claude Code Anthropic-compatible endpoint (LiteLLM Service)
-      endpoint: http://litellm.gastown-system.svc:4000
+      # Claude Code Anthropic-compatible endpoint (madeye-proxy Service)
+      endpoint: http://madeye-proxy.gastown-system.svc:4000
       apiKeySecretRef:
-        name: litellm-auth
+        name: madeye-proxy-auth
         key: master-key
     env:
       - name: CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY
@@ -41,12 +41,12 @@ spec:
         memory: 2Gi
 ---
 # Secret referenced by agentConfig.modelProvider.apiKeySecretRef
-# Value must match LITELLM_MASTER_KEY in litellm-secrets
+# Value must match DefaultProxyMasterKey in bte-promo-script/api/defaults.go
 apiVersion: v1
 kind: Secret
 metadata:
-  name: litellm-auth
+  name: madeye-proxy-auth
   namespace: gastown-system
 type: Opaque
 stringData:
-  master-key: sk-local-litellm
+  master-key: sk-local-madeye-proxy

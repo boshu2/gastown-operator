@@ -1,25 +1,17 @@
 #!/usr/bin/env bash
-# Build and deploy BTE promo-api + polecat-agent (promo-finish).
+# Build and deploy promo-api + polecat-agent (includes tools/finish → promo-finish).
 set -euo pipefail
 BTE="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(cd "${BTE}/.." && pwd)"
-ENV_FILE="${BTE}/.env"
 cd "$ROOT"
+
+# shellcheck source=lib/require-k8s-secrets.sh
+source "${BTE}/deploy/lib/require-k8s-secrets.sh"
 
 kubectl config use-context docker-desktop >/dev/null
 
-if [[ ! -f "${ENV_FILE}" ]]; then
-  echo "ERROR: missing ${BTE}/.env (copy from bte-promo-script/.env.example)"
-  exit 1
-fi
-# shellcheck disable=SC1090
-source "${ENV_FILE}"
-: "${GENAXIS_API_KEY:?set GENAXIS_API_KEY in bte-promo-script/.env}"
-
-echo "==> Creating genaxis-auth secret"
-kubectl -n gastown-system create secret generic genaxis-auth \
-  --from-literal=api-key="${GENAXIS_API_KEY}" \
-  --dry-run=client -o yaml | kubectl apply -f -
+echo "==> Checking K8s secrets (GENAXIS_API_KEY injected via secretKeyRef on promo-api)"
+require_promo_secrets gastown-system
 
 TAG="${PROMO_API_TAG:-bte-$(date +%Y%m%d%H%M%S)}"
 PAGENT_TAG="${POLECAT_AGENT_TAG:-${TAG}}"
@@ -29,7 +21,7 @@ if [[ "${DOCKER_NO_CACHE:-}" == "1" ]]; then
   CACHE_FLAG="--no-cache"
 fi
 
-echo "==> Building polecat-agent (includes promo-finish) tag=${PAGENT_TAG}"
+echo "==> Building polecat-agent (includes tools/finish) tag=${PAGENT_TAG}"
 docker build ${CACHE_FLAG} -f images/polecat-agent/Dockerfile -t "polecat-agent:${PAGENT_TAG}" -t polecat-agent:local .
 
 echo "==> Building promo-api tag=${TAG}"
@@ -61,3 +53,14 @@ kubectl -n gastown-system rollout status deploy/promo-api --timeout=180s
 
 echo
 echo "promo-api ready"
+if grep -q 'DefaultDevOutputHostPath = "/Users' "${BTE}/api/defaults.go" 2>/dev/null; then
+  DEV_OUT="$(sed -n 's/.*DefaultDevOutputHostPath = "\([^"]*\)".*/\1/p' "${BTE}/api/defaults.go" | head -1)"
+  if [[ -n "${DEV_OUT}" ]]; then
+    mkdir -p "${DEV_OUT}"
+    chmod 777 "${DEV_OUT}" 2>/dev/null || true
+    echo "NOTE (LOCAL TEST ONLY): W4 script saves via HTTP dev-save (hostPath does not sync on Docker Desktop Mac)."
+    echo "  1. Run: python3 ${BTE}/deploy/dev-webhook-catcher.py"
+    echo "  2. Set: kubectl -n gastown-system set env deploy/promo-api GENAXIS_WEBHOOK_URL='http://host.docker.internal:9999/v1/bte/internal/webhook'"
+    echo "  3. Scripts land in ${DEV_OUT}/<filename>.md"
+  fi
+fi

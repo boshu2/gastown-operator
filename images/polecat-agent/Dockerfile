@@ -53,8 +53,19 @@ WORKDIR /src
 ENV GOTOOLCHAIN=auto
 COPY go.mod go.sum ./
 RUN go mod download
-COPY bte-promo-script/finish ./bte-promo-script/finish
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/promo-finish ./bte-promo-script/finish
+COPY bte-promo-script/tools/finish ./bte-promo-script/tools/finish
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/promo-finish ./bte-promo-script/tools/finish
+
+# ==============================================================================
+# Stage 1c: Build promo-source-fetch (episode docx download for promo jobs)
+# ==============================================================================
+FROM golang:${GOLANG_VERSION}-alpine AS promo-source-fetch-builder
+WORKDIR /src
+ENV GOTOOLCHAIN=auto
+COPY go.mod go.sum ./
+RUN go mod download
+COPY bte-promo-script/tools/sourcefetch ./bte-promo-script/tools/sourcefetch
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/promo-source-fetch ./bte-promo-script/tools/sourcefetch
 
 # ==============================================================================
 # Stage 2: Build polecat-agent image
@@ -98,7 +109,8 @@ RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION} && 
 # Copy gt CLI + promo-finish from builders
 COPY --from=gt-builder /out/gt /usr/local/bin/gt
 COPY --from=promo-finish-builder /out/promo-finish /usr/local/bin/promo-finish
-RUN chmod +x /usr/local/bin/gt /usr/local/bin/promo-finish
+COPY --from=promo-source-fetch-builder /out/promo-source-fetch /usr/local/bin/promo-source-fetch
+RUN chmod +x /usr/local/bin/gt /usr/local/bin/promo-finish /usr/local/bin/promo-source-fetch
 
 # Setup SSH directory with proper permissions
 RUN mkdir -p /home/nonroot/.ssh && \

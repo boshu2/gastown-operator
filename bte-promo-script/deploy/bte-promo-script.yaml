@@ -12,7 +12,7 @@ metadata:
 rules:
   - apiGroups: ["gastown.gastown.io"]
     resources: ["polecats"]
-    verbs: ["create", "get", "list", "watch"]
+    verbs: ["create", "get", "list", "watch", "patch"]
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get"]
@@ -85,10 +85,8 @@ spec:
               value: gastown-system
             - name: GIT_SECRET
               value: git-creds
-            - name: LITELLM_URL
-              value: http://litellm.gastown-system.svc:4000
-            - name: LITELLM_AUTH_SECRET
-              value: litellm-auth
+            - name: MADEYE_PROXY_URL
+              value: http://madeye-proxy.gastown-system.svc:4000
             - name: AGENT_IMAGE
               value: polecat-agent:local
             - name: GENAXIS_API_KEY

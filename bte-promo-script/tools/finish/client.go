@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -48,8 +49,21 @@ func (c *apiClient) upload(jobName string, body any) (uploadResult, error) {
 }
 
 func (c *apiClient) webhook(jobName string, body webhookInput) error {
-	var discard map[string]any
-	return c.postJSON(fmt.Sprintf("/v1/promo/jobs/%s/webhook", jobName), body, &discard)
+	path := fmt.Sprintf("/v1/promo/jobs/%s/webhook", jobName)
+	url := c.base + path
+	fmt.Fprintf(os.Stderr, "promo-finish: calling promo-api POST %s\n", url)
+	fmt.Fprintf(os.Stderr, "promo-finish: promo-api will emit GenAxis webhook type=PROMO_SCRIPT_COMPLETED request_id=%s\n",
+		body.RequestID)
+
+	var respBody map[string]any
+	if err := c.postJSON(path, body, &respBody); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "promo-finish: promo-api accepted handoff → GenAxis COMPLETED webhook sent (check promo-api logs)\n")
+	if msg, _ := respBody["message"].(string); msg != "" {
+		fmt.Fprintf(os.Stderr, "promo-finish: promo-api response: %s\n", msg)
+	}
+	return nil
 }
 
 func (c *apiClient) postJSON(path string, body any, out any) error {

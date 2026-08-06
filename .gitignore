@@ -52,7 +52,6 @@ config.toml
 !config.example.toml
 .env
 bte-promo-script/.env
-deploy/litellm/.env
-deploy/litellm/secret.env
+bte-promo-script/secrets.env
 cmd/kubectl-gt/kubectl-gt
 cmd/kubectl-gt/bin/kubectl-gt-*

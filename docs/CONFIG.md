@@ -165,12 +165,12 @@ data:
 | `agent` | `claude-code` | Coding agent type |
 | `agentConfig.provider` | `litellm` | LLM provider |
 | `agentConfig.model` | - | Sets `ANTHROPIC_MODEL` on the Polecat pod |
-| `agentConfig.modelProvider.endpoint` | - | Sets `ANTHROPIC_BASE_URL` (LiteLLM / gateway) |
+| `agentConfig.modelProvider.endpoint` | - | Sets `ANTHROPIC_BASE_URL` (MadEye proxy / gateway) |
 | `agentConfig.modelProvider.apiKeySecretRef` | - | Sets `ANTHROPIC_AUTH_TOKEN` (Bearer) |
 | `kubernetes.gitBranch` | `main` | Base branch |
 | `kubernetes.activeDeadlineSeconds` | `3600` | 1 hour max runtime |
 
-For MadEye (OpenAI-only) via LiteLLM, see [LITE_LLM.md](LITE_LLM.md).
+For MadEye via the in-cluster proxy, see [bte-promo-script/INFRA-README.md](../bte-promo-script/INFRA-README.md).
 
 ### Rig Defaults
 
