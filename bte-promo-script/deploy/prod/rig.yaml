@@ -1,0 +1,11 @@
+apiVersion: gastown.gastown.io/v1alpha1
+kind: Rig
+metadata:
+  name: promo-script-tool
+  namespace: bte-gastown
+spec:
+  gitURL: "file:///promo-tool"
+  beadsPrefix: "pst"
+  settings:
+    namepoolTheme: "mad-max"
+    maxPolecats: 4

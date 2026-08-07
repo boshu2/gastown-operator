@@ -71,26 +71,28 @@ func main() {
 }
 
 type config struct {
-	Port          int
-	Namespace     string
-	RigName       string
-	MadEyeProxyURL string
-	AgentImage    string
-	WebhookURL    string
-	GenAxisAPIKey string
-	PromoAPIURL   string
+	Port                  int
+	Namespace             string
+	RigName               string
+	MadEyeProxyURL        string
+	PolecatMadEyeProxyURL string
+	AgentImage            string
+	WebhookURL            string
+	GenAxisAPIKey         string
+	PromoAPIURL           string
 }
 
 func loadConfig() config {
 	return config{
-		Port:           envInt("PORT", 8080),
-		Namespace:      envOr("NAMESPACE", "gastown-system"),
-		RigName:        DefaultRigName,
-		MadEyeProxyURL: envOr("MADEYE_PROXY_URL", DefaultMadEyeProxyURL),
-		AgentImage:     envOr("AGENT_IMAGE", "polecat-agent:local"),
-		WebhookURL:     envOr("GENAXIS_WEBHOOK_URL", genAxisWebhookURL()),
-		GenAxisAPIKey:  os.Getenv("GENAXIS_API_KEY"),
-		PromoAPIURL:    strings.TrimRight(envOr("PROMO_API_URL", DefaultPromoAPIURL), "/"),
+		Port:                  envInt("PORT", 8080),
+		Namespace:             envOr("NAMESPACE", DefaultNamespace),
+		RigName:               DefaultRigName,
+		MadEyeProxyURL:        envOr("MADEYE_PROXY_URL", DefaultMadEyeProxyURL),
+		PolecatMadEyeProxyURL: envOr("POLECAT_MADEYE_PROXY_URL", DefaultMadEyeProxyURL),
+		AgentImage:            envOr("AGENT_IMAGE", ""),
+		WebhookURL:            envOr("GENAXIS_WEBHOOK_URL", genAxisWebhookURL()),
+		GenAxisAPIKey:         os.Getenv("GENAXIS_API_KEY"),
+		PromoAPIURL:           strings.TrimRight(envOr("PROMO_API_URL", DefaultPromoAPIURL), "/"),
 	}
 }
 
@@ -111,6 +113,25 @@ func envInt(k string, def int) int {
 		return def
 	}
 	return n
+}
+
+type secretCheck struct {
+	name string
+	key  string
+}
+
+func requiredSecrets(namespace string) []secretCheck {
+	if namespace == DefaultNamespace {
+		return []secretCheck{
+			{name: "bte-gastown-external-secret", key: "GENAXIS_API_KEY"},
+			{name: DefaultMadEyeProxyAuthSecret, key: DefaultMadEyeProxyAuthKey},
+		}
+	}
+	// Local / gastown-system split stack.
+	return []secretCheck{
+		{name: "genaxis-auth", key: "api-key"},
+		{name: DefaultMadEyeProxyAuthSecret, key: DefaultMadEyeProxyAuthKey},
+	}
 }
 
 func newRouter(cfg config, k8s client.Client) http.Handler {
@@ -142,7 +163,7 @@ func handleHealth(cfg config, k8s client.Client) http.HandlerFunc {
 
 		// Kubernetes API + Rig exists
 		var rig gastownv1alpha1.Rig
-		if err := k8s.Get(ctx, types.NamespacedName{Name: cfg.RigName}, &rig); err != nil {
+		if err := k8s.Get(ctx, types.NamespacedName{Name: cfg.RigName, Namespace: cfg.Namespace}, &rig); err != nil {
 			checks["rig"] = "error: " + err.Error()
 			ready = false
 		} else {
@@ -158,14 +179,17 @@ func handleHealth(cfg config, k8s client.Client) http.HandlerFunc {
 			}
 		}
 
-		// Required secrets (git-creds not needed — Polecats use skipGitInit)
-		for _, name := range []string{"genaxis-auth"} {
-			var sec corev1.Secret
-			if err := k8s.Get(ctx, types.NamespacedName{Namespace: cfg.Namespace, Name: name}, &sec); err != nil {
-				checks["secret:"+name] = "missing"
+		// Required secrets for polecat auth + GenAxis webhooks.
+		for _, sec := range requiredSecrets(cfg.Namespace) {
+			var s corev1.Secret
+			if err := k8s.Get(ctx, types.NamespacedName{Namespace: cfg.Namespace, Name: sec.name}, &s); err != nil {
+				checks["secret:"+sec.name] = "missing"
+				ready = false
+			} else if _, ok := s.Data[sec.key]; !ok {
+				checks["secret:"+sec.name] = "missing key " + sec.key
 				ready = false
 			} else {
-				checks["secret:"+name] = "ok"
+				checks["secret:"+sec.name] = "ok"
 			}
 		}
 
@@ -282,11 +306,6 @@ INSTRUCTIONS:
 %s`, DefaultPromoWorkspacePath, prompt, name, requestID, sourceDocumentsTaskBlock(name, len(sourceDocs)))
 
 		agentEnv := []corev1.EnvVar{
-			{Name: "ANTHROPIC_MODEL", Value: "claude-opus-4-8"},
-			{Name: "ANTHROPIC_DEFAULT_OPUS_MODEL", Value: "claude-opus-4-8"},
-			{Name: "ANTHROPIC_DEFAULT_SONNET_MODEL", Value: "claude-opus-4-8"},
-			{Name: "ANTHROPIC_DEFAULT_HAIKU_MODEL", Value: "claude-opus-4-8"},
-			{Name: "ANTHROPIC_AUTH_TOKEN", Value: DefaultProxyMasterKey},
 			{Name: "PROMO_API_URL", Value: cfg.PromoAPIURL},
 			{Name: "PROMO_JOB_NAME", Value: name},
 			{Name: "GENAXIS_REQUEST_ID", Value: requestID},
@@ -332,7 +351,11 @@ INSTRUCTIONS:
 					Provider: gastownv1alpha1.LLMProviderLiteLLM,
 					Model:    "claude-opus-4-8",
 					ModelProvider: &gastownv1alpha1.ModelProviderConfig{
-						Endpoint: cfg.MadEyeProxyURL,
+						Endpoint: cfg.PolecatMadEyeProxyURL,
+						APIKeySecretRef: &gastownv1alpha1.SecretKeyRef{
+							Name: DefaultMadEyeProxyAuthSecret,
+							Key:  DefaultMadEyeProxyAuthKey,
+						},
 					},
 					// Force every Claude Code model tier onto MadEye opus-only access.
 					Env: agentEnv,
@@ -344,11 +367,11 @@ INSTRUCTIONS:
 					ActiveDeadlineSeconds: &deadline,
 					Resources: &corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("250m"),
-							corev1.ResourceMemory: resource.MustParse("512Mi"),
+							corev1.ResourceCPU:    resource.MustParse("500m"),
+							corev1.ResourceMemory: resource.MustParse("1Gi"),
 						},
 						Limits: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("1"),
+							corev1.ResourceCPU:    resource.MustParse("2"),
 							corev1.ResourceMemory: resource.MustParse("2Gi"),
 						},
 					},

@@ -1,0 +1,94 @@
+# promo-api: create Polecat CRs
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: promo-api
+  namespace: bte-gastown
+rules:
+  - apiGroups: ["gastown.gastown.io"]
+    resources: ["polecats"]
+    verbs: ["create", "get", "list", "watch", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: promo-api
+  namespace: bte-gastown
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: promo-api
+subjects:
+  - kind: ServiceAccount
+    name: bte-gastown-sa
+    namespace: bte-gastown
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: bte-gastown-promo-api-rig-reader
+rules:
+  - apiGroups: ["gastown.gastown.io"]
+    resources: ["rigs"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bte-gastown-promo-api-rig-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: bte-gastown-promo-api-rig-reader
+subjects:
+  - kind: ServiceAccount
+    name: bte-gastown-sa
+    namespace: bte-gastown
+---
+# operator: manage polecat pods + CRs (install CRDs + ClusterRole via helm/kustomize separately).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bte-gastown-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: gastown-operator-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: bte-gastown-sa
+    namespace: bte-gastown
+---
+# operator leader election in bte-gastown namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bte-gastown-leader-election
+  namespace: bte-gastown
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bte-gastown-leader-election
+  namespace: bte-gastown
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bte-gastown-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: bte-gastown-sa
+    namespace: bte-gastown

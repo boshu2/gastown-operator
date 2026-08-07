@@ -1,0 +1,154 @@
+# Pod 1 — infra-monolith: madeye-proxy + promo-api + operator (always on).
+# Job pods (Pod 2) are created by operator per POST /v1/promo/generate.
+#
+# Replace image placeholders with ECR URLs before apply.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infra-monolith
+  namespace: bte-gastown
+  labels:
+    app.kubernetes.io/name: bte-gastown
+    app.kubernetes.io/component: infra-monolith
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: infra-monolith
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: bte-gastown
+        app.kubernetes.io/component: infra-monolith
+    spec:
+      serviceAccountName: bte-gastown-sa
+      containers:
+        - name: madeye-proxy
+          image: <ECR>/madeye-proxy:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4000
+              name: proxy
+          env:
+            - name: PORT
+              value: "4000"
+            - name: MADEYE_UPSTREAM_MODEL
+              value: claude-opus-4-8
+            - name: MADEYE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bte-gastown-external-secret
+                  key: MADEYE_API_KEY
+            - name: MADEYE_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: bte-gastown-external-secret
+                  key: MADEYE_BASE_URL
+            - name: PROXY_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bte-gastown-external-secret
+                  key: PROXY_MASTER_KEY
+            - name: MADEYE_USER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: bte-gastown-external-secret
+                  key: MADEYE_USER_EMAIL
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: proxy
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+        - name: promo-api
+          image: <ECR>/promo-api:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: PORT
+              value: "8080"
+            - name: NAMESPACE
+              value: bte-gastown
+            - name: MADEYE_PROXY_URL
+              value: http://127.0.0.1:4000
+            - name: POLECAT_MADEYE_PROXY_URL
+              value: http://madeye-proxy.bte-gastown.svc:4000
+            - name: AGENT_IMAGE
+              value: <ECR>/polecat-agent:latest
+            - name: GENAXIS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bte-gastown-external-secret
+                  key: GENAXIS_API_KEY
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+        - name: operator
+          image: <ECR>/bte-gastown:latest
+          imagePullPolicy: Always
+          command: ["/manager"]
+          args:
+            - --leader-elect
+            - --health-probe-bind-address=:8081
+          env:
+            - name: GASTOWN_NAMESPACE
+              value: bte-gastown
+          ports:
+            - containerPort: 8081
+              name: probes
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: probes
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: operator-tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+      volumes:
+        - name: operator-tmp
+          emptyDir: {}

@@ -14,7 +14,7 @@ type jobEnv struct {
 
 func loadJobEnv() (jobEnv, error) {
 	e := jobEnv{
-		APIURL:    strings.TrimRight(envOr("PROMO_API_URL", "http://promo-api.gastown-system.svc:8080"), "/"),
+		APIURL:    strings.TrimRight(envOr("PROMO_API_URL", "http://promo-api.bte-gastown.svc:8080"), "/"),
 		JobName:   os.Getenv("PROMO_JOB_NAME"),
 		RequestID: os.Getenv("GENAXIS_REQUEST_ID"),
 	}

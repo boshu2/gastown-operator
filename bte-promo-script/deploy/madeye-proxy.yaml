@@ -26,7 +26,7 @@ spec:
             - name: PORT
               value: "4000"
             - name: MADEYE_BASE_URL
-              value: https://madeye-dev.internal.pocketfm.org
+              value: https://madeye.internal.pocketfm.org
             - name: MADEYE_UPSTREAM_MODEL
               value: claude-opus-4-8
             - name: MADEYE_API_KEY

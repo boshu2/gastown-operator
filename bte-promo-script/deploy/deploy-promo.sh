@@ -8,7 +8,8 @@ cd "$ROOT"
 # shellcheck source=lib/require-k8s-secrets.sh
 source "${BTE}/deploy/lib/require-k8s-secrets.sh"
 
-kubectl config use-context docker-desktop >/dev/null
+CONTEXT="${KUBE_CONTEXT:-docker-desktop}"
+kubectl config use-context "${CONTEXT}" >/dev/null
 
 echo "==> Checking K8s secrets (GENAXIS_API_KEY injected via secretKeyRef on promo-api)"
 require_promo_secrets gastown-system

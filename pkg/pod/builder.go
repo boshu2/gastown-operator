@@ -615,6 +615,8 @@ INSTRUCTIONS:
 Stay focused on this specific task. Do not fix unrelated issues.`
 	fallbackTail := " After completing: git add, commit, push, and gh pr create --fill."
 	claudeFlags := `--print --dangerously-skip-permissions`
+	postClaude := `CLAUDE_EXIT=$?`
+	promptTail := ""
 
 	if b.skipGitInit() {
 		instructions = `
@@ -622,8 +624,26 @@ INSTRUCTIONS:
 1. Follow the task description above exactly.
 2. Do not run git add, commit, push, or open pull requests unless the task explicitly asks you to.`
 		fallbackTail = " Follow the task instructions in the repository."
+		// Promo task text from promo-api already includes INSTRUCTIONS; do not duplicate in shell prompt.
+		promptTail = ""
+		// Promo/static workspace: --print for headless agent loop. Do not use --max-turns
+		// (removed from Claude Code 2.0.x); invalid flags can exit after a single text reply.
 		claudeFlags = `--dangerously-skip-permissions --max-turns 100 -p`
+		postClaude = fmt.Sprintf(`claude %s "$PROMPT"
+CLAUDE_EXIT=$?
+if [ "$CLAUDE_EXIT" -ne 0 ]; then
+  echo "ERROR: claude exited with code $CLAUDE_EXIT" >&2
+  exit "$CLAUDE_EXIT"
+fi
+ELAPSED=$(( $(date +%%s) - START_TS ))
+WS="${PROMO_WORKSPACE_PATH:-%s}"
+if ! find "$WS/working files" -type f ! -name '.gitkeep' 2>/dev/null | grep -q .; then
+  echo "ERROR: promo pipeline produced no artifacts under working files/" >&2
+  exit 1
+fi
+echo "Promo pipeline artifacts present under $WS/working files/"`, claudeFlags, b.workspacePath())
 	} else {
+		promptTail = instructions + fallbackTail
 		setup += fmt.Sprintf(`
 # Configure SSH for git operations (known_hosts already set up by init container)
 mkdir -p "$HOME/.ssh"
@@ -639,7 +659,42 @@ git config --global user.email "polecat@gastown.io"
 `, GitCredsMountPath, GitCredsMountPath)
 	}
 
-	return fmt.Sprintf(`
+	const promoScriptHead = `
+set -e
+
+# Configure npm for non-root global installs
+export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+export PATH="$HOME/.npm-global/bin:$PATH"
+mkdir -p "$HOME/.npm-global"
+
+%s
+
+# Verify Claude Code is available (pre-installed in polecat-agent image)
+echo "Verifying Claude Code CLI..."
+claude --version || { echo "ERROR: Claude CLI not found. Use ghcr.io/boshu2/polecat-agent image."; exit 1; }
+
+# SECURITY: --dangerously-skip-permissions is required for headless operation.
+echo "Starting Claude Code agent..."
+echo "Working on issue: $GT_ISSUE"
+START_TS=$(date +%%s)
+
+if [ -n "$GT_TASK_DESCRIPTION" ]; then
+    echo "=== Task Description ==="
+    echo "$GT_TASK_DESCRIPTION"
+    echo "========================"
+    PROMPT="You are a Gas Town polecat worker. Your task:
+
+ISSUE: $GT_ISSUE
+TASK: $GT_TASK_DESCRIPTION
+
+INSTRUCTIONS:
+1. Follow the task description above exactly.
+2. Do not run git add, commit, push, or open pull requests unless the task explicitly asks you to."
+else
+    PROMPT="You are a Gas Town polecat worker assigned to issue $GT_ISSUE.%s"
+fi
+`
+	const gitScriptHead = `
 set -e
 
 # Configure npm for non-root global installs
@@ -661,18 +716,29 @@ if [ -n "$GT_TASK_DESCRIPTION" ]; then
     echo "=== Task Description ==="
     echo "$GT_TASK_DESCRIPTION"
     echo "========================"
-    PROMPT="You are a Gas Town polecat worker. Your task:
+    PROMPT_BODY=$(cat <<PROMPT_EOF
+You are a Gas Town polecat worker. Your task:
 
-ISSUE: $GT_ISSUE
-TASK: $GT_TASK_DESCRIPTION
-
-%s"
+ISSUE: ${GT_ISSUE}
+TASK:
+${GT_TASK_DESCRIPTION}
+%s
+PROMPT_EOF
+)
 else
-    PROMPT="You are a Gas Town polecat worker assigned to issue $GT_ISSUE.%s"
+    PROMPT_BODY=$(cat <<PROMPT_EOF
+You are a Gas Town polecat worker assigned to issue ${GT_ISSUE}.%s
+PROMPT_EOF
+)
 fi
-
-exec claude %s "$PROMPT"
-`, setup, instructions, fallbackTail, claudeFlags)
+`
+	if b.skipGitInit() {
+		return fmt.Sprintf(promoScriptHead, setup, fallbackTail) + "\n" + postClaude
+	}
+	return fmt.Sprintf(gitScriptHead, setup, promptTail, fallbackTail) + fmt.Sprintf(`
+echo "$PROMPT_BODY" | claude %s
+%s
+`, claudeFlags, postClaude)
 }
 
 // hasGatewayAuth reports whether agentConfig provides a gateway API key secret.

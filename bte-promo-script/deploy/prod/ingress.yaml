@@ -1,0 +1,21 @@
+# gen-axis → promo-api (HTTPS). Infra team: attach internal ingress controller + DNS.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bte-gastown
+  namespace: bte-gastown
+  annotations:
+    # Example — adjust for your ingress controller (ALB, nginx, etc.)
+    kubernetes.io/ingress.class: internal
+spec:
+  rules:
+    - host: bte-gastown.pocketfm.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: promo-api
+                port:
+                  number: 8080

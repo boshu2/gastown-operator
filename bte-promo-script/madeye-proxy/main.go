@@ -102,36 +102,19 @@ func (s *server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, s.cfg.MadEyeBase+"/chat/completions", bytes.NewReader(openBody))
-	if err != nil {
-		http.Error(w, `{"error":"build upstream"}`, http.StatusInternalServerError)
-		return
-	}
-	upReq.Header.Set("Content-Type", "application/json")
-	upReq.Header.Set("Authorization", "Bearer "+s.cfg.MadEyeAPIKey)
-	if accept := r.Header.Get("Accept"); accept != "" {
-		upReq.Header.Set("Accept", accept)
-	}
+	clientStream := isStreamRequest(body)
 
-	upResp, err := s.client.Do(upReq)
+	upBody, status, err := s.fetchUpstream(r, openBody, body)
 	if err != nil {
 		log.Printf("upstream error: %v", err)
 		http.Error(w, `{"error":"upstream unreachable"}`, http.StatusBadGateway)
 		return
 	}
-	defer upResp.Body.Close()
-
-	if upResp.StatusCode < 200 || upResp.StatusCode >= 300 {
-		log.Printf("upstream HTTP %d", upResp.StatusCode)
-		copyUpstreamError(w, upResp)
-		return
-	}
-
-	clientStream := isStreamRequest(body)
-
-	upBody, err := io.ReadAll(io.LimitReader(upResp.Body, 32<<20))
-	if err != nil {
-		http.Error(w, `{"error":"read upstream"}`, http.StatusBadGateway)
+	if status < 200 || status >= 300 {
+		log.Printf("upstream HTTP %d", status)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write(upBody)
 		return
 	}
 
@@ -152,6 +135,53 @@ func (s *server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(outBody)
+}
+
+func (s *server) fetchUpstream(r *http.Request, openBody, anthropicBody []byte) ([]byte, int, error) {
+	maxAttempts := 1
+	if requestHasTools(anthropicBody) {
+		maxAttempts = 3
+	}
+
+	var lastBody []byte
+	var lastStatus int
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		upReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, s.cfg.MadEyeBase+"/chat/completions", bytes.NewReader(openBody))
+		if err != nil {
+			return nil, http.StatusInternalServerError, err
+		}
+		upReq.Header.Set("Content-Type", "application/json")
+		upReq.Header.Set("Authorization", "Bearer "+s.cfg.MadEyeAPIKey)
+		if accept := r.Header.Get("Accept"); accept != "" {
+			upReq.Header.Set("Accept", accept)
+		}
+
+		upResp, err := s.client.Do(upReq)
+		if err != nil {
+			return nil, http.StatusBadGateway, err
+		}
+
+		upBody, err := io.ReadAll(io.LimitReader(upResp.Body, 32<<20))
+		upResp.Body.Close()
+		if err != nil {
+			return nil, http.StatusBadGateway, err
+		}
+
+		lastBody, lastStatus = upBody, upResp.StatusCode
+		if upResp.StatusCode < 200 || upResp.StatusCode >= 300 {
+			return upBody, upResp.StatusCode, nil
+		}
+		if !openAIMissingToolCalls(upBody) || attempt == maxAttempts {
+			if openAIMissingToolCalls(upBody) {
+				log.Printf("upstream still missing tool_calls after %d attempts", attempt)
+			}
+			return upBody, upResp.StatusCode, nil
+		}
+		log.Printf("upstream finish_reason=tool_calls without tool_calls (attempt %d/%d), retrying", attempt, maxAttempts)
+	}
+
+	return lastBody, lastStatus, nil
 }
 
 func main() {

@@ -67,3 +67,32 @@ func openAIToAnthropic(body []byte, model string) ([]byte, error) {
 	}
 	return json.Marshal(out)
 }
+
+func requestHasTools(body []byte) bool {
+	var req map[string]any
+	if json.Unmarshal(body, &req) != nil {
+		return false
+	}
+	tools, ok := req["tools"].([]any)
+	return ok && len(tools) > 0
+}
+
+// openAIMissingToolCalls reports upstream claiming tool_calls finish without tool_calls payload.
+// Claude Code streaming clients exit after the first text chunk when this happens.
+func openAIMissingToolCalls(body []byte) bool {
+	var resp map[string]any
+	if json.Unmarshal(body, &resp) != nil {
+		return false
+	}
+	choices, _ := resp["choices"].([]any)
+	if len(choices) == 0 {
+		return false
+	}
+	choice, _ := choices[0].(map[string]any)
+	if asString(choice["finish_reason"]) != "tool_calls" {
+		return false
+	}
+	message, _ := choice["message"].(map[string]any)
+	tcs, _ := message["tool_calls"].([]any)
+	return len(tcs) == 0
+}
